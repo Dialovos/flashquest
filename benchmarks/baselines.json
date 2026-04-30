@@ -41,6 +41,15 @@
       "vllm_internal_decode_tok_s": 17.30,
       "peak_vram_mib": 3411,
       "raw_log": "benchmarks/vllm_4k.json"
+    },
+    "fa2_reference": {
+      "purpose": "synthetic forward-only reference for Phase 2 comparison; not an end-to-end model number",
+      "flash_attn_version": "2.7.4.post1",
+      "shape": "B=1 S=8192 H_q=24 H_kv=8 D=64 BF16 causal",
+      "first_run_avg_ms": 28.390,
+      "warm_run_avg_ms": 22.760,
+      "peak_vram_mib": 125,
+      "raw_log": "benchmarks/fa2_profile.json"
     }
   }
 }

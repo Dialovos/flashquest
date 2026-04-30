@@ -54,7 +54,7 @@ Key facts captured at start (2026-04-29 19:28 local):
 | 1 | Triton ≥ 3.x on sm_86 supports `tl.dot` with INT8 operands? | **Yes** — `out_dtype=tl.int32`, exact-zero error at 128×128×128 with BLOCK=64. | `scripts/verify_triton_int8.py` on torch 2.5.1+cu121, triton 3.1.0. |
 | 2 | Can we fuse INT8 dequant into the `mma.sync` operand path? | Deferred to Phase 2 | Not answerable without a candidate kernel; revisit when porting FA-2 in Phase 2. |
 | 3 | Actual usable VRAM after Windows + browser + IDE? | **~4.0 GB (full)** at WSL2 idle, no Windows GUI tax — better than the spec's 3.0–3.3 GB assumption. To re-confirm under load, capture `nvidia-smi` after Edge + IDE warm. | `env_snapshot.json` nvidia_smi output |
-| 4 | Do `ncu` / `nsys` work in WSL2 on this machine? | Tools installed; functional check in Task 7 | (filled in Task 7) |
+| 4 | Do `ncu` / `nsys` work in WSL2 on this machine? | **Partial.** nsys 2022.4.2 captures `.qdstrm` traces (collection works) but lacks the importer to convert them to `.nsys-rep` with stats — need a newer nsys for postprocessing. ncu is blocked by `ERR_NVGPUCTRPERM` on consumer drivers; requires Windows-side `NVreg_RestrictProfilingToAdminUsers=0` regedit + WSL restart, or root. Workaround for kernel profiling: PyTorch profiler + Triton's own metrics; both work without elevation. | nsys logs (`benchmarks/fa2_profile.qdstrm`), ncu error message in Task 7 ncu-launch attempt |
 
 ## Baselines
 
@@ -64,7 +64,7 @@ Llama-3.2-3B-Instruct, RTX 3050 Ti Laptop (sm_86), WSL2.
 |---|---|---|---|---|---|---|
 | llama.cpp (CUDA, `-ngl 999`) | Q4_K_M | 8 192 | 736.55 ± 55.81 | 39.60 ± 0.11 | 3 543 MiB (86 %) | build d775992 |
 | vLLM 0.7.3 | AWQ-INT4 | 4 096 | ~890 (vLLM warmup est.) | 17.30 (vLLM est.) | 3 411 MiB (83 %) | **8 k OOMs at util=0.95**; dropped to 4 k |
-| FA-2 ref (synthetic fwd) | BF16 | (pending Task 7) | — | — | — | |
+| FA-2 (`flash_attn` 2.7.4) — synthetic fwd | BF16 | (S=8192 fwd) | — | 22.76 ms / forward (warm) | 125 MiB | reference target for Phase 2 dense-FA Triton port |
 
 Key findings from baselines:
 - **vLLM cannot fit 8 k context on 4 GB** with Llama-3.2-3B-AWQ-INT4, even at `gpu_memory_utilization=0.95` (max KV cache tops at ~3904 tokens). This is itself the strongest possible motivation for flashquest: a SOTA inference server already fails the 8 k bar on this hardware. The flashquest win condition is 128 k.
@@ -81,3 +81,5 @@ Key findings from baselines:
 - vLLM baseline (Task 6): GGUF Q4_K_M is not directly loadable in vLLM; baseline uses `casperhansen/llama-3.2-3b-instruct-awq` (originally cited `hugging-quants/Llama-3.2-3B-Instruct-AWQ-INT4` does not exist on the Hub).
 - vLLM baseline context dropped 8 k → 4 k: vLLM cannot fit an 8 k KV cache for the AWQ model on 4 GB even at util=0.95. Documented in baselines.json. This *strengthens* the project motivation: vLLM, a tier-1 inference server, fails the 8 k bar on this hardware out of the box.
 - vLLM 0.7.3 + transformers 4.x is the working pair: vLLM 0.20.0 forced torch 2.11/cu13 (incompatible with our CUDA 12.5 driver) and required transformers ≥5; pinning vllm==0.7.3 + transformers<5 keeps the stack on torch 2.5.1+cu121.
+- flash-attn 2.7.4.post1 builds and runs cleanly on torch 2.5.1+cu121 + sm_86 (~few minutes from-source compile, no prebuilt wheel matched). 22.76 ms / forward at S=8192, H_q=24, H_kv=8, D=64, BF16 — this is the bar Phase 2's dense Triton port aims at (target: within 30 % per SPEC §6 Phase 2).
+- WSL2 profiler verdict: trace-collection (nsys) works; per-kernel metrics (ncu) need elevation we don't have. Plan uses PyTorch profiler + Triton metrics for Phase 2+ — both work without elevation and are sufficient for tuning block sizes / occupancy. ncu can be revisited later if we need a deep occupancy / register-pressure read.

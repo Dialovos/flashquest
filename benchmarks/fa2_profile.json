@@ -1,0 +1,20 @@
+{
+  "harness": "scripts/profile_fa2.py",
+  "shape": {
+    "batch": 1,
+    "seq_q": 8192,
+    "seq_kv": 8192,
+    "heads_q": 24,
+    "heads_kv": 8,
+    "head_dim": 64,
+    "dtype": "bfloat16",
+    "causal": true
+  },
+  "flash_attn_version": "2.7.4.post1",
+  "torch_version": "2.5.1+cu121",
+  "first_run_avg_ms": 28.390,
+  "warm_run_avg_ms": 22.760,
+  "n_iter_per_avg": 20,
+  "peak_vram_mib": 125,
+  "notes": "warm_run is steady-state after CUDA graph + L2 caches stabilize; first_run includes JIT/autotune cost on the 1st measure. Use warm_run for Phase 2 comparisons."
+}
