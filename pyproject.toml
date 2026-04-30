@@ -28,9 +28,10 @@ dev = [
   "mypy",
 ]
 bench = [
-  "transformers>=4.45",
+  "transformers>=4.45,<5",
   "accelerate",
   "huggingface_hub[cli]",
+  "datasets>=3",
 ]
 
 [tool.setuptools.packages.find]
