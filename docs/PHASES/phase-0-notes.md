@@ -71,7 +71,18 @@ Key facts captured at start (2026-04-29 19:28 local):
 
 ## Baselines
 
-(filled in across Tasks 5–7; final table mirrored to README.md)
+Llama-3.2-3B-Instruct at 8 k context, RTX 3050 Ti Laptop (sm_86), WSL2.
+
+| Stack | Quant | Build | Prefill tok/s | Decode tok/s | Peak VRAM |
+|---|---|---|---|---|---|
+| llama.cpp (CUDA, `-ngl 999`) | Q4_K_M | d775992 | 736.55 ± 55.81 | 39.60 ± 0.11 | 3543 MiB (86 %) |
+| vLLM | (pending Task 6) | | | | |
+| FA-2 ref (synthetic fwd) | BF16 | (pending Task 7) | | | |
+
+Notes:
+- Decode 39.6 tok/s on 3B Q4_K_M at 8 k is the bar. SPEC win condition (3B Q4_K_M, 128 k, ≥10 tok/s) is roughly 4× weaker — but at 16× the context window, with KV cache that scales linearly. Whether we beat 39.6 at 8 k is a different question from whether we hold ≥10 at 128 k.
+- Peak VRAM (3543 MiB) is much higher than the SPEC §3 theoretical estimate (~2.1 GB for 3B Q4_K_M at 32 k with sparse INT8 KV). llama.cpp's allocator is eager — the SPEC number is a *floor*, not a comparison point. The bar for flashquest is "fits in 4 GB at 128 k", not "uses less VRAM than llama.cpp at 8 k".
+- llama-bench printed `Total VRAM: 4095 MiB` — the host reports the full 4 GiB available, no Windows display tax in WSL2 (confirms OQ3 answer).
 
 ## Decisions / deviations from spec
 

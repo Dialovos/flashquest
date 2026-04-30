@@ -1,0 +1,29 @@
+{
+  "host": {
+    "gpu": "NVIDIA GeForce RTX 3050 Ti Laptop GPU",
+    "compute_capability": "8.6",
+    "total_vram_mib": 4095,
+    "driver": "555.97",
+    "cuda_runtime": "12.5",
+    "cpu": "Intel i9-12900H",
+    "wsl2_ram_gib": 7.6
+  },
+  "date": "2026-04-30",
+  "model": "Llama-3.2-3B-Instruct",
+  "context": 8192,
+  "results": {
+    "llama_cpp": {
+      "build": "d775992",
+      "config": "CUDA, -ngl 999, -t 6, -r 3",
+      "quant": "Q4_K_M",
+      "model_size_gib": 1.87,
+      "params_b": 3.21,
+      "prefill_pp8192_tok_s": 736.55,
+      "prefill_stddev": 55.81,
+      "decode_tg128_tok_s": 39.60,
+      "decode_stddev": 0.11,
+      "peak_vram_mib": 3543,
+      "raw_log": "benchmarks/llamacpp_8k.txt"
+    }
+  }
+}
