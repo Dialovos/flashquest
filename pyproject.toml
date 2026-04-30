@@ -11,9 +11,14 @@ requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
 authors = [{ name = "flashquest contributors" }]
 
-# torch + triton pins are filled in Task 3 once we know which versions
-# resolve cleanly against the host's CUDA 12.5 driver.
-dependencies = []
+# Resolved against driver CUDA 12.5 via the cu121 wheel index. Triton 3.1
+# ships bundled with torch 2.5+cu121. NumPy capped <2 because several
+# vendored upstream repos still pin <2.
+dependencies = [
+  "torch>=2.5,<2.6",
+  "triton>=3.1,<4",
+  "numpy<2",
+]
 
 [project.optional-dependencies]
 dev = [

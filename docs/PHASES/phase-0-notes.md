@@ -23,7 +23,7 @@ Key facts captured at start (2026-04-29 19:28 local):
 
 | # | Question | Answer | Evidence |
 |---|---|---|---|
-| 1 | Triton ≥ 3.x on sm_86 supports `tl.dot` with INT8 operands? | TBD | (filled in Task 3) |
+| 1 | Triton ≥ 3.x on sm_86 supports `tl.dot` with INT8 operands? | **Yes** — `out_dtype=tl.int32`, exact-zero error at 128×128×128 with BLOCK=64. | `scripts/verify_triton_int8.py` on torch 2.5.1+cu121, triton 3.1.0. |
 | 2 | Can we fuse INT8 dequant into the `mma.sync` operand path? | Deferred to Phase 2 | Not answerable without a candidate kernel; revisit when porting FA-2 in Phase 2. |
 | 3 | Actual usable VRAM after Windows + browser + IDE? | **~4.0 GB (full)** at WSL2 idle, no Windows GUI tax — better than the spec's 3.0–3.3 GB assumption. To re-confirm under load, capture `nvidia-smi` after Edge + IDE warm. | `env_snapshot.json` nvidia_smi output |
 | 4 | Do `ncu` / `nsys` work in WSL2 on this machine? | Tools installed; functional check in Task 7 | (filled in Task 7) |
