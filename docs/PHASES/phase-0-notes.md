@@ -1,8 +1,49 @@
 # Phase 0 Notes
 
 **Started:** 2026-04-29
-**Status:** in progress
+**Status:** in progress (paused mid-Task 5 for session handoff)
 **Spec:** [docs/SPEC.md §6 Phase 0](../SPEC.md)
+
+## Session handoff (2026-04-29)
+
+Tasks 1–4 complete and tagged in commits. Task 5 (llama.cpp baseline) is mid-flight:
+
+- `vendor/llama.cpp/build/` is cmake-configured for sm_86 CUDA. Partial build: ggml-base + ggml-cpu shared libs done (~10% of full build). Resume with:
+
+  ```bash
+  cmake --build /home/hoang/code/personal/active/flashquest/vendor/llama.cpp/build --config Release -j $(nproc)
+  ```
+
+  cmake/ninja-make track state; this picks up where it stopped. CUDA kernel TUs are the bulk of remaining time (~10–15 min on 12900H).
+
+- `~/models/llama-3.2-3b/` has ~65 MB of the 2 GB Q4_K_M GGUF (`hf` CLI cache + partial symlink). Resume with:
+
+  ```bash
+  /home/hoang/code/personal/active/flashquest/.venv/bin/hf download \
+    bartowski/Llama-3.2-3B-Instruct-GGUF Llama-3.2-3B-Instruct-Q4_K_M.gguf \
+    --local-dir $HOME/models/llama-3.2-3b
+  ```
+
+  `hf` resumes from cache automatically.
+
+- `scripts/bench_llamacpp.sh`, `scripts/bench_vllm.py`, `scripts/profile_fa2.py` are written and committed but not yet run. vLLM and flash-attn are not yet installed.
+
+### Resume order next session
+
+1. Finish llama.cpp build (above command).
+2. Finish model download (above command).
+3. Run `./scripts/bench_llamacpp.sh` → fills `benchmarks/llamacpp_8k.txt`.
+4. Init `benchmarks/baselines.json` with the result + commit Task 5.
+5. Move on to Task 6 (vLLM): `pip install "vllm>=0.6.0"`, run `python scripts/bench_vllm.py`.
+6. Task 7 (FA-2 + profilers): `pip install flash-attn --no-build-isolation`, run `scripts/profile_fa2.py`, then `nsys profile ...` and `ncu ...` per plan.
+7. Task 8: README baselines table + DOC.md + tag `phase-0`.
+
+### Notes for the next session
+
+- Use absolute paths or stay at repo root in shell commands. Don't `cd` into `vendor/llama.cpp` for foreground commands — cwd persists across Bash calls in this harness.
+- vLLM may force-pin its own torch at install time; if it conflicts with torch 2.5.1, accept vLLM's pin (re-verify CUDA after).
+- flash-attn first install will compile native CUDA (~10 min on this hardware); use a long timeout or background it.
+
 
 ## Host snapshot
 
