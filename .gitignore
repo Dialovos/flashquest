@@ -41,3 +41,16 @@ datasets/
 # Logs
 logs/
 *.log
+
+# Vendored upstream clones
+vendor/*
+!vendor/.gitkeep
+!vendor/README.md
+
+# Profiling outputs in repo
+benchmarks/*.nsys-rep
+benchmarks/*.ncu-rep
+benchmarks/*.qdrep
+
+# Generated env snapshots (machine-specific)
+docs/PHASES/env_snapshot.json

@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flashquest"
+version = "0.0.0"
+description = "Sparse-retrieval attention Triton kernel for Ampere laptop GPUs (sm_86, 4GB VRAM)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "flashquest contributors" }]
+
+# torch + triton pins are filled in Task 3 once we know which versions
+# resolve cleanly against the host's CUDA 12.5 driver.
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "pytest-cov",
+  "ruff",
+  "mypy",
+]
+bench = [
+  "transformers>=4.45",
+  "accelerate",
+  "huggingface_hub[cli]",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
