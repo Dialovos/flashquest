@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Build
+build/
+dist/
+*.so
+
+# Models / weights / datasets
+*.gguf
+*.safetensors
+*.bin
+*.pt
+*.pth
+weights/
+models/
+datasets/
+
+# CUDA / Triton caches
+.triton/
+~/.triton/
+*.ptx
+*.cubin
+
+# Editor
+.vscode/
+.idea/
+
+# Profiling outputs
+*.ncu-rep
+*.nsys-rep
+*.qdrep
+
+# Logs
+logs/
+*.log
