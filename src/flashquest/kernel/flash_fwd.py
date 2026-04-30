@@ -163,9 +163,15 @@ def flash_attn_fwd(
         Q: (B, H_q, S_q, D) bfloat16 on cuda.
         K: (B, H_kv, S_kv, D) bfloat16 on cuda.
         V: (B, H_kv, S_kv, D) bfloat16 on cuda.
-        causal: whether to apply a causal mask. For S_q == 1 (decode), causal
-            is a no-op (single query at the last position attends to all KV).
-            For S_q != S_kv with S_q > 1 (chunked prefill, E13), raises.
+        causal: whether to apply a causal mask. The query at row i attends to
+            keys at columns j where j <= i + (S_kv - S_q). In particular, for
+            S_q == 1 (decode), the single query is at virtual position S_kv-1
+            and attends to all S_kv keys — causal becomes a no-op. (Note: this
+            is the FA-2 / Phase 1 eager convention. PyTorch SDPA's
+            `is_causal=True` instead anchors the triangle at the top-left,
+            which is wrong for decode — use `is_causal=False` against this
+            kernel's `causal=True` decode output as the reference.) For
+            S_q != S_kv with S_q > 1 (chunked prefill, E13), raises.
         sm_scale: softmax scale; defaults to 1/sqrt(D).
         return_lse: when True, also return per-(b,h,q) logsumexp.
 
