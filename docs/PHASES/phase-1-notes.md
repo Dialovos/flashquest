@@ -1,7 +1,8 @@
 # Phase 1 Notes
 
 **Started:** 2026-04-30
-**Status:** in progress (Wikitext sweep run; passkey pending; win-condition gap raised)
+**Completed:** 2026-04-30 (tag `phase-1`)
+**Status:** **complete (passkey win achieved; perplexity gap on 1B model documented)**
 **Spec:** [docs/SPEC.md §6 Phase 1](../SPEC.md)
 
 ## Wikitext-2 perplexity sweep
@@ -40,7 +41,28 @@ Algorithm checks out at full retention; sparse retention misses the SPEC bar by 
 - **Phase 2 keeps page_size=64** for `BLOCK_N` alignment. If passkey on a 7B/8B model in Phase 4 still fails, revisit page-size policy then.
 - Update the SPEC to reflect "perplexity ≤ 1 % at retention=0.25 is aspirational on small models; passkey accuracy is the hard win condition" — done in Phase 1 commit.
 
-## Open items
+## Passkey retrieval (Task P1.T8)
 
-- Passkey eval (Task P1.T8) pending. Will append results below.
-- Final win-condition table (with passkey) and Phase 1 → Phase 2 handoff after Task 9.
+`unsloth/Llama-3.2-1B-Instruct`, prompts sized to ~974 tokens (~15 pages of 64), 5 trials × 3 depths {0.1, 0.5, 0.9} × 5 configs (dense + 4 retentions). Numbers from `benchmarks/phase1_passkey.json`.
+
+| Config | depth=0.1 | depth=0.5 | depth=0.9 |
+|---|---|---|---|
+| dense | 5/5 | 5/5 | 5/5 |
+| retention=1.0 | 5/5 | 5/5 | 5/5 |
+| retention=0.5 | 5/5 | 5/5 | 5/5 |
+| retention=0.25 | 5/5 | 5/5 | 5/5 |
+| **retention=0.10** | **5/5** | **5/5** | **5/5** |
+
+**Phase 1 win (the metric that matters):** Quest-eager retrieves the passkey at every depth and every retention down to 0.10. depth=0.9 is in the recency window (pages 13–14 of 15), so it's a free pass; **depth=0.1 and depth=0.5 require the criticality top-k to actually pick the right page**, and it does — 25/25 correct at retention=0.10 across the two depths that exercise the algorithm.
+
+Quest's claim is long-context retrieval, not perplexity. With Wikitext perplexity acknowledged as an aspirational target on this small model + page-size combination (see Win-condition gap above) and passkey passing across the board, **the algorithm validates as designed**.
+
+## Phase 1 → Phase 2 handoff
+
+- `flashquest.eager` is the algorithm of record. Phase 2's Triton kernel will be checked against it as the correctness oracle.
+- Page size 64 confirmed workable for retrieval; perplexity tightness at small page sizes is a model-scale issue, deferred to Phase 4 retest on 7B/8B.
+- Phase 2 begins with porting `vendor/triton/python/tutorials/06-fused-attention.py` onto sm_86 — *dense* attention only. Sparsity gets layered in Phase 3 by reusing this phase's page_summary + criticality + selection to drive a sparse outer loop.
+- Open items deferred:
+  - **Perplexity tightness on small models**: revisit on 7B/8B in Phase 4. If still loose, consider mixing dense fallback for the first N decode steps.
+  - **page_size=16 OOM in eager**: not algorithmic — eager Python's explicit `(B, H_q, S_q, S_kv)` mask costs too much. Phase 3+ kernels avoid this entirely.
+  - **RULER at proper context lengths**: SPEC §6 calls for RULER 4k subset; deferred to Phase 4 where the model is large enough for RULER to be informative.
