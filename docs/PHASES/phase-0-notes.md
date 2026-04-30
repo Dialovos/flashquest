@@ -4,45 +4,32 @@
 **Status:** in progress (paused mid-Task 5 for session handoff)
 **Spec:** [docs/SPEC.md §6 Phase 0](../SPEC.md)
 
-## Session handoff (2026-04-29)
+## Session handoff (updated 2026-04-30)
 
-Tasks 1–4 complete and tagged in commits. Task 5 (llama.cpp baseline) is mid-flight:
+Tasks 1–6 complete. Task 7 (FA-2 + profilers) and Task 8 (README + DOC + tag) remain.
 
-- `vendor/llama.cpp/build/` is cmake-configured for sm_86 CUDA. Partial build: ggml-base + ggml-cpu shared libs done (~10% of full build). Resume with:
+### Where things stand
 
-  ```bash
-  cmake --build /home/hoang/code/personal/active/flashquest/vendor/llama.cpp/build --config Release -j $(nproc)
-  ```
-
-  cmake/ninja-make track state; this picks up where it stopped. CUDA kernel TUs are the bulk of remaining time (~10–15 min on 12900H).
-
-- `~/models/llama-3.2-3b/` has ~65 MB of the 2 GB Q4_K_M GGUF (`hf` CLI cache + partial symlink). Resume with:
-
-  ```bash
-  /home/hoang/code/personal/active/flashquest/.venv/bin/hf download \
-    bartowski/Llama-3.2-3B-Instruct-GGUF Llama-3.2-3B-Instruct-Q4_K_M.gguf \
-    --local-dir $HOME/models/llama-3.2-3b
-  ```
-
-  `hf` resumes from cache automatically.
-
-- `scripts/bench_llamacpp.sh`, `scripts/bench_vllm.py`, `scripts/profile_fa2.py` are written and committed but not yet run. vLLM and flash-attn are not yet installed.
+- llama.cpp + vLLM baselines captured (`benchmarks/baselines.json`, llamacpp_8k.txt, vllm_4k.json).
+- Stack pinned: torch 2.5.1+cu121, triton 3.1.0, vllm 0.7.3, transformers 4.57.6, numpy 1.26.4.
+- nsys 2022.4.2 captures `.qdstrm` traces under WSL2 but lacks the importer to convert them to `.nsys-rep` (known older-nsys WSL2 limitation). Trace collection works; postprocessing needs a newer nsys or a manual import. ncu has not been tested yet.
+- flash-attn is **not yet installed**. Next session needs `pip install flash-attn --no-build-isolation` (~10 min CUDA compile).
 
 ### Resume order next session
 
-1. Finish llama.cpp build (above command).
-2. Finish model download (above command).
-3. Run `./scripts/bench_llamacpp.sh` → fills `benchmarks/llamacpp_8k.txt`.
-4. Init `benchmarks/baselines.json` with the result + commit Task 5.
-5. Move on to Task 6 (vLLM): `pip install "vllm>=0.6.0"`, run `python scripts/bench_vllm.py`.
-6. Task 7 (FA-2 + profilers): `pip install flash-attn --no-build-isolation`, run `scripts/profile_fa2.py`, then `nsys profile ...` and `ncu ...` per plan.
-7. Task 8: README baselines table + DOC.md + tag `phase-0`.
+1. **Task 7**: install flash-attn (`. .venv/bin/activate && nice -n 19 pip install flash-attn --no-build-isolation`). Run in background — long compile.
+2. After install, run `python scripts/profile_fa2.py` → records FA-2 BF16 fwd timing at S=8192, H_q=24, H_kv=8, D=64.
+3. Profile with `nsys profile --output benchmarks/fa2_profile --force-overwrite=true --stats=true python scripts/profile_fa2.py`. Note the `.qdstrm`-without-importer issue — newer nsys may be needed for the report.
+4. Profile with `ncu --target-processes all --kernel-name regex:flash_fwd --launch-count 1 -o benchmarks/fa2_ncu python scripts/profile_fa2.py`. If it fails on permissions, set `NVreg_RestrictProfilingToAdminUsers=0` and restart WSL.
+5. Update phase-0-notes OQ4 with the WSL2 profiler verdict.
+6. Commit Task 7.
+7. **Task 8**: append baselines table to README.md, write DOC.md, mark phase-0-notes status complete, `git tag -a phase-0`.
 
 ### Notes for the next session
 
-- Use absolute paths or stay at repo root in shell commands. Don't `cd` into `vendor/llama.cpp` for foreground commands — cwd persists across Bash calls in this harness.
-- vLLM may force-pin its own torch at install time; if it conflicts with torch 2.5.1, accept vLLM's pin (re-verify CUDA after).
-- flash-attn first install will compile native CUDA (~10 min on this hardware); use a long timeout or background it.
+- Stay at repo root for shell commands; cwd persists across Bash calls.
+- Use `nice -n 19` (and `-j 4` instead of `-j $(nproc)`) for any heavy build to keep WSL responsive.
+- flash-attn install conflicts: if it tries to upgrade torch, pin `torch==2.5.1+cu121` first or use `--no-deps` and verify imports after.
 
 
 ## Host snapshot
