@@ -105,6 +105,21 @@ Llama-3.2-3B geometry, S_kv=8192, retention=0.25, sinks=4, window=128:
 
 11 catalogued edge cases (ES1–ES11) + 15 hypothesis-fuzzed shapes. See [`docs/PHASES/phase-3-notes.md`](docs/PHASES/phase-3-notes.md). Re-run via `python scripts/phase3_bench_decode.py`.
 
+## Phase 4 — DuoAttention head split + HF integration
+
+Per-head retrieval-vs-streaming attention dispatch wired through HF Llama. The Phase 3 sparse kernel already supports per-query-head selection masks; DuoAttention reduces to building a different mask per head (full top-k for retrieval heads; sinks+window only for streaming heads).
+
+Validation on Llama-3.2-1B with a synthetic 70/30 retrieval/streaming split (DuoAttention's upstream classifications cover Llama-3.1-8B and Mistral-7B; no Llama-3.2 file exists upstream):
+
+| Config | depth=0.1 | depth=0.5 | depth=0.9 |
+|---|---|---|---|
+| Phase 1 (all retrieval) | 5/5 | 5/5 | 5/5 |
+| Phase 4 (70 % retrieval, 30 % streaming) | 5/5 | 5/5 | 5/5 |
+
+11 catalogued edge cases (EP1–EP11). See [`docs/PHASES/phase-4-notes.md`](docs/PHASES/phase-4-notes.md) for the full picture and Phase 5 prerequisites (Llama-3.1-8B AWQ + persistent INT8 cache + Marlin + 32 k RULER).
+
+Re-run via `python scripts/phase4_run_passkey.py`.
+
 ## Non-goals
 
 - Training kernels. Inference only.

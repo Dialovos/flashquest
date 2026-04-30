@@ -95,6 +95,32 @@ O, lse = flash_attn_sparse_fwd(
 )
 ```
 
+DuoAttention per-head dispatch on a HF Llama model (Phase 4):
+
+```python
+import torch
+from transformers import AutoModelForCausalLM
+from flashquest.duo import load_duo_pattern
+from flashquest.eager.llama_duo_patch import patch_llama_for_quest_duo
+
+model = AutoModelForCausalLM.from_pretrained(
+    "unsloth/Llama-3.2-1B-Instruct", torch_dtype="bfloat16",
+    attn_implementation="sdpa",
+).cuda()
+
+# Synthetic pattern (Llama-3.2 has no upstream DuoAttention file):
+pattern = (torch.rand(model.config.num_hidden_layers, model.config.num_key_value_heads) < 0.7)
+
+patch_llama_for_quest_duo(
+    model, head_pattern=pattern, retention=0.25, num_sinks=4, window_pages=2, page_size=64,
+)
+# Llama-3.1-8B users can load the upstream pattern instead:
+# pattern = load_duo_pattern(
+#     "vendor/duo-attention/attn_patterns/Meta-Llama-3.1-8B-Instruct/"
+#     "lr=0.02-reg=0.05-ctx=1000_128000-multi_passkey10/full_attention_heads.tsv"
+# )
+```
+
 ## Architecture
 
 See `docs/SPEC.md §4`. Single Triton kernel per attention layer; sparse outer loop over Quest-selected KV blocks; INT8 KV with KIVI-style scales; per-head pattern dispatch (DuoAttention).
@@ -105,7 +131,7 @@ See `docs/SPEC.md §4`. Single Triton kernel per attention layer; sparse outer l
 - **Phase 1 — Eager Quest reference** ✅ **complete (tag `phase-1`)**. Pure-PyTorch composition: page summary → criticality → top-k ∪ sinks ∪ window → sparse SDPA. HF LlamaAttention monkeypatch. Validated on `unsloth/Llama-3.2-1B-Instruct`: passkey retrieval **25/25 at retention=0.10** across depths 0.1 / 0.5 / 0.9 (Quest's claim metric). Wikitext perplexity loose at 1B + page_size=64 (gap acknowledged in `docs/PHASES/phase-1-notes.md`). See `src/flashquest/eager/`.
 - **Phase 2 — Dense FA-2 Triton kernel** ✅ **complete (tag `phase-2`)**. `flashquest.kernel.flash_attn_fwd(Q, K, V, *, causal, sm_scale=None, return_lse=True)`. BLOCK_M=BLOCK_N=64 on sm_86. 14 catalogued edge cases pass (E1–E14, `tests/test_kernel_flash_fwd_edges.py`); equivalence with Phase 1 eager at retention=1.0 confirmed; perf at the Llama-3.2-3B reference shape is 27.37 ms / fwd vs FA-2's 25.51 ms (**1.073×**, well within the 30 % SPEC target). See `docs/PHASES/phase-2-notes.md`.
 - **Phase 3 — Sparse retrieval + INT8 KV** ✅ **complete (tag `phase-3`)**. `flashquest.kernel.flash_attn_sparse_fwd(Q, K_uint8, K_scale, K_mn, V_uint8, V_scale, V_mn, *, selection_mask, page_size, sm_scale, return_lse)`. Decode-only (S_q=1). KIVI-style asymmetric uint8 KV (per-page channel-wise K, per-token V); dequant fused inside the kernel. 11 catalogued edge cases pass + 15 hypothesis-fuzzed shapes. Decode at 8 k context is **2.48×** faster than Phase 2 dense. See `docs/PHASES/phase-3-notes.md`.
-- Phase 4 — DuoAttention split + 8 B model + Marlin W4A16 projections.
+- **Phase 4 — DuoAttention head split + HF integration** ✅ **complete (tag `phase-4`)**. `flashquest.duo.{load_duo_pattern, quest_duo_eager_sdpa}` + `flashquest.eager.llama_duo_patch.patch_llama_for_quest_duo`. Per-layer per-KV-head dispatch (retrieval ∪ streaming) wired through HF Llama. Validated on Llama-3.2-1B with a synthetic 70/30 split: passkey 25/25 across depths, matches Phase 1 all-retrieval baseline. Llama-3.1-8B AWQ end-to-end + persistent INT8 KV cache + Marlin projections deferred to Phase 5 (documented in `docs/PHASES/phase-4-notes.md`).
 - Phase 5 — ExLlamaV2 backend + optional EAGLE-2.
 - Phase 6 — Polish & release.
 
