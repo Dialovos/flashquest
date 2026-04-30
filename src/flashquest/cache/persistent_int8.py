@@ -73,7 +73,64 @@ class PersistentInt8KVCache(Cache):
         V_new: torch.Tensor,
         layer_idx: int,
     ) -> None:
-        raise NotImplementedError("filled in Task 3")
+        """Append K_new, V_new (B, H_kv, S_new, D) bf16 to layer_idx's cache.
+
+        Completes any partial page first, then bulk-quantizes whole pages,
+        then stages any remaining partial page in BF16.
+        """
+        if layer_idx < 0 or layer_idx >= self.num_layers:
+            raise IndexError(
+                f"layer_idx {layer_idx} out of range [0, {self.num_layers})"
+            )
+        from flashquest.kernel.kv_quant import quantize_k, quantize_v
+
+        seen = self._seen_tokens[layer_idx]
+        S_new = K_new.shape[2]
+        if seen + S_new > self.max_seq_len:
+            raise RuntimeError(
+                f"PersistentInt8KVCache: seen+new={seen + S_new} exceeds "
+                f"max_seq_len={self.max_seq_len}"
+            )
+        page_size = self.page_size
+
+        partial_len = seen % page_size
+        partial_K = self.K_partial[layer_idx, :, :, :partial_len, :]
+        partial_V = self.V_partial[layer_idx, :, :, :partial_len, :]
+        K_stream = torch.cat([partial_K, K_new], dim=2)
+        V_stream = torch.cat([partial_V, V_new], dim=2)
+
+        page_start_token = seen - partial_len
+        total_stream_len = K_stream.shape[2]
+        n_complete_pages = total_stream_len // page_size
+        complete_len = n_complete_pages * page_size
+        new_partial_len = total_stream_len - complete_len
+
+        if n_complete_pages > 0:
+            K_full = K_stream[:, :, :complete_len, :]
+            V_full = V_stream[:, :, :complete_len, :]
+            K_uint8, K_scale, K_mn = quantize_k(K_full, page_size=page_size)
+            V_uint8, V_scale, V_mn = quantize_v(V_full)
+
+            tok_start = page_start_token
+            tok_end = page_start_token + complete_len
+            page_idx_start = tok_start // page_size
+            page_idx_end = page_idx_start + n_complete_pages
+
+            self.K_uint8[layer_idx, :, :, tok_start:tok_end, :] = K_uint8
+            self.V_uint8[layer_idx, :, :, tok_start:tok_end, :] = V_uint8
+            self.K_scale[layer_idx, :, :, page_idx_start:page_idx_end, :] = K_scale
+            self.K_mn[layer_idx, :, :, page_idx_start:page_idx_end, :] = K_mn
+            self.V_scale[layer_idx, :, :, tok_start:tok_end, :] = V_scale
+            self.V_mn[layer_idx, :, :, tok_start:tok_end, :] = V_mn
+
+        if new_partial_len > 0:
+            self.K_partial[layer_idx, :, :, :new_partial_len, :] = K_stream[:, :, complete_len:, :]
+            self.V_partial[layer_idx, :, :, :new_partial_len, :] = V_stream[:, :, complete_len:, :]
+        if new_partial_len < page_size:
+            self.K_partial[layer_idx, :, :, new_partial_len:, :].zero_()
+            self.V_partial[layer_idx, :, :, new_partial_len:, :].zero_()
+
+        self._seen_tokens[layer_idx] = seen + S_new
 
     def get_views(self, layer_idx: int) -> dict[str, torch.Tensor]:
         raise NotImplementedError("filled in Task 4")
