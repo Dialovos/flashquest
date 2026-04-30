@@ -71,18 +71,19 @@ Key facts captured at start (2026-04-29 19:28 local):
 
 ## Baselines
 
-Llama-3.2-3B-Instruct at 8 k context, RTX 3050 Ti Laptop (sm_86), WSL2.
+Llama-3.2-3B-Instruct, RTX 3050 Ti Laptop (sm_86), WSL2.
 
-| Stack | Quant | Build | Prefill tok/s | Decode tok/s | Peak VRAM |
-|---|---|---|---|---|---|
-| llama.cpp (CUDA, `-ngl 999`) | Q4_K_M | d775992 | 736.55 ± 55.81 | 39.60 ± 0.11 | 3543 MiB (86 %) |
-| vLLM | (pending Task 6) | | | | |
-| FA-2 ref (synthetic fwd) | BF16 | (pending Task 7) | | | |
+| Stack | Quant | Context | Prefill tok/s | Decode tok/s | Peak VRAM | Notes |
+|---|---|---|---|---|---|---|
+| llama.cpp (CUDA, `-ngl 999`) | Q4_K_M | 8 192 | 736.55 ± 55.81 | 39.60 ± 0.11 | 3 543 MiB (86 %) | build d775992 |
+| vLLM 0.7.3 | AWQ-INT4 | 4 096 | ~890 (vLLM warmup est.) | 17.30 (vLLM est.) | 3 411 MiB (83 %) | **8 k OOMs at util=0.95**; dropped to 4 k |
+| FA-2 ref (synthetic fwd) | BF16 | (pending Task 7) | — | — | — | |
 
-Notes:
-- Decode 39.6 tok/s on 3B Q4_K_M at 8 k is the bar. SPEC win condition (3B Q4_K_M, 128 k, ≥10 tok/s) is roughly 4× weaker — but at 16× the context window, with KV cache that scales linearly. Whether we beat 39.6 at 8 k is a different question from whether we hold ≥10 at 128 k.
-- Peak VRAM (3543 MiB) is much higher than the SPEC §3 theoretical estimate (~2.1 GB for 3B Q4_K_M at 32 k with sparse INT8 KV). llama.cpp's allocator is eager — the SPEC number is a *floor*, not a comparison point. The bar for flashquest is "fits in 4 GB at 128 k", not "uses less VRAM than llama.cpp at 8 k".
-- llama-bench printed `Total VRAM: 4095 MiB` — the host reports the full 4 GiB available, no Windows display tax in WSL2 (confirms OQ3 answer).
+Key findings from baselines:
+- **vLLM cannot fit 8 k context on 4 GB** with Llama-3.2-3B-AWQ-INT4, even at `gpu_memory_utilization=0.95` (max KV cache tops at ~3904 tokens). This is itself the strongest possible motivation for flashquest: a SOTA inference server already fails the 8 k bar on this hardware. The flashquest win condition is 128 k.
+- llama.cpp wins decode by ~2.3× over vLLM on this hardware (39.6 vs 17.3 tok/s), even at half the context. Single-user / batch=1 is llama.cpp's sweet spot; vLLM's async scheduler + CUDA graph capture cost more than they save here.
+- Peak VRAM ~3.4–3.5 GiB for both — both stacks consume nearly the full envelope, leaving ~600 MiB headroom for OS/driver. flashquest's 3.0 GB working budget per SPEC §3 is the right ceiling.
+- llama-bench prints `Total VRAM: 4095 MiB` — full 4 GiB available, no Windows display tax in WSL2. **OQ3 answered**: ~4.0 GB usable at idle (vs spec's 3.0–3.3 GB assumption).
 
 ## Decisions / deviations from spec
 
@@ -90,4 +91,6 @@ Notes:
 - VRAM budget: assume **3.5–4.0 GB usable** when running benchmarks in WSL2 (vs spec's 3.0–3.3 GB). Recheck after running with browser + IDE open.
 - WSL2 RAM is 7.6 GiB, half what spec assumed. Document a `.wslconfig` recommendation in `DOC.md` for users who hit Phase 4 offload limits.
 - KIVI repo path drift: SPEC originally cited `quant/triton_quant.py` (which no longer exists upstream). Actual Triton kernel is now `quant/matmul.py`, pack/unpack is `quant/new_pack.py`. SPEC and REFERENCES updated.
-- vLLM baseline (Task 6): GGUF Q4_K_M is not directly loadable in vLLM; baseline will use Llama-3.2-3B AWQ-INT4 instead — same model, comparable bit-width, different quant method.
+- vLLM baseline (Task 6): GGUF Q4_K_M is not directly loadable in vLLM; baseline uses `casperhansen/llama-3.2-3b-instruct-awq` (originally cited `hugging-quants/Llama-3.2-3B-Instruct-AWQ-INT4` does not exist on the Hub).
+- vLLM baseline context dropped 8 k → 4 k: vLLM cannot fit an 8 k KV cache for the AWQ model on 4 GB even at util=0.95. Documented in baselines.json. This *strengthens* the project motivation: vLLM, a tier-1 inference server, fails the 8 k bar on this hardware out of the box.
+- vLLM 0.7.3 + transformers 4.x is the working pair: vLLM 0.20.0 forced torch 2.11/cu13 (incompatible with our CUDA 12.5 driver) and required transformers ≥5; pinning vllm==0.7.3 + transformers<5 keeps the stack on torch 2.5.1+cu121.

@@ -14,19 +14,27 @@ from vllm import LLM, SamplingParams
 
 
 def main() -> None:
-    model_id = "hugging-quants/Llama-3.2-3B-Instruct-AWQ-INT4"
+    # casperhansen runs the canonical AutoAWQ pipeline. The originally cited
+    # `hugging-quants/Llama-3.2-3B-Instruct-AWQ-INT4` does not exist on the Hub.
+    model_id = "casperhansen/llama-3.2-3b-instruct-awq"
     llm = LLM(
         model=model_id,
         quantization="awq",
         dtype="float16",
-        gpu_memory_utilization=0.85,
-        max_model_len=8192,
+        gpu_memory_utilization=0.95,
+        # vLLM cannot fit 8 k context on 4 GB even at util=0.95 (max KV cache
+        # tops out at ~3904 tokens — the AWQ-INT4 weights + framework overhead
+        # leave too little for a full 8 k KV cache). Falling back to 4 k for a
+        # comparable single-request baseline. This is itself a finding: it is
+        # *why* flashquest exists.
+        max_model_len=4096,
         enforce_eager=False,
         swap_space=0,
     )
 
-    # ~7000 input tokens leaves headroom for 128 generated tokens within 8k.
-    prompt = ("The quick brown fox jumps over the lazy dog. " * 1000)[:30000]
+    # ~3500 input tokens leaves headroom for 128 generated tokens within 4 k
+    # (max_model_len above; see comment on the OOM at 8 k).
+    prompt = ("The quick brown fox jumps over the lazy dog. " * 1000)[:14000]
 
     # Warm-up
     llm.generate([prompt], SamplingParams(max_tokens=8, temperature=0.0))
@@ -56,7 +64,7 @@ def main() -> None:
     }
     print(json.dumps(result, indent=2))
 
-    out_path = Path(__file__).resolve().parents[1] / "benchmarks" / "vllm_8k.json"
+    out_path = Path(__file__).resolve().parents[1] / "benchmarks" / "vllm_4k.json"
     out_path.write_text(json.dumps(result, indent=2))
 
 
