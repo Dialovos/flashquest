@@ -78,6 +78,20 @@ The perplexity gap is expected: Quest's per-page upper-bound criticality is loos
 
 Re-run via `python scripts/phase1_run_perplexity.py` and `python scripts/phase1_run_passkey.py`.
 
+## Phase 2 — Dense FA-2 Triton kernel
+
+Port of the FA-2 06-fused-attention tutorial onto sm_86. `BLOCK_M = BLOCK_N = 64`, `num_warps = 4`, `num_stages = 2`. BF16 in / FP32 acc / BF16 out, GQA via kernel-side head map, returns LSE for Phase 3 composition. 14 catalogued edge cases (E1–E14) covered (`tests/test_kernel_flash_fwd_edges.py` + property-based hypothesis fuzz).
+
+Llama-3.2-3B geometry, S=8192, BF16, causal:
+
+| Backend | ms / fwd | ratio vs FA-2 |
+|---|---|---|
+| `flash_attn` 2.7.4 (reference) | 25.51 | 1.000 |
+| **flashquest Triton kernel** | **27.37** | **1.073** |
+| torch SDPA | 27.65 | 1.084 |
+
+SPEC win condition was within 30 % of FA-2 — we landed at 7 %, and we're 1 % faster than torch SDPA. See [`docs/PHASES/phase-2-notes.md`](docs/PHASES/phase-2-notes.md). Re-run via `python scripts/phase2_bench_attn.py`.
+
 ## Non-goals
 
 - Training kernels. Inference only.

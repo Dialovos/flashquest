@@ -56,6 +56,18 @@ python scripts/phase1_run_perplexity.py  # Wikitext-2 retention sweep
 python scripts/phase1_run_passkey.py     # synthetic long-context retrieval
 ```
 
+Use the Phase 2 dense Triton kernel directly:
+
+```python
+import torch
+from flashquest.kernel import flash_attn_fwd
+
+Q = torch.randn(1, 24, 8192, 64, dtype=torch.bfloat16, device="cuda")
+K = torch.randn(1,  8, 8192, 64, dtype=torch.bfloat16, device="cuda")
+V = torch.randn(1,  8, 8192, 64, dtype=torch.bfloat16, device="cuda")
+O, lse = flash_attn_fwd(Q, K, V, causal=True)
+```
+
 ## Architecture
 
 See `docs/SPEC.md §4`. Single Triton kernel per attention layer; sparse outer loop over Quest-selected KV blocks; INT8 KV with KIVI-style scales; per-head pattern dispatch (DuoAttention).
@@ -64,7 +76,7 @@ See `docs/SPEC.md §4`. Single Triton kernel per attention layer; sparse outer l
 
 - **Phase 0 — Setup & baselines** ✅ **complete (2026-04-30, tag `phase-0`)**. Env verified, INT8 mma confirmed on sm_86 (SPEC OQ1 = yes), baselines captured (llama.cpp 39.6 tok/s decode @ 8 k Q4_K_M; vLLM cannot fit 8 k on 4 GB at all — fell back to 4 k @ 17.3 tok/s; flash-attn 22.76 ms / fwd at S = 8192 BF16). WSL2 profiler verdict: nsys captures, importer needs upgrade; ncu blocked by perf-counter perms on consumer drivers (use PyTorch profiler instead). See `docs/PHASES/phase-0-notes.md` and `benchmarks/baselines.json`.
 - **Phase 1 — Eager Quest reference** ✅ **complete (tag `phase-1`)**. Pure-PyTorch composition: page summary → criticality → top-k ∪ sinks ∪ window → sparse SDPA. HF LlamaAttention monkeypatch. Validated on `unsloth/Llama-3.2-1B-Instruct`: passkey retrieval **25/25 at retention=0.10** across depths 0.1 / 0.5 / 0.9 (Quest's claim metric). Wikitext perplexity loose at 1B + page_size=64 (gap acknowledged in `docs/PHASES/phase-1-notes.md`). See `src/flashquest/eager/`.
-- Phase 2 — Dense FA-2 Triton baseline. Not started. Phase-2 target: ≥ 70 % of `flash_attn` 22.76 ms.
+- **Phase 2 — Dense FA-2 Triton kernel** ✅ **complete (tag `phase-2`)**. `flashquest.kernel.flash_attn_fwd(Q, K, V, *, causal, sm_scale=None, return_lse=True)`. BLOCK_M=BLOCK_N=64 on sm_86. 14 catalogued edge cases pass (E1–E14, `tests/test_kernel_flash_fwd_edges.py`); equivalence with Phase 1 eager at retention=1.0 confirmed; perf at the Llama-3.2-3B reference shape is 27.37 ms / fwd vs FA-2's 25.51 ms (**1.073×**, well within the 30 % SPEC target). See `docs/PHASES/phase-2-notes.md`.
 - Phase 3 — Sparse retrieval + INT8 KV.
 - Phase 4 — DuoAttention split + 8 B model + Marlin W4A16 projections.
 - Phase 5 — ExLlamaV2 backend + optional EAGLE-2.
