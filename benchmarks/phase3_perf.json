@@ -1,0 +1,21 @@
+{
+  "shape": {
+    "B": 1,
+    "H_q": 24,
+    "H_kv": 8,
+    "S_kv": 8192,
+    "D": 64
+  },
+  "config": {
+    "page_size": 64,
+    "retention": 0.25,
+    "num_sinks": 4,
+    "window_pages": 2,
+    "n_decode_steps": 64
+  },
+  "phase2_dense_ms_per_step": 0.44908834377110907,
+  "phase3_sparse_ms_per_step": 0.18100054688829914,
+  "sparse_speedup": 2.4811435738271825,
+  "phase3_target_speedup": 1.5,
+  "passes_phase3_target": true
+}
