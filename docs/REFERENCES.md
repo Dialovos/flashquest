@@ -40,7 +40,7 @@ Compact index of every paper, repo, and code path the spec depends on. Use this 
 ### KIVI
 - `models/llama_kivi.py` — patched LlamaAttention.
 - `quant/new_pack.py` — pack/unpack for asymmetric quant.
-- `quant/triton_quant.py` — Triton kernels for quant/dequant. **Most directly reusable.**
+- `quant/new_pack.py` + `quant/matmul.py` — Triton pack/unpack + quantized matmul. **Most directly reusable.** (Layout drifted from older spec citation of `triton_quant.py`.)
 
 ### DuoAttention
 - `duo_attn/patch/llama.py` — patched attention with split-head dispatch.

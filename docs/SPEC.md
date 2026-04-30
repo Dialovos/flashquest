@@ -133,7 +133,7 @@ For each technique below: paper one-liner, repo, *specific files to study*, what
 - **Files to study:**
   - `models/llama_kivi.py` — the patched LlamaAttention with KIVI's K/V handling.
   - `quant/new_pack.py` — the per-channel-K, per-token-V pack/unpack.
-  - `quant/triton_quant.py` — Triton kernels for quant/dequant; **directly relevant** for our pipeline.
+  - `quant/new_pack.py` + `quant/matmul.py` — Triton pack/unpack and quantized matmul kernels; **directly relevant** for our pipeline. (Upstream layout as of 2026-04; SPEC originally cited a `quant/triton_quant.py` that no longer exists.)
 - **What we crib:**
   - Per-channel K quantization (channel-wise scales, fits Ampere INT8 tensor cores).
   - Per-token V quantization (per-row scales, append-friendly for autoregressive inference).
@@ -301,7 +301,7 @@ For each technique below: paper one-liner, repo, *specific files to study*, what
 - INT8 KV storage with per-channel-K, per-token-V scales. Dequant inside the kernel (in shared mem).
 - StreamingLLM sinks + sliding window (always-attended blocks, free in our kernel).
 - **Win condition:** Llama-3.2-3B at 32k context, ≥10 tok/s decode, ≥85% of dense RULER 32k.
-- **Reference impls to crib from:** `jy-yuan/KIVI/quant/triton_quant.py`, `mit-han-lab/streaming-llm/streaming_llm/kv_cache.py`.
+- **Reference impls to crib from:** `jy-yuan/KIVI/quant/{new_pack,matmul}.py`, `mit-han-lab/streaming-llm/streaming_llm/kv_cache.py`.
 
 ### Phase 4 — DuoAttention head split + bigger model (Weeks 6–7)
 - Per-head pattern dispatch inside the kernel.

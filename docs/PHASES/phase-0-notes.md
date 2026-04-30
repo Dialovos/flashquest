@@ -37,3 +37,5 @@ Key facts captured at start (2026-04-29 19:28 local):
 - Python pin: 3.12 (spec said 3.10). 3.12 is the system default; downgrading buys nothing here.
 - VRAM budget: assume **3.5–4.0 GB usable** when running benchmarks in WSL2 (vs spec's 3.0–3.3 GB). Recheck after running with browser + IDE open.
 - WSL2 RAM is 7.6 GiB, half what spec assumed. Document a `.wslconfig` recommendation in `DOC.md` for users who hit Phase 4 offload limits.
+- KIVI repo path drift: SPEC originally cited `quant/triton_quant.py` (which no longer exists upstream). Actual Triton kernel is now `quant/matmul.py`, pack/unpack is `quant/new_pack.py`. SPEC and REFERENCES updated.
+- vLLM baseline (Task 6): GGUF Q4_K_M is not directly loadable in vLLM; baseline will use Llama-3.2-3B AWQ-INT4 instead — same model, comparable bit-width, different quant method.
