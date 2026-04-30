@@ -26,6 +26,7 @@ dev = [
   "pytest-cov",
   "ruff",
   "mypy",
+  "hypothesis>=6",
 ]
 bench = [
   "transformers>=4.45,<5",
