@@ -1,0 +1,18 @@
+{
+  "shape": {
+    "B": 1,
+    "H_q": 24,
+    "H_kv": 8,
+    "S": 8192,
+    "D": 64,
+    "dtype": "bfloat16",
+    "causal": true
+  },
+  "flash_attn_2_ms": 25.50811485007216,
+  "triton_kernel_ms": 27.365331649980362,
+  "sdpa_ms": 27.653613750044315,
+  "triton_over_flash": 1.0728088614475932,
+  "triton_over_sdpa": 0.9895752467409982,
+  "spec_target_ratio": 1.3,
+  "passes_spec_target": true
+}
