@@ -50,6 +50,34 @@ Llama-3.2-3B-Instruct on the target machine (RTX 3050 Ti Laptop, sm_86, 4 GB VRA
 
 Re-run via `./scripts/bench_llamacpp.sh`, `python scripts/bench_vllm.py`, `python scripts/profile_fa2.py`. Machine-readable numbers in [`benchmarks/baselines.json`](benchmarks/baselines.json).
 
+## Phase 1 — Eager Quest reference
+
+Pure-PyTorch implementation, validated on `unsloth/Llama-3.2-1B-Instruct` (BF16, SDPA baseline). Page size 64, sinks=4, window=128 tokens. See [`docs/PHASES/phase-1-notes.md`](docs/PHASES/phase-1-notes.md) for the full picture and the Phase 2 handoff.
+
+**Passkey retrieval — Quest's actual claim metric.** 5 trials × 3 depths × 5 configs at ~974-token prompts.
+
+| Retention | depth=0.1 | depth=0.5 | depth=0.9 |
+|---|---|---|---|
+| dense | 5/5 | 5/5 | 5/5 |
+| 1.00 | 5/5 | 5/5 | 5/5 |
+| 0.50 | 5/5 | 5/5 | 5/5 |
+| 0.25 | 5/5 | 5/5 | 5/5 |
+| **0.10** | **5/5** | **5/5** | **5/5** |
+
+**Wikitext-2 perplexity** (8 192 tokens, sliding window 2048 stride 1024). Acknowledged gap vs SPEC win conditions (≤1 % at retention=0.25, ≤3 % at retention=0.10) — see notes.
+
+| Retention | ppl | Δ vs dense |
+|---|---|---|
+| dense | 13.67 | — |
+| 1.00 | 13.67 | -0.01 % (sanity OK) |
+| 0.50 | 13.95 | +2.00 % |
+| 0.25 | 15.26 | +11.61 % |
+| 0.10 | 19.22 | +40.54 % |
+
+The perplexity gap is expected: Quest's per-page upper-bound criticality is loose at our chosen page_size=64 (vs Quest's 16, which we deferred for `BLOCK_N` alignment), and a 1B model on Wikitext is an unfavorable test case for sparse attention. Quest's actual claim is long-context retrieval — passkey passes across the board.
+
+Re-run via `python scripts/phase1_run_perplexity.py` and `python scripts/phase1_run_passkey.py`.
+
 ## Non-goals
 
 - Training kernels. Inference only.

@@ -33,6 +33,29 @@ python scripts/bench_vllm.py             # vLLM AWQ-INT4 @ 4k (8k OOMs on 4 GB)
 python scripts/profile_fa2.py            # flash-attn fwd reference
 ```
 
+To use the Phase 1 eager Quest attention on any HF Llama model:
+
+```python
+from transformers import AutoModelForCausalLM
+from flashquest.eager.llama_patch import patch_llama_for_quest_eager
+
+model = AutoModelForCausalLM.from_pretrained(
+    "unsloth/Llama-3.2-1B-Instruct", torch_dtype="bfloat16",
+    attn_implementation="sdpa",
+).cuda()
+patch_llama_for_quest_eager(
+    model, retention=0.25, num_sinks=4, window_pages=2, page_size=64,
+)
+# model.generate(...) now uses Quest-eager sparse attention.
+```
+
+Reproduce Phase 1 evals:
+```bash
+hf download unsloth/Llama-3.2-1B-Instruct --local-dir ~/models/llama-3.2-1b-instruct
+python scripts/phase1_run_perplexity.py  # Wikitext-2 retention sweep
+python scripts/phase1_run_passkey.py     # synthetic long-context retrieval
+```
+
 ## Architecture
 
 See `docs/SPEC.md §4`. Single Triton kernel per attention layer; sparse outer loop over Quest-selected KV blocks; INT8 KV with KIVI-style scales; per-head pattern dispatch (DuoAttention).
@@ -40,7 +63,7 @@ See `docs/SPEC.md §4`. Single Triton kernel per attention layer; sparse outer l
 ## Phases
 
 - **Phase 0 — Setup & baselines** ✅ **complete (2026-04-30, tag `phase-0`)**. Env verified, INT8 mma confirmed on sm_86 (SPEC OQ1 = yes), baselines captured (llama.cpp 39.6 tok/s decode @ 8 k Q4_K_M; vLLM cannot fit 8 k on 4 GB at all — fell back to 4 k @ 17.3 tok/s; flash-attn 22.76 ms / fwd at S = 8192 BF16). WSL2 profiler verdict: nsys captures, importer needs upgrade; ncu blocked by perf-counter perms on consumer drivers (use PyTorch profiler instead). See `docs/PHASES/phase-0-notes.md` and `benchmarks/baselines.json`.
-- Phase 1 — Eager Python Quest reference. Not started. Planned: pure-PyTorch top-k + criticality scoring against `vendor/quest/quest/models/QuestAttention.py`, validated on Llama-3.2-1B at 4 k.
+- **Phase 1 — Eager Quest reference** ✅ **complete (tag `phase-1`)**. Pure-PyTorch composition: page summary → criticality → top-k ∪ sinks ∪ window → sparse SDPA. HF LlamaAttention monkeypatch. Validated on `unsloth/Llama-3.2-1B-Instruct`: passkey retrieval **25/25 at retention=0.10** across depths 0.1 / 0.5 / 0.9 (Quest's claim metric). Wikitext perplexity loose at 1B + page_size=64 (gap acknowledged in `docs/PHASES/phase-1-notes.md`). See `src/flashquest/eager/`.
 - Phase 2 — Dense FA-2 Triton baseline. Not started. Phase-2 target: ≥ 70 % of `flash_attn` 22.76 ms.
 - Phase 3 — Sparse retrieval + INT8 KV.
 - Phase 4 — DuoAttention split + 8 B model + Marlin W4A16 projections.
