@@ -1,0 +1,39 @@
+# Phase 0 Notes
+
+**Started:** 2026-04-29
+**Status:** in progress
+**Spec:** [docs/SPEC.md §6 Phase 0](../SPEC.md)
+
+## Host snapshot
+
+See `env_snapshot.json` (sibling file, written by `scripts/verify_env.py`).
+
+Key facts captured at start (2026-04-29 19:28 local):
+- GPU: NVIDIA GeForce RTX 3050 Ti Laptop GPU, driver 555.97, CUDA 12.5
+- VRAM: 4096 MiB total / 4096 MiB free at idle (WSL2 does not share Windows display VRAM the way native Windows would — spec's "Windows display + browser eats 700MB–1GB" tax does not apply here)
+- CPU: Intel i9-12900H, 20 threads (10 P+E cores), AVX2 + AVX-VNNI confirmed
+- RAM: WSL2 sees 7.6 GiB / 5.6 GiB free (spec assumed 16 GiB host; **WSL2 default cap is half** — may need `.wslconfig` `memory=12GB` for Phase 4 CPU offload)
+- nvcc: 12.0 (toolkit older than driver 12.5; forward-compatible — driver supports any toolkit ≤ its version)
+- ncu: 2022.4.1.0 present (older build — may lack some sm_86 metrics; verify in Task 7)
+- nsys: 2022.4.2 present
+- gcc: 13.3.0 / cmake 3.28.3 — both fine for llama.cpp + flash-attn builds
+- Python: 3.12.3 (spec planned 3.10; bumping `.python-version` to 3.12)
+
+## Open questions from SPEC §8
+
+| # | Question | Answer | Evidence |
+|---|---|---|---|
+| 1 | Triton ≥ 3.x on sm_86 supports `tl.dot` with INT8 operands? | TBD | (filled in Task 3) |
+| 2 | Can we fuse INT8 dequant into the `mma.sync` operand path? | Deferred to Phase 2 | Not answerable without a candidate kernel; revisit when porting FA-2 in Phase 2. |
+| 3 | Actual usable VRAM after Windows + browser + IDE? | **~4.0 GB (full)** at WSL2 idle, no Windows GUI tax — better than the spec's 3.0–3.3 GB assumption. To re-confirm under load, capture `nvidia-smi` after Edge + IDE warm. | `env_snapshot.json` nvidia_smi output |
+| 4 | Do `ncu` / `nsys` work in WSL2 on this machine? | Tools installed; functional check in Task 7 | (filled in Task 7) |
+
+## Baselines
+
+(filled in across Tasks 5–7; final table mirrored to README.md)
+
+## Decisions / deviations from spec
+
+- Python pin: 3.12 (spec said 3.10). 3.12 is the system default; downgrading buys nothing here.
+- VRAM budget: assume **3.5–4.0 GB usable** when running benchmarks in WSL2 (vs spec's 3.0–3.3 GB). Recheck after running with browser + IDE open.
+- WSL2 RAM is 7.6 GiB, half what spec assumed. Document a `.wslconfig` recommendation in `DOC.md` for users who hit Phase 4 offload limits.
