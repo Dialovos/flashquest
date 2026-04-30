@@ -51,6 +51,7 @@ vendor/*
 benchmarks/*.nsys-rep
 benchmarks/*.ncu-rep
 benchmarks/*.qdrep
+benchmarks/*.qdstrm
 
 # Generated env snapshots (machine-specific)
 docs/PHASES/env_snapshot.json

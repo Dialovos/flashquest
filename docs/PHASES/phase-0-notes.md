@@ -1,35 +1,37 @@
 # Phase 0 Notes
 
 **Started:** 2026-04-29
-**Status:** in progress (paused mid-Task 5 for session handoff)
+**Completed:** 2026-04-30 (tag `phase-0`)
+**Status:** **complete**
 **Spec:** [docs/SPEC.md §6 Phase 0](../SPEC.md)
 
-## Session handoff (updated 2026-04-30)
+## Phase 0 → Phase 1 handoff
 
-Tasks 1–6 complete. Task 7 (FA-2 + profilers) and Task 8 (README + DOC + tag) remain.
+All Phase 0 deliverables landed. Tag: `phase-0`.
 
-### Where things stand
+### What's true at the end of Phase 0
 
-- llama.cpp + vLLM baselines captured (`benchmarks/baselines.json`, llamacpp_8k.txt, vllm_4k.json).
-- Stack pinned: torch 2.5.1+cu121, triton 3.1.0, vllm 0.7.3, transformers 4.57.6, numpy 1.26.4.
-- nsys 2022.4.2 captures `.qdstrm` traces under WSL2 but lacks the importer to convert them to `.nsys-rep` (known older-nsys WSL2 limitation). Trace collection works; postprocessing needs a newer nsys or a manual import. ncu has not been tested yet.
-- flash-attn is **not yet installed**. Next session needs `pip install flash-attn --no-build-isolation` (~10 min CUDA compile).
+- Stack: Python 3.12.3, torch 2.5.1+cu121, triton 3.1.0, vllm 0.7.3, transformers 4.57.6, flash-attn 2.7.4.post1, numpy 1.26.4. Pinned in `pyproject.toml`.
+- Hardware envelope: 4 GiB VRAM (~3.4–3.5 GiB max usable in practice), CUDA 12.5 driver, sm_86. WSL2 RAM cap 7.6 GiB.
+- INT8 mma on sm_86 confirmed working (load-bearing for the kernel design — SPEC OQ1).
+- 10 reference repos vendored to `vendor/` (gitignored). Re-clone via `scripts/vendor_clone.sh`.
+- Baselines:
+  - llama.cpp Q4_K_M @ 8 k: prefill 736.55 / decode 39.60 tok/s, peak 3543 MiB
+  - vLLM AWQ-INT4 @ 4 k (8 k OOMs at 4 GB): decode 17.30 tok/s, peak 3411 MiB
+  - flash-attn fwd ref @ S=8192 BF16: 22.76 ms warm, 125 MiB
+- Profilers: nsys collects `.qdstrm` traces (importer too old to convert); ncu blocked by `ERR_NVGPUCTRPERM`. PyTorch profiler is the working path for Phase 2+ kernel tuning.
 
-### Resume order next session
+### What Phase 1 begins with
 
-1. **Task 7**: install flash-attn (`. .venv/bin/activate && nice -n 19 pip install flash-attn --no-build-isolation`). Run in background — long compile.
-2. After install, run `python scripts/profile_fa2.py` → records FA-2 BF16 fwd timing at S=8192, H_q=24, H_kv=8, D=64.
-3. Profile with `nsys profile --output benchmarks/fa2_profile --force-overwrite=true --stats=true python scripts/profile_fa2.py`. Note the `.qdstrm`-without-importer issue — newer nsys may be needed for the report.
-4. Profile with `ncu --target-processes all --kernel-name regex:flash_fwd --launch-count 1 -o benchmarks/fa2_ncu python scripts/profile_fa2.py`. If it fails on permissions, set `NVreg_RestrictProfilingToAdminUsers=0` and restart WSL.
-5. Update phase-0-notes OQ4 with the WSL2 profiler verdict.
-6. Commit Task 7.
-7. **Task 8**: append baselines table to README.md, write DOC.md, mark phase-0-notes status complete, `git tag -a phase-0`.
+- Goal: pure-PyTorch eager Quest-style attention as `attn_implementation="flashquest_eager"` on a HF Llama subclass. Reference: `vendor/quest/quest/models/QuestAttention.py`. Validate on Llama-3.2-1B at 4 k context against dense PyTorch attention.
+- Win condition (from SPEC §6 Phase 1): matches dense within 1 % perplexity at top-25 % retention, within 3 % at top-10 %.
+- Will need a new plan: `docs/superpowers/plans/2026-MM-DD-phase-1-eager-quest-reference.md`.
 
-### Notes for the next session
+### Open items deferred from Phase 0
 
-- Stay at repo root for shell commands; cwd persists across Bash calls.
-- Use `nice -n 19` (and `-j 4` instead of `-j $(nproc)`) for any heavy build to keep WSL responsive.
-- flash-attn install conflicts: if it tries to upgrade torch, pin `torch==2.5.1+cu121` first or use `--no-deps` and verify imports after.
+- **OQ2** (INT8 dequant fused into mma operand path): not answerable without a candidate kernel. Phase 2 design notes will revisit when porting FA-2 onto sm_86.
+- **ncu access**: not blocking. If we need fine-grained occupancy / register-pressure data later, options are (a) `NVreg_RestrictProfilingToAdminUsers=0` Windows-side regedit, (b) provide sudo, or (c) profile on a Colab T4 (cross-validation step is already in the plan).
+- **WSL2 RAM bump** to 12 GB via `~/.wslconfig`: only relevant when Phase 4 attempts CPU offload of 8 B models. Document but do not change yet.
 
 
 ## Host snapshot

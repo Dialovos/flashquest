@@ -34,7 +34,21 @@ Cost: ≤$15 across the entire build (Colab Pro for cross-validation only).
 
 1. Read [`docs/SPEC.md`](docs/SPEC.md) — the full design doc.
 2. Read [`docs/REFERENCES.md`](docs/REFERENCES.md) — paper/repo/code-path index of every SOTA technique we crib from.
-3. Phase 0 from the spec: verify CUDA + Triton in WSL2, baseline llama.cpp + vLLM numbers on the target hardware.
+3. Phase 0 from the spec: verify CUDA + Triton in WSL2, baseline llama.cpp + vLLM numbers on the target hardware. **Done** — see baselines below and [`docs/PHASES/phase-0-notes.md`](docs/PHASES/phase-0-notes.md).
+
+## Phase 0 baselines
+
+Llama-3.2-3B-Instruct on the target machine (RTX 3050 Ti Laptop, sm_86, 4 GB VRAM, WSL2 + CUDA 12.5). 128 decode tokens, single request.
+
+| Stack | Quant | Context | Prefill tok/s | Decode tok/s | Peak VRAM |
+|---|---|---|---|---|---|
+| llama.cpp d775992 (CUDA, `-ngl 999`) | Q4_K_M | 8 192 | 736.55 ± 55.81 | **39.60** ± 0.11 | 3 543 MiB |
+| vLLM 0.7.3 (FA-2 backend) | AWQ-INT4 | 4 096 † | ~890 | 17.30 | 3 411 MiB |
+| flash-attn 2.7.4 (synthetic fwd) | BF16 | S = 8192 | — | 22.76 ms / forward | 125 MiB |
+
+† **vLLM cannot fit 8 k context on 4 GB** even at `gpu_memory_utilization=0.95` (max KV cache tops at ~3904 tokens) — the AWQ weights + framework overhead leave too little headroom. This is itself the strongest possible motivation for flashquest: a tier-1 inference server fails the 8 k bar on this hardware out of the box. flashquest aims for 32 k–128 k on the same machine.
+
+Re-run via `./scripts/bench_llamacpp.sh`, `python scripts/bench_vllm.py`, `python scripts/profile_fa2.py`. Machine-readable numbers in [`benchmarks/baselines.json`](benchmarks/baselines.json).
 
 ## Non-goals
 
