@@ -92,6 +92,19 @@ Llama-3.2-3B geometry, S=8192, BF16, causal:
 
 SPEC win condition was within 30 % of FA-2 — we landed at 7 %, and we're 1 % faster than torch SDPA. See [`docs/PHASES/phase-2-notes.md`](docs/PHASES/phase-2-notes.md). Re-run via `python scripts/phase2_bench_attn.py`.
 
+## Phase 3 — Sparse retrieval + INT8 KV
+
+Decode-only sparse forward kernel. Quest selection + KIVI-style asymmetric uint8 KV (per-page channel-wise K, per-token V). Dequant happens inside the Triton kernel; only selected pages are loaded.
+
+Llama-3.2-3B geometry, S_kv=8192, retention=0.25, sinks=4, window=128:
+
+| Backend | ms / decode step | speedup vs dense |
+|---|---|---|
+| Phase 2 dense (BF16 KV) | 0.449 | 1.0× |
+| **Phase 3 sparse (INT8 KV)** | **0.181** | **2.48×** |
+
+11 catalogued edge cases (ES1–ES11) + 15 hypothesis-fuzzed shapes. See [`docs/PHASES/phase-3-notes.md`](docs/PHASES/phase-3-notes.md). Re-run via `python scripts/phase3_bench_decode.py`.
+
 ## Non-goals
 
 - Training kernels. Inference only.
