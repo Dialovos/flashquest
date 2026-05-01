@@ -106,3 +106,64 @@ def test_update_bad_layer_raises():
     V = torch.randn(1, 2, 32, 64, dtype=torch.bfloat16, device="cuda")
     with pytest.raises(IndexError, match="layer_idx"):
         cache.update_quantized(K, V, layer_idx=5)
+
+
+def test_get_views_roundtrip_matches_quantize_dequantize():
+    """View slices, when dequanted, match the same dequant of a fresh quantize_k/v call."""
+    torch.manual_seed(7)
+    cache = PersistentInt8KVCache(
+        batch_size=1, num_layers=1, num_kv_heads=2, head_dim=64,
+        max_seq_len=192, page_size=64, device="cuda",
+    )
+    K = torch.randn(1, 2, 130, 64, dtype=torch.bfloat16, device="cuda")
+    V = torch.randn(1, 2, 130, 64, dtype=torch.bfloat16, device="cuda")
+    cache.update_quantized(K, V, layer_idx=0)
+
+    views = cache.get_views(0)
+    assert views["K_uint8"].shape == (1, 2, 128, 64)
+    assert views["K_scale"].shape == (1, 2, 2, 64)
+    assert views["V_uint8"].shape == (1, 2, 128, 64)
+    assert views["V_scale"].shape == (1, 2, 128, 1)
+    assert views["K_partial"].shape == (1, 2, 2, 64)
+    assert views["V_partial"].shape == (1, 2, 2, 64)
+    assert views["seq_len"] == 130
+    assert views["completed_len"] == 128
+    assert views["partial_len"] == 2
+
+    K_dq = dequantize_k(views["K_uint8"], views["K_scale"], views["K_mn"], page_size=64)
+    V_dq = dequantize_v(views["V_uint8"], views["V_scale"], views["V_mn"])
+    K_full_recovered = torch.cat([K_dq, views["K_partial"]], dim=2)
+    V_full_recovered = torch.cat([V_dq, views["V_partial"]], dim=2)
+    # INT8 round-trip has up to ~0.013 abs error on bf16 — well-known KIVI bound.
+    torch.testing.assert_close(K_full_recovered, K, rtol=2e-2, atol=2e-2)
+    torch.testing.assert_close(V_full_recovered, V, rtol=2e-2, atol=2e-2)
+
+
+def test_get_views_fresh_cache():
+    cache = PersistentInt8KVCache(
+        batch_size=1, num_layers=1, num_kv_heads=2, head_dim=64,
+        max_seq_len=128, page_size=64, device="cuda",
+    )
+    views = cache.get_views(0)
+    assert views["seq_len"] == 0
+    assert views["completed_len"] == 0
+    assert views["partial_len"] == 0
+    assert views["K_uint8"].shape == (1, 2, 0, 64)
+    assert views["K_partial"].shape == (1, 2, 0, 64)
+
+
+def test_get_views_partial_only():
+    """30 tokens: no complete pages, all in partial."""
+    torch.manual_seed(11)
+    cache = PersistentInt8KVCache(
+        batch_size=1, num_layers=1, num_kv_heads=2, head_dim=64,
+        max_seq_len=128, page_size=64, device="cuda",
+    )
+    K = torch.randn(1, 2, 30, 64, dtype=torch.bfloat16, device="cuda")
+    V = torch.randn(1, 2, 30, 64, dtype=torch.bfloat16, device="cuda")
+    cache.update_quantized(K, V, layer_idx=0)
+    views = cache.get_views(0)
+    assert views["completed_len"] == 0
+    assert views["partial_len"] == 30
+    torch.testing.assert_close(views["K_partial"], K)
+    torch.testing.assert_close(views["V_partial"], V)

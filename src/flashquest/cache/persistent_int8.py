@@ -133,7 +133,38 @@ class PersistentInt8KVCache(Cache):
         self._seen_tokens[layer_idx] = seen + S_new
 
     def get_views(self, layer_idx: int) -> dict[str, torch.Tensor]:
-        raise NotImplementedError("filled in Task 4")
+        """Return slices of the cache for the current sequence length.
+
+        Returns dict with:
+            seq_len, completed_len, partial_len: ints
+            K_uint8, V_uint8: (B, H_kv, completed_len, D) uint8
+            K_scale, K_mn: (B, H_kv, num_complete_pages, D) bf16
+            V_scale, V_mn: (B, H_kv, completed_len, 1) bf16
+            K_partial, V_partial: (B, H_kv, partial_len, D) bf16
+        """
+        if layer_idx < 0 or layer_idx >= self.num_layers:
+            raise IndexError(
+                f"layer_idx {layer_idx} out of range [0, {self.num_layers})"
+            )
+        seen = self._seen_tokens[layer_idx]
+        page_size = self.page_size
+        partial_len = seen % page_size
+        completed_len = seen - partial_len
+        n_complete_pages = completed_len // page_size
+
+        return {
+            "seq_len": seen,
+            "completed_len": completed_len,
+            "partial_len": partial_len,
+            "K_uint8": self.K_uint8[layer_idx, :, :, :completed_len, :],
+            "V_uint8": self.V_uint8[layer_idx, :, :, :completed_len, :],
+            "K_scale": self.K_scale[layer_idx, :, :, :n_complete_pages, :],
+            "K_mn": self.K_mn[layer_idx, :, :, :n_complete_pages, :],
+            "V_scale": self.V_scale[layer_idx, :, :, :completed_len, :],
+            "V_mn": self.V_mn[layer_idx, :, :, :completed_len, :],
+            "K_partial": self.K_partial[layer_idx, :, :, :partial_len, :],
+            "V_partial": self.V_partial[layer_idx, :, :, :partial_len, :],
+        }
 
     def update(
         self,
