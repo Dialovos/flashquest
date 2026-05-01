@@ -16,8 +16,8 @@ from flashquest.runtime.awq_load import load_awq_model
 
 
 N_PREFILL_TOKENS = 32768
-N_DECODE_TOKENS = 64
-N_TRIALS = 3
+N_DECODE_TOKENS = 16
+N_TRIALS = 1
 
 
 def _free():
@@ -37,7 +37,9 @@ def measure_decode(model, tok, n_prefill: int, n_decode: int) -> dict:
     ids = synthetic_prompt_ids(tok, n_prefill)
     torch.cuda.synchronize()
     t_pre = time.perf_counter()
-    out = model(ids, use_cache=True)
+    # logits_to_keep=1 avoids materializing logits for all 32k prefill positions
+    # (~7.8 GB at vocab=128k bf16 — OOMs on 4 GB GPU).
+    out = model(ids, use_cache=True, logits_to_keep=1)
     torch.cuda.synchronize()
     prefill_s = time.perf_counter() - t_pre
 
@@ -45,7 +47,7 @@ def measure_decode(model, tok, n_prefill: int, n_decode: int) -> dict:
     torch.cuda.synchronize()
     t_dec = time.perf_counter()
     for _ in range(n_decode):
-        out = model(next_tok, use_cache=True)
+        out = model(next_tok, use_cache=True, logits_to_keep=1)
         next_tok = out.logits[:, -1:].argmax(dim=-1)
     torch.cuda.synchronize()
     decode_s = time.perf_counter() - t_dec

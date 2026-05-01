@@ -31,7 +31,7 @@ benchmark on Llama-3.2-3B-AWQ.
 | Fused dispatch ≡ Phase 4 dispatch (rtol=2e-2) all-retrieval / all-streaming / mixed | confirmed | ✅ |
 | AWQ load smoke test (Llama-3.2-3B-AWQ forward pass) | ran cleanly | ✅ |
 | 32 k passkey on Llama-3.2-3B-AWQ ≥80 % at depth=0.5 | **100 %** (6/6 across depths 0.1/0.5/0.9, 2 trials each) | ✅ |
-| Decode at 32 k ≥4 tok/s | (run `python scripts/phase5_bench_decode_32k.py`) | (deferred — eval is hours long, scope-cut) |
+| Decode at 32 k ≥4 tok/s | **0.09 tok/s** measured (Python wrapper overhead, kernel itself is fast) | ❌ — Phase 6 optimization target |
 | 8B reality + Marlin/EAGLE/INT4-KV deferral documented | here | ✅ |
 
 ## Edge cases handled
@@ -67,6 +67,7 @@ benchmark on Llama-3.2-3B-AWQ.
 
 These were originally Phase 5 in the SPEC but defer to Phase 6 (polish & release) once the core kernel pipeline lands:
 
+0. **Decode tok/s gap (0.09 → ≥4 tok/s).** Top priority. The Triton kernel is fast (Phase 3 = 0.181 ms/decode at 8 k); the Python wrapper isn't. Three measured costs per decode step at 32 k: (a) `dequantize_k` materializes the full BF16 K cache (~64 MB) and `repeat_interleave` to query heads (~192 MB), (b) `compute_page_summary` + `page_scores` allocate `(B, H_q, 1, P, D)` fp32 intermediates, (c) `select_pages` runs a Python `for h in range(H_q)` loop with a CPU-host `.item()` per head. All three should fold into the Triton kernel: criticality + page summary computed in registers from the same uint8 K we already touch, top-k done in shared mem. Phase 6 task 1.
 1. **Marlin W4A16 projections** — only if `nsys` shows the AWQ kernel as a decode bottleneck. Convert AWQ → Marlin packing once at load time.
 2. **ExLlamaV2 backend integration** — optional second runtime adapter alongside HF; their `exllamav2_ext` C++ extension model has cleaner extension points but a different ecosystem.
 3. **EAGLE-2 speculative decoding wrapper** — orthogonal optimization; ~2× decode multiplier on top of the sparse path.

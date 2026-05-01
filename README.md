@@ -135,7 +135,13 @@ Validation on Llama-3.2-3B-AWQ (`casperhansen/llama-3.2-3b-instruct-awq`, ~2 GB 
 
 † Peak VRAM at 32 k spilled past the 4 GB nominal cap into WSL2 shared memory; correctness still 100 %, but Phase 6 should profile the dequant + criticality intermediates that drive the spill.
 
-**Decode at 32 k context.** Pending — see `benchmarks/phase5_decode.json` after running `python scripts/phase5_bench_decode_32k.py`.
+**Decode at 32 k context** (1 trial × 16 new tokens):
+
+| | Prefill tok/s | Decode tok/s | Peak VRAM |
+|---|---|---|---|
+| Phase 5 (persistent INT8 + fused dispatch) | 53.7 | **0.092** | 6 378 MiB † |
+
+The decode tok/s is **far below the SPEC target of ≥4 tok/s** — the Triton kernel itself is fast (Phase 3 measured 0.181 ms/decode at 8 k), but the Python wrapper around it (`dequantize_k` materializes the full bf16 cache every step, `compute_page_summary` + `page_scores` + `select_pages` are pure-Python with fp32 intermediates) dominates wall time. Phase 6's first task is chunked / fused criticality (move it into the Triton kernel) — fixes the gap without algorithmic change.
 
 17 catalogued edge cases (EQ1–EQ17). Re-run via `python scripts/phase5_run_passkey_32k.py` and `python scripts/phase5_bench_decode_32k.py`.
 
