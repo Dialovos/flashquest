@@ -33,6 +33,7 @@ bench = [
   "accelerate",
   "huggingface_hub[cli]",
   "datasets>=3",
+  "autoawq>=0.2,<1",
 ]
 
 [tool.setuptools.packages.find]
