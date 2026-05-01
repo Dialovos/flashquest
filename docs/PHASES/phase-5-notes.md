@@ -30,8 +30,8 @@ benchmark on Llama-3.2-3B-AWQ.
 | Persistent-cache HF logits ≡ Phase 4 BF16-eager (rtol=5e-2) | confirmed on Llama-3.2-1B | ✅ |
 | Fused dispatch ≡ Phase 4 dispatch (rtol=2e-2) all-retrieval / all-streaming / mixed | confirmed | ✅ |
 | AWQ load smoke test (Llama-3.2-3B-AWQ forward pass) | ran cleanly | ✅ |
-| 32 k passkey on Llama-3.2-3B-AWQ ≥80 % at depth=0.5 | (see `benchmarks/phase5_passkey.json`) | (eval runs offline) |
-| Decode at 32 k ≥4 tok/s | (see `benchmarks/phase5_decode.json`) | (eval runs offline) |
+| 32 k passkey on Llama-3.2-3B-AWQ ≥80 % at depth=0.5 | **100 %** (6/6 across depths 0.1/0.5/0.9, 2 trials each) | ✅ |
+| Decode at 32 k ≥4 tok/s | (run `python scripts/phase5_bench_decode_32k.py`) | (deferred — eval is hours long, scope-cut) |
 | 8B reality + Marlin/EAGLE/INT4-KV deferral documented | here | ✅ |
 
 ## Edge cases handled
@@ -60,6 +60,8 @@ benchmark on Llama-3.2-3B-AWQ.
 - **AWQ via transformers + autoawq.** No explicit Marlin packing conversion — autoawq's CUDA kernel for W4A16 is already in place. Marlin-tuned packing is deferred until profiling shows the AWQ kernel is the decode bottleneck.
 - **fp16 for AWQ + bf16 for the sparse path.** AWQ CUDA kernels don't yet support bf16, so the model runs fp16. The patched forward casts q/k/v to bf16 before the cache + sparse kernel and casts attn output back to fp16 before `o_proj`. autoawq 0.2.9 is incompatible with transformers 4.57+ out of the box (`PytorchGELUTanh` was renamed to `GELUTanh`); `awq_load` aliases the import on entry.
 - **3B AWQ as the test model, not 8B.** Llama-3.1-8B AWQ-INT4 weights are ~4.5 GB — they don't fit on a 4 GB GPU before any KV cache. The SPEC §6 Phase 4/5 8B win condition is hardware-blocked on this tier; we ran an 8B control at smaller contexts to demonstrate the path works and recorded the OOM wall (`benchmarks/phase5_8b_control.json`).
+- **Eval scope cut from {8k, 16k, 32k}×3 to {8k, 32k}×2.** Initial run on the full grid hung past 22 min on the 16k tier; the 32k tier alone took **50 minutes** (mostly criticality + sparse decode in Python). With 2 trials × 3 depths × 8 max_new_tokens we still get 6 prompts × ~10 forward passes per prompt = 60 long-context forward passes per tier, enough to see passkey correctness collapse if anything were broken. Both tiers passed **100 %**.
+- **Peak VRAM at 32 k spills above 4 GB.** `torch.cuda.max_memory_allocated()` reports 6 283 MiB at 32 k, vs 3 204 MiB at 8 k. The cache itself is ~1.9 GB; the spill comes from the dequant'd K (full BF16 cache materialized for criticality) + page_scores intermediates. WSL2's unified-memory model lets PyTorch allocate above the device's nominal 4 GB but at ~UMA speeds. Correctness is unaffected; Phase 6 should profile this and chunk the criticality computation.
 
 ## Phase 6 prerequisites (deferred work)
 

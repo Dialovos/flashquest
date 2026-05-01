@@ -1,0 +1,35 @@
+{
+  "model": "casperhansen/llama-3.2-3b-instruct-awq",
+  "context_lens": [
+    8192,
+    32768
+  ],
+  "depths": [
+    0.1,
+    0.5,
+    0.9
+  ],
+  "n_trials": 2,
+  "retention": 0.25,
+  "retrieval_fraction": 0.7,
+  "by_context": {
+    "8192": {
+      "accuracy_by_depth": {
+        "0.1": 1.0,
+        "0.5": 1.0,
+        "0.9": 1.0
+      },
+      "elapsed_s": 81.8024813929951,
+      "peak_vram_mib": 3204.0625
+    },
+    "32768": {
+      "accuracy_by_depth": {
+        "0.1": 1.0,
+        "0.5": 1.0,
+        "0.9": 1.0
+      },
+      "elapsed_s": 3026.3062443169983,
+      "peak_vram_mib": 6282.92626953125
+    }
+  }
+}

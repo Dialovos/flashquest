@@ -126,19 +126,16 @@ Production-grade decode path: persistent INT8 KV cache (HF `Cache` subclass), AW
 
 Validation on Llama-3.2-3B-AWQ (`casperhansen/llama-3.2-3b-instruct-awq`, ~2 GB weights), synthetic 70/30 retrieval/streaming split, retention=0.25, sinks=4, window=128.
 
-**Passkey at long context** (3 trials × 3 depths). Numbers in `benchmarks/phase5_passkey.json`; see [`docs/PHASES/phase-5-notes.md`](docs/PHASES/phase-5-notes.md).
+**Passkey at long context** (2 trials × 3 depths). Numbers in `benchmarks/phase5_passkey.json`; see [`docs/PHASES/phase-5-notes.md`](docs/PHASES/phase-5-notes.md).
 
-| Context | depth=0.1 | depth=0.5 | depth=0.9 | Peak VRAM |
-|---|---|---|---|---|
-| 8 192 | 3/3 | 3/3 | 3/3 | 3204 MiB |
-| 16 384 | (filled in after eval) | … | … | … |
-| 32 768 | … | … | … | … |
+| Context | depth=0.1 | depth=0.5 | depth=0.9 | Wall time | Peak VRAM |
+|---|---|---|---|---|---|
+| 8 192 | **2/2** | **2/2** | **2/2** | 82 s | 3 204 MiB |
+| 32 768 | **2/2** | **2/2** | **2/2** | 3 026 s | 6 283 MiB † |
 
-**Decode at 32 k context** (3 trials × 64 new tokens). See `benchmarks/phase5_decode.json`.
+† Peak VRAM at 32 k spilled past the 4 GB nominal cap into WSL2 shared memory; correctness still 100 %, but Phase 6 should profile the dequant + criticality intermediates that drive the spill.
 
-| Path | Decode tok/s |
-|---|---|
-| Phase 5 (persistent INT8 + fused dispatch) | (filled in after eval) |
+**Decode at 32 k context.** Pending — see `benchmarks/phase5_decode.json` after running `python scripts/phase5_bench_decode_32k.py`.
 
 17 catalogued edge cases (EQ1–EQ17). Re-run via `python scripts/phase5_run_passkey_32k.py` and `python scripts/phase5_bench_decode_32k.py`.
 

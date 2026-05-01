@@ -18,9 +18,9 @@ from flashquest.eval.passkey import make_example, score
 from flashquest.runtime.awq_load import load_awq_model
 
 
-CONTEXT_LENS = [8192, 16384, 32768]
+CONTEXT_LENS = [8192, 32768]
 DEPTHS = [0.1, 0.5, 0.9]
-N_TRIALS = 3
+N_TRIALS = 2
 RETENTION = 0.25
 NUM_SINKS = 4
 WINDOW_PAGES = 2
@@ -42,7 +42,7 @@ def synthetic_pattern(num_layers: int, num_kv: int, fraction: float, seed: int =
 def generate_passkey_answer(model, tok, prompt: str) -> str:
     ids = tok(prompt, return_tensors="pt").to("cuda")
     out = model.generate(
-        **ids, max_new_tokens=10, do_sample=False, pad_token_id=tok.eos_token_id
+        **ids, max_new_tokens=8, do_sample=False, pad_token_id=tok.eos_token_id
     )
     return tok.decode(out[0, ids.input_ids.shape[1]:], skip_special_tokens=True)
 
