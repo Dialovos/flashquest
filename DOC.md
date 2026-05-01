@@ -121,6 +121,40 @@ patch_llama_for_quest_duo(
 # )
 ```
 
+Phase 5 persistent-cache decode on a Llama-3.2-3B-AWQ checkpoint:
+
+```python
+import torch
+from flashquest.cache import PersistentInt8KVCache
+from flashquest.eager.llama_persistent_patch import patch_llama_for_quest_persistent
+from flashquest.runtime.awq_load import load_awq_model
+
+model, tok = load_awq_model("casperhansen/llama-3.2-3b-instruct-awq")
+cfg = model.config
+head_dim = cfg.hidden_size // cfg.num_attention_heads
+
+cache = PersistentInt8KVCache(
+    batch_size=1, num_layers=cfg.num_hidden_layers,
+    num_kv_heads=cfg.num_key_value_heads, head_dim=head_dim,
+    max_seq_len=32_768 + 128, page_size=64, device="cuda",
+)
+pattern = (torch.rand(cfg.num_hidden_layers, cfg.num_key_value_heads) < 0.7)
+
+patch_llama_for_quest_persistent(
+    model, cache=cache, head_pattern=pattern,
+    retention=0.25, num_sinks=4, window_pages=2, page_size=64,
+)
+# model.generate(...) now uses persistent INT8 KV + fused DuoAttention.
+```
+
+Reproduce Phase 5 evals:
+```bash
+hf download casperhansen/llama-3.2-3b-instruct-awq --local-dir ~/models/llama-3.2-3b-awq
+python scripts/phase5_run_passkey_32k.py     # 32k passkey on Llama-3.2-3B-AWQ
+python scripts/phase5_bench_decode_32k.py    # 32k decode tok/s
+python scripts/phase5_run_8b_control.py      # 8B AWQ control (largest fitting ctx)
+```
+
 ## Architecture
 
 See `docs/SPEC.md §4`. Single Triton kernel per attention layer; sparse outer loop over Quest-selected KV blocks; INT8 KV with KIVI-style scales; per-head pattern dispatch (DuoAttention).
@@ -132,8 +166,8 @@ See `docs/SPEC.md §4`. Single Triton kernel per attention layer; sparse outer l
 - **Phase 2 — Dense FA-2 Triton kernel** ✅ **complete (tag `phase-2`)**. `flashquest.kernel.flash_attn_fwd(Q, K, V, *, causal, sm_scale=None, return_lse=True)`. BLOCK_M=BLOCK_N=64 on sm_86. 14 catalogued edge cases pass (E1–E14, `tests/test_kernel_flash_fwd_edges.py`); equivalence with Phase 1 eager at retention=1.0 confirmed; perf at the Llama-3.2-3B reference shape is 27.37 ms / fwd vs FA-2's 25.51 ms (**1.073×**, well within the 30 % SPEC target). See `docs/PHASES/phase-2-notes.md`.
 - **Phase 3 — Sparse retrieval + INT8 KV** ✅ **complete (tag `phase-3`)**. `flashquest.kernel.flash_attn_sparse_fwd(Q, K_uint8, K_scale, K_mn, V_uint8, V_scale, V_mn, *, selection_mask, page_size, sm_scale, return_lse)`. Decode-only (S_q=1). KIVI-style asymmetric uint8 KV (per-page channel-wise K, per-token V); dequant fused inside the kernel. 11 catalogued edge cases pass + 15 hypothesis-fuzzed shapes. Decode at 8 k context is **2.48×** faster than Phase 2 dense. See `docs/PHASES/phase-3-notes.md`.
 - **Phase 4 — DuoAttention head split + HF integration** ✅ **complete (tag `phase-4`)**. `flashquest.duo.{load_duo_pattern, quest_duo_eager_sdpa}` + `flashquest.eager.llama_duo_patch.patch_llama_for_quest_duo`. Per-layer per-KV-head dispatch (retrieval ∪ streaming) wired through HF Llama. Validated on Llama-3.2-1B with a synthetic 70/30 split: passkey 25/25 across depths, matches Phase 1 all-retrieval baseline. Llama-3.1-8B AWQ end-to-end + persistent INT8 KV cache + Marlin projections deferred to Phase 5 (documented in `docs/PHASES/phase-4-notes.md`).
-- Phase 5 — ExLlamaV2 backend + optional EAGLE-2.
-- Phase 6 — Polish & release.
+- **Phase 5 — Persistent INT8 KV cache + AWQ + fused DuoAttention** ✅ **complete (tag `phase-5`)**. `flashquest.cache.PersistentInt8KVCache` (HF `Cache` subclass, KIVI-style per-page channel K + per-token V + BF16 partial-page staging) + `flashquest.runtime.load_awq_model` (autoawq 0.2.9 + transformers 4.57 compat shim, fp16 model + bf16 sparse path) + `flashquest.duo.quest_duo_fused_sdpa` (single sparse-kernel call replacing Phase 4's torch.where) + `flashquest.eager.llama_persistent_patch.patch_llama_for_quest_persistent` (dense prefill, sparse decode, online-softmax merge of completed-page sparse + partial-page tail). Validated on Llama-3.2-3B-AWQ at 32 k context with passkey + decode tok/s benchmarks. 8B at 32k blocked by 4 GB VRAM (Llama-3.1-8B AWQ alone is ~4.5 GB) — documented + 8B control script in `docs/PHASES/phase-5-notes.md`.
+- Phase 6 — Polish & release (optional Marlin / ExLlamaV2 / EAGLE-2 / INT4-KV / Mistral-7B + CPU offload).
 
 ## Configuration
 

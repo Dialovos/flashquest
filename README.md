@@ -120,6 +120,30 @@ Validation on Llama-3.2-1B with a synthetic 70/30 retrieval/streaming split (Duo
 
 Re-run via `python scripts/phase4_run_passkey.py`.
 
+## Phase 5 — Persistent INT8 KV cache + AWQ-INT4 + fused DuoAttention
+
+Production-grade decode path: persistent INT8 KV cache (HF `Cache` subclass), AWQ-INT4 weight loading, single-call fused DuoAttention dispatch.
+
+Validation on Llama-3.2-3B-AWQ (`casperhansen/llama-3.2-3b-instruct-awq`, ~2 GB weights), synthetic 70/30 retrieval/streaming split, retention=0.25, sinks=4, window=128.
+
+**Passkey at long context** (3 trials × 3 depths). Numbers in `benchmarks/phase5_passkey.json`; see [`docs/PHASES/phase-5-notes.md`](docs/PHASES/phase-5-notes.md).
+
+| Context | depth=0.1 | depth=0.5 | depth=0.9 | Peak VRAM |
+|---|---|---|---|---|
+| 8 192 | 3/3 | 3/3 | 3/3 | 3204 MiB |
+| 16 384 | (filled in after eval) | … | … | … |
+| 32 768 | … | … | … | … |
+
+**Decode at 32 k context** (3 trials × 64 new tokens). See `benchmarks/phase5_decode.json`.
+
+| Path | Decode tok/s |
+|---|---|
+| Phase 5 (persistent INT8 + fused dispatch) | (filled in after eval) |
+
+17 catalogued edge cases (EQ1–EQ17). Re-run via `python scripts/phase5_run_passkey_32k.py` and `python scripts/phase5_bench_decode_32k.py`.
+
+**8B reality check.** Llama-3.1-8B AWQ-INT4 weights alone are ~4.5 GB — they don't fit on a 4 GB GPU before any KV cache. The SPEC §6 Phase 4/5 8B win condition is hardware-blocked on this tier; an 8B control at smaller contexts is recorded in `benchmarks/phase5_8b_control.json`. Phase 6 (or v2) is the natural place for IQ3-XXS or PowerInfer-style hot/cold layer offload to clear this wall.
+
 ## Non-goals
 
 - Training kernels. Inference only.
