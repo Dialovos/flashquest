@@ -15,7 +15,6 @@ import torch
 from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
 
 from ..cache.persistent_int8 import PersistentInt8KVCache
-from ..duo.dispatch import quest_duo_eager_sdpa
 from ..eager.criticality import page_scores
 from ..eager.page_summary import compute_page_summary
 from ..eager.selection import select_pages
@@ -115,13 +114,23 @@ def make_quest_persistent_forward(
         cos, sin = position_embeddings
         q, k = apply_rotary_pos_emb(q, k, cos, sin)
 
+        # Sparse Triton kernel + cache require bf16. AWQ models are fp16;
+        # cast in, then cast back before o_proj.
+        model_dtype = q.dtype
+        if model_dtype != torch.bfloat16:
+            q = q.to(torch.bfloat16)
+            k = k.to(torch.bfloat16)
+            v = v.to(torch.bfloat16)
+
         S_q = q.shape[2]
 
         cache.update_quantized(k, v, layer_idx=self.layer_idx)
         views = cache.get_views(self.layer_idx)
 
         if S_q > 1:
-            # Prefill: dequantize the cache and run Phase 4 BF16 eager path.
+            # Prefill: dense attention over the dequant'd cache.
+            # Sparse selection at long S_q would balloon criticality intermediates;
+            # we keep prefill dense (SPEC win condition is decode tok/s, not prefill).
             K_full = torch.cat(
                 [
                     dequantize_k(views["K_uint8"], views["K_scale"], views["K_mn"], page_size=page_size),
@@ -136,12 +145,11 @@ def make_quest_persistent_forward(
                 ],
                 dim=2,
             )
-            attn_output = quest_duo_eager_sdpa(
-                q, K_full, V_full,
-                head_pattern=head_pattern_layer,
-                page_size=page_size, retention=retention,
-                num_sinks=num_sinks, window_pages=window_pages,
-                is_causal=True,
+            n_rep = q.shape[1] // K_full.shape[1]
+            K_rep = K_full.repeat_interleave(n_rep, dim=1)
+            V_rep = V_full.repeat_interleave(n_rep, dim=1)
+            attn_output = torch.nn.functional.scaled_dot_product_attention(
+                q, K_rep, V_rep, is_causal=True,
             )
         else:
             partial_len = views["partial_len"]
@@ -172,6 +180,8 @@ def make_quest_persistent_forward(
 
         attn_output = attn_output.transpose(1, 2).contiguous()
         attn_output = attn_output.reshape(*input_shape, -1)
+        if attn_output.dtype != model_dtype:
+            attn_output = attn_output.to(model_dtype)
         attn_output = self.o_proj(attn_output)
         return attn_output, None
 
