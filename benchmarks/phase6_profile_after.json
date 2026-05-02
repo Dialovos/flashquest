@@ -1,0 +1,23 @@
+{
+  "model": "casperhansen/llama-3.2-3b-instruct-awq",
+  "n_prefill": 32768,
+  "manual": {
+    "per_layer_op_ms": {
+      "attn.q_proj": 0.526703499872383,
+      "attn.k_proj": 0.27237387530476553,
+      "attn.v_proj": 0.21580449993052753,
+      "attn.reshape_qkv": 0.04550262519842363,
+      "page_scores_int8": 5.686581749614561,
+      "select_pages_vectorized": 0.9376355005770165,
+      "flash_attn_sparse_fwd": 1.5805582493158,
+      "attn.o_proj": 0.4014248756902816,
+      "mlp.gate_proj": 0.5975403755655861,
+      "mlp.up_proj": 0.5980468758934876,
+      "mlp.act_mul": 0.11339012507960433,
+      "mlp.down_proj": 0.5840528760927555
+    },
+    "n_steps": 8,
+    "end_to_end_step_ms": 295.2528714995424,
+    "decode_tok_per_s": 3.3869272631326464
+  }
+}

@@ -68,16 +68,90 @@ should replace passkey for go/no-go decisions.
 
 ## Phase 6 task 1b (deferred — closes the remaining 2×)
 
-To clear the 2.03 → 4 tok/s gap on the same hardware, one of:
-1. **EAGLE-2 speculative decoding wrapper** (Phase 6 plan task 6). ~2-3×
-   decode multiplier, composes orthogonally with our criticality fix.
-2. **Kernel-fused criticality + top-k** (the originally planned task 1
-   that the algebraic shortcut bypassed). Profile-driven; at 17.6 ms /
-   layer the remaining cost is mostly AWQ + MLP, not the sparse path.
-   Speedup likely <1.5× from kernelizing criticality alone. Defer to
-   when INT4 KV (task 5) needs new dequant kernels anyway.
-3. **Re-profile Phase 6 to identify the new bottleneck**, then attack
-   the largest. Cheapest first step.
+**Re-profile after task 1a** (`benchmarks/phase6_profile_after.json`,
+`scripts/phase6_profile_after.py`) overturns the earlier "AWQ + MLP is
+the bottleneck" hypothesis. Per-layer cost at 32 k:
+
+| op | ms | % |
+|---|---|---|
+| **`page_scores_int8`** | **5.687** | **49.2** |
+| `flash_attn_sparse_fwd` | 1.581 | 13.7 |
+| `select_pages_vectorized` | 0.938 | 8.1 |
+| MLP (gate + up + down + act_mul) | 1.893 | 16.4 |
+| AWQ attn projections (q + k + v + o) | 1.416 | 12.3 |
+| reshape | 0.046 | 0.4 |
+| **total / layer** | **11.56** | |
+
+× 28 layers ≈ 324 ms / step. End-to-end 295 ms (variance vs the bench's
+493 ms / step at 2.03 tok/s — likely first-decode warmup difference;
+this profile run measured 3.39 tok/s end-to-end).
+
+**`page_scores_int8` is 49 % of per-layer time.** AWQ projections + MLP
+combined are only ~29 %. This means EAGLE-2 (complex, cache-bridge work)
+and Marlin (small gain at M=1, see research notes below) are NOT the right
+next steps.
+
+### Task 1c — algebraic-fast page_scores via two GEMMs (proposed, not yet implemented)
+
+Math: `K_scale ≥ 0` everywhere, so:
+
+```
+max(Q[d]·K_mn[p,d], Q[d]·(K_mn[p,d] + 255·K_scale[p,d]))
+  = Q[d]·K_mn[p,d] + relu(255·Q[d]·K_scale[p,d])
+  = Q[d]·K_mn[p,d] + 255·relu(Q[d])·K_scale[p,d]   (since K_scale ≥ 0)
+```
+
+Sum over D:
+
+```
+score(p) = Q · K_mn[p]  +  255 · relu(Q) · K_scale[p]
+```
+
+Two batched matmuls + one `clamp(min=0)`. Memory traffic drops from
+~150 MB (the current `(B, H_q, S_q, P, D)` fp32 intermediates) to
+~12 MB (just K_mn and K_scale loaded once each). Expected runtime:
+< 0.5 ms vs current 5.69 ms / layer. New per-layer total ≈ 6.4 ms
+→ end-to-end ≈ **5.5 tok/s** — clears SPEC ≥4 tok/s gate without
+any kernel work.
+
+Implementation sketch (PyTorch only):
+
+```python
+def page_scores_int8_fast(Q, K_scale, K_mn):
+    B, H_q, S_q, D = Q.shape
+    H_kv = K_scale.shape[1]
+    n_rep = H_q // H_kv
+
+    # Group GQA: (B, H_kv, n_rep * S_q, D) — broadcast in matmul, not memory.
+    Q_g = Q.view(B, H_kv, n_rep, S_q, D).reshape(B, H_kv, n_rep * S_q, D)
+    Q_pos_g = Q_g.clamp(min=0)
+
+    # Two batched matmuls — torch picks the fastest path (cuBLAS / cuDNN).
+    term1 = torch.matmul(Q_g.float(), K_mn.float().transpose(-1, -2))
+    term2 = 255.0 * torch.matmul(Q_pos_g.float(), K_scale.float().transpose(-1, -2))
+    scores = term1 + term2
+    return scores.reshape(B, H_kv, n_rep, S_q, -1).reshape(B, H_q, S_q, -1)
+```
+
+Quality validation: identity is exact (sign-of-Q proof above) — same EQ18-EQ20
+unit tests apply unchanged. Expected to pass at rtol=0 (modulo fp32 add reorder).
+
+### Research findings (2026-05-02 — see scripts/phase6_diag_*.py + research agent)
+
+- **Marlin at M=1 ≈ AWQ.** Marlin's design point is M=16-32 (vendor/marlin/README.md
+  L7-8). Only worth migrating once speculation raises effective M.
+- **EAGLE-2 not orthogonal to our cache.** vendor/eagle/eagle/model/kv_cache.py
+  L103-111 hard-codes dense FP16 contiguous KV; verify step does dense
+  tree-causal attention over full cache. Bridge work to dequant on demand
+  for verify is 2-3 weeks. Not the right next step given the page_scores_int8
+  finding.
+- **No upstream DuoAttention pattern for Llama-3.2-3B.** Only 7B/8B variants
+  ship in vendor/duo-attention/attn_patterns/. Synthetic random head_pattern
+  is not a sound substitute. Train via DuoAttention's run_train.sh OR fall
+  back to all-retrieval baseline.
+- **Passkey methodology is broken** for our setup (un-seeded torch.rand);
+  RULER 4k subset (Phase 6 task 2) is the SPEC's actual quality gate and
+  should replace passkey for go/no-go.
 
 ## Phase 6 next tasks (still SPEC §6 priority order)
 
