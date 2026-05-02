@@ -193,6 +193,29 @@ def make_prompt(
         )
         return prompt, [target_value]
 
+    if task == "multivalue":
+        # 1 key, 4 values; query that key; must retrieve all 4 values.
+        num_needle_v = 4
+        key = random_uuid(rng)
+        values = [random_number(rng) for _ in range(num_needle_v)]
+        needles = [
+            NEEDLE_TEMPLATE.format(type_needle_v=TYPE_NEEDLE_V, key=key, value=v)
+            for v in values
+        ]
+        rng.shuffle(needles)
+        # num_q * num_v = 1 * 4 = 4 ≠ 1: keep the PLURAL template (no singularize).
+        template = PROMPT_TEMPLATE
+        n_words = _budget_haystack_words(
+            template, TYPE_NEEDLE_V, key, needles[0], tokenizer, ctx_len
+        )
+        context = _build_context(rng, n_words, needles)
+        prompt = template.format(
+            type_needle_v=TYPE_NEEDLE_V,  # plural
+            context=context,
+            query=key,
+        )
+        return prompt, list(values)
+
     raise NotImplementedError(f"task={task!r} not implemented yet")
 
 

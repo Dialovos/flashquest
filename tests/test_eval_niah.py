@@ -81,3 +81,14 @@ def test_er3_multikey_distractors_distinct(tok):
     uuid_re = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
     uuids = set(re.findall(uuid_re, prompt))
     assert len(uuids) == 4, f"expected 4 distinct keys, got {len(uuids)}"
+
+
+def test_multivalue_returns_4_values(tok):
+    """multivalue: 1 key, 4 values; expected = all 4 values; all must appear in prompt."""
+    prompt, expected = make_prompt("multivalue", ctx_len=4096, tokenizer=tok, seed=0)
+    assert len(expected) == 4
+    for v in expected:
+        assert v in prompt
+    uuid_re = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+    uuids = set(re.findall(uuid_re, prompt))
+    assert len(uuids) == 1
