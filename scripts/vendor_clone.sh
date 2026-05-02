@@ -30,5 +30,6 @@ clone_or_pull https://github.com/triton-lang/triton.git                 triton
 clone_or_pull https://github.com/Dao-AILab/flash-attention.git          flash-attention
 clone_or_pull https://github.com/mit-han-lab/Block-Sparse-Attention.git block-sparse-attention
 clone_or_pull https://github.com/ggerganov/llama.cpp.git                llama.cpp
+clone_or_pull https://github.com/NVIDIA/RULER.git                       RULER
 
 echo "Done. Vendored repos in $VENDOR_DIR"
