@@ -108,3 +108,37 @@ def test_er4_score_substring_match():
         ["1111111", "2222222", "3333333", "4444444"],
     ) is False
     assert score("anything", []) is True
+
+
+def test_er6_run_niah_zero_samples(tok):
+    """ER6: n_samples=0 returns empty result, doesn't crash; model never called."""
+    from flashquest.eval.runner import run_niah
+    out = run_niah(model=None, tokenizer=tok, task="single",
+                   n_samples=0, ctx_len=512, seed=0)
+    assert out["hits"] == 0
+    assert out["total"] == 0
+    assert out["task"] == "single"
+    assert out["samples"] == []
+
+
+@pytest.mark.slow
+def test_er5_smoke_llama_3_2_1b_ctx512_n2():
+    """ER5: end-to-end smoke on Llama-3.2-1B at ctx=512 with n=2; <90s."""
+    import time
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from flashquest.eval.runner import run_niah
+
+    name = "unsloth/Llama-3.2-1B-Instruct"
+    tokenizer = AutoTokenizer.from_pretrained(name)
+    model = AutoModelForCausalLM.from_pretrained(
+        name, torch_dtype=torch.bfloat16, attn_implementation="sdpa"
+    ).cuda().eval()
+
+    t0 = time.perf_counter()
+    out = run_niah(model, tokenizer, task="single", n_samples=2,
+                   ctx_len=512, seed=0, max_new_tokens=64)
+    elapsed = time.perf_counter() - t0
+    assert elapsed < 90, f"smoke too slow: {elapsed:.1f}s"
+    assert out["total"] == 2
+    assert 0 <= out["hits"] <= 2
