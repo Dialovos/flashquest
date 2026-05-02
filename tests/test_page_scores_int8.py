@@ -79,3 +79,23 @@ def test_eq20b_h_q_not_divisible_by_h_kv_raises():
     Q = torch.randn(B, 4, 1, D, device="cuda", dtype=torch.bfloat16)  # 4 not div by 3
     with pytest.raises(ValueError, match="divisible"):
         page_scores_int8(Q, K_scale, K_mn)
+
+
+@pytest.mark.parametrize("H_kv,n_rep", [(2, 1), (2, 4), (8, 3)])
+@pytest.mark.parametrize("S", [128, 256, 1024])
+def test_eq26_fast_matches_int8(H_kv, n_rep, S):
+    """EQ26: page_scores_int8_fast (two-matmul) ≡ page_scores_int8 (broadcast)."""
+    from flashquest.eager.criticality import page_scores_int8_fast
+
+    page_size = 64
+    B, D = 1, 64
+    H_q = H_kv * n_rep
+    K = _make_kv(B=B, H_kv=H_kv, S=S, D=D, seed=H_kv * 17 + n_rep + S)
+    _, K_scale, K_mn = quantize_k(K, page_size=page_size)
+    Q = torch.randn(B, H_q, 1, D, device="cuda", dtype=torch.bfloat16)
+
+    ref = page_scores_int8(Q, K_scale, K_mn)
+    out = page_scores_int8_fast(Q, K_scale, K_mn)
+    assert out.shape == ref.shape
+    # fp32 reduction reorder + matmul accumulator differences. Tight tolerance.
+    torch.testing.assert_close(out, ref, rtol=1e-3, atol=1e-3)

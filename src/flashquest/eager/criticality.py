@@ -72,3 +72,54 @@ def page_scores_int8(
     cand_mx = Q_e * Kmx_e
     cand_mn = Q_e * Kmn_e
     return torch.maximum(cand_mx, cand_mn).sum(dim=-1)
+
+
+def page_scores_int8_fast(
+    Q: torch.Tensor,
+    K_scale: torch.Tensor,
+    K_mn: torch.Tensor,
+) -> torch.Tensor:
+    """Fast equivalent of page_scores_int8 — two batched matmuls instead of
+    materializing the (B, H_q, S_q, P, D) intermediate.
+
+    Identity (since K_scale ≥ 0 elementwise after kv_quant's eps clamp):
+
+        max(Q[d]·K_mn[p,d], Q[d]·(K_mn[p,d] + 255·K_scale[p,d]))
+          = Q[d]·K_mn[p,d] + relu(255·Q[d]·K_scale[p,d])
+          = Q[d]·K_mn[p,d] + 255·relu(Q[d])·K_scale[p,d]
+
+    Sum over D:
+
+        score(p) = Q · K_mn[p]  +  255 · relu(Q) · K_scale[p]
+
+    Two batched matmuls + one clamp(min=0). Memory traffic drops ~12× vs
+    page_scores_int8 (no (B, H_q, S_q, P, D) fp32 intermediate).
+
+    Args:
+        Q: (B, H_q, S_q, D) bf16/fp16/fp32.
+        K_scale: (B, H_kv, P, D) bf16 — per-page per-channel quant scale (≥0).
+        K_mn: (B, H_kv, P, D) bf16 — per-page per-channel quant min.
+
+    Returns:
+        (B, H_q, S_q, P) fp32 page-criticality scores.
+    """
+    B, H_q, S_q, D = Q.shape
+    H_kv, P = K_scale.shape[1], K_scale.shape[2]
+    if H_q % H_kv != 0:
+        raise ValueError(f"H_q={H_q} must be divisible by H_kv={H_kv}")
+    n_rep = H_q // H_kv
+
+    # Group GQA in the matmul instead of materializing repeated K — view as
+    # (B, H_kv, n_rep * S_q, D) and let bmm broadcast.
+    Q_f = Q.float()
+    Q_g = Q_f.view(B, H_kv, n_rep * S_q, D)
+    Q_pos_g = Q_g.clamp(min=0)
+
+    Kmn_f = K_mn.float()
+    Kscale_f = K_scale.float()
+
+    # (B, H_kv, n_rep*S_q, D) @ (B, H_kv, D, P) -> (B, H_kv, n_rep*S_q, P)
+    term1 = torch.matmul(Q_g, Kmn_f.transpose(-1, -2))
+    term2 = torch.matmul(Q_pos_g, Kscale_f.transpose(-1, -2)) * 255.0
+    scores_g = term1 + term2  # (B, H_kv, n_rep * S_q, P)
+    return scores_g.view(B, H_q, S_q, P)

@@ -15,7 +15,7 @@ import torch
 from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
 
 from ..cache.persistent_int8 import PersistentInt8KVCache
-from ..eager.criticality import page_scores_int8
+from ..eager.criticality import page_scores_int8_fast
 from ..eager.selection import select_pages_vectorized
 from ..kernel import flash_attn_sparse_fwd
 from ..kernel.kv_quant import dequantize_k, dequantize_v
@@ -70,7 +70,7 @@ def _quest_duo_fused_with_lse(
         torch.zeros(H_q, device=Q.device),
     )
 
-    scores = page_scores_int8(Q, K_scale, K_mn)
+    scores = page_scores_int8_fast(Q, K_scale, K_mn)
     sel = select_pages_vectorized(
         scores, retention=retention_per_q,
         num_sinks=num_sinks, window_pages=window_pages,
