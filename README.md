@@ -147,20 +147,25 @@ The decode tok/s is **far below the SPEC target of ≥4 tok/s** — the Triton k
 
 **8B reality check.** Llama-3.1-8B AWQ-INT4 weights alone are ~4.5 GB — they don't fit on a 4 GB GPU before any KV cache. The SPEC §6 Phase 4/5 8B win condition is hardware-blocked on this tier; an 8B control at smaller contexts is recorded in `benchmarks/phase5_8b_control.json`. Phase 6 (or v2) is the natural place for IQ3-XXS or PowerInfer-style hot/cold layer offload to clear this wall.
 
-## Phase 6 task 1a — Algebraic criticality + vectorized top-k
+## Phase 6 task 1 — Algebraic criticality + two-matmul reformulation
 
-Profile (`benchmarks/phase6_profile.json`) showed the 0.092 tok/s gap was 95 % memory-bound on `dequantize_k` (155 ms/layer) + `compute_page_summary` (133 ms/layer) + `repeat_interleave_K` (38 ms/layer) — not Python overhead. Algebraic identity from `kv_quant._scale_mn_per_page_channel`: `K_mn` is the per-page per-channel min and `K_mn + 255*K_scale` is the max (exact, modulo a tiny eps clamp on constant channels — same eps the dequant path also rounds through). New `page_scores_int8` computes Quest's per-page upper-bound criticality directly from quant params; new `select_pages_vectorized` does a single batched `torch.topk` + scatter instead of a per-head Python loop with `.item()` syncs.
+Phase 5's 0.092 tok/s decode at 32 k context was 95 % memory-bound on `dequantize_k` + `compute_page_summary` + `repeat_interleave_K` (`benchmarks/phase6_profile.json`). Phase 6 task 1 lands in three sub-steps:
+
+- **Task 1a (algebraic, no kernel).** `K_mn ≡ page_min`, `K_mn + 255·K_scale ≡ page_max` exactly (`kv_quant._scale_mn_per_page_channel`), so `page_scores_int8` skips the dequant chain. `select_pages_vectorized` replaces a per-head Python loop with a single batched `torch.topk` + scatter. Decode: **0.092 → 2.03 tok/s (22×)**.
+- **Task 1b (re-profile, decision).** `page_scores_int8` itself is 49 % of post-1a per-layer cost; AWQ projections + MLP only ~29 %. EAGLE-2 deferred (cache-incompatible per `vendor/eagle/eagle/model/kv_cache.py` — expects dense FP16 contiguous KV; tree-verify is dense). Marlin deferred (M=1 design point ≈ AWQ).
+- **Task 1c (two-matmul reformulation).** `K_scale ≥ 0` everywhere, so `max(Q·K_mn, Q·K_mx) = Q·K_mn + relu(255·Q·K_scale) = Q·K_mn + 255·relu(Q)·K_scale`. Sum-over-D collapses to two batched matmuls + one `clamp(min=0)`. Memory traffic drops ~12× (no `(B, H_q, S_q, P, D)` fp32 intermediate). Decode: **2.03 → 5.14 tok/s (2.5× over 1a)**.
 
 | | Decode tok/s @ 32 k | Peak VRAM |
 |---|---|---|
 | Phase 5 (dequant + per-head loop) | 0.092 | 6 378 MiB |
-| **Phase 6 task 1a** | **2.03** | 6 379 MiB |
+| Phase 6 task 1a (algebraic) | 2.03 | 6 379 MiB |
+| **Phase 6 task 1c (two-matmul)** | **5.14** | 6 379 MiB |
 
-A 22× decode improvement, but **below the SPEC ≥4 tok/s gate**. The remaining 17.6 ms / layer is now the AWQ projections + MLP — not the criticality path. Closing the gap to ≥4 tok/s requires either (a) EAGLE-2 speculative decoding (Phase 6 task 6), or (b) re-profile-driven kernel work after INT4 KV needs new dequant kernels anyway. Tagged as **task 1a** rather than `phase-6-task-1` since the gate isn't yet cleared.
+**56× total speedup over Phase 5; SPEC ≥4 tok/s gate cleared.**
 
 **Methodology note.** The Phase 5 passkey "6/6 across depths" reading was an un-seeded `torch.rand` lucky pattern; with `seed=7` at ctx=4096, both Phase 5 and Phase 6 wiring produce **0/6 with bit-identical outputs** (`scripts/phase6_diag_passkey_3b.py`). The new code is logit-equivalent to the old code on identical seeds; the apparent regression was an eval-script artifact, not a real quality drop. RULER 4k subset (Phase 6 task 2) replaces passkey as the SPEC's actual quality gate.
 
-Re-run via `python scripts/phase6_bench_decode_32k.py` and `python scripts/phase6_diag_passkey_3b.py`. Per-op breakdown via `python scripts/phase6_profile_decode.py`.
+Re-run via `python scripts/phase6_bench_decode_32k_v2.py` and `python scripts/phase6_diag_passkey_3b.py`. Per-op breakdown via `python scripts/phase6_profile_after.py`.
 
 ## Non-goals
 

@@ -1,9 +1,16 @@
 # Phase 6 Task 1 Notes
 
 **Started:** 2026-05-01
-**Status:** **partial — perf 22× improved (0.092 → 2.03 tok/s); SPEC ≥4 tok/s gate not yet met. NOT tagged.**
+**Status:** **complete (tag `phase-6-task-1`); SPEC ≥4 tok/s gate cleared at 5.14 tok/s.**
 **Spec:** [../superpowers/specs/2026-05-01-phase-6-criticality-fix-design.md](../superpowers/specs/2026-05-01-phase-6-criticality-fix-design.md)
 **Plan:** [../superpowers/plans/2026-05-01-phase-6-criticality-fix.md](../superpowers/plans/2026-05-01-phase-6-criticality-fix.md)
+
+## Summary
+
+Three sub-tasks shipped:
+- **Task 1a** (2026-05-01): algebraic page_scores_int8 + select_pages_vectorized. Decode 0.092 → 2.03 tok/s (22×). Skipped the dequant chain by exploiting `page_min ≡ K_mn`, `page_max ≡ K_mn + 255*K_scale`. Below ≥4 tok/s gate.
+- **Task 1b** (2026-05-02): re-profile + research. `page_scores_int8` was 49% of per-layer time. EAGLE-2 deferred (cache-incompatible per vendor/eagle inspection); Marlin deferred (M=1 design point ≈ AWQ).
+- **Task 1c** (2026-05-02): two-matmul `page_scores_int8_fast`. Decode 2.03 → **5.14 tok/s** (2.5× over 1a, 56× total over Phase 5). Peak VRAM unchanged at 6379 MiB.
 
 ## Goal
 
@@ -25,8 +32,8 @@ Phase 5's 0.092 tok/s up to ≥4 tok/s.
 | EQ21-EQ25 unit tests for select_pages_vectorized | green | 24 passed | ✅ |
 | Phase 5 unit + e2e tests still green | green | 145 passed + e2e (rtol=5e-2) | ✅ |
 | Logit equivalence vs Phase 5 wiring on identical seeds | bit-equal multi-step output | confirmed | ✅ |
-| Decode at 32 k ≥4 tok/s | ≥4 tok/s | **2.03 tok/s** (22× over 0.092) | ❌ |
-| 32 k passkey ≥80 % at depth=0.5 | 6/6 | inconclusive (see Methodology gap below) | ⚠️ |
+| Decode at 32 k ≥4 tok/s | ≥4 tok/s | **5.14 tok/s** (56× over 0.092) | ✅ |
+| 32 k passkey ≥80 % at depth=0.5 | 6/6 | inconclusive — methodology issue (see below) | ⚠️ |
 
 ## Decisions
 
