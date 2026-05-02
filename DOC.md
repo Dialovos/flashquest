@@ -147,12 +147,15 @@ patch_llama_for_quest_persistent(
 # model.generate(...) now uses persistent INT8 KV + fused DuoAttention.
 ```
 
-Reproduce Phase 5 evals:
+Reproduce Phase 5 / 6 evals:
 ```bash
 hf download casperhansen/llama-3.2-3b-instruct-awq --local-dir ~/models/llama-3.2-3b-awq
-python scripts/phase5_run_passkey_32k.py     # 32k passkey on Llama-3.2-3B-AWQ
-python scripts/phase5_bench_decode_32k.py    # 32k decode tok/s
+python scripts/phase5_run_passkey_32k.py     # 32k passkey (un-seeded; results brittle)
+python scripts/phase5_bench_decode_32k.py    # 32k decode tok/s, Phase 5 chain
 python scripts/phase5_run_8b_control.py      # 8B AWQ control (largest fitting ctx)
+python scripts/phase6_bench_decode_32k.py    # 32k decode tok/s, Phase 6 algebraic chain
+python scripts/phase6_diag_passkey_3b.py     # seeded P5/P6 wiring head-to-head
+python scripts/phase6_profile_decode.py      # per-op breakdown of decode time
 ```
 
 ## Architecture
@@ -167,7 +170,9 @@ See `docs/SPEC.md §4`. Single Triton kernel per attention layer; sparse outer l
 - **Phase 3 — Sparse retrieval + INT8 KV** ✅ **complete (tag `phase-3`)**. `flashquest.kernel.flash_attn_sparse_fwd(Q, K_uint8, K_scale, K_mn, V_uint8, V_scale, V_mn, *, selection_mask, page_size, sm_scale, return_lse)`. Decode-only (S_q=1). KIVI-style asymmetric uint8 KV (per-page channel-wise K, per-token V); dequant fused inside the kernel. 11 catalogued edge cases pass + 15 hypothesis-fuzzed shapes. Decode at 8 k context is **2.48×** faster than Phase 2 dense. See `docs/PHASES/phase-3-notes.md`.
 - **Phase 4 — DuoAttention head split + HF integration** ✅ **complete (tag `phase-4`)**. `flashquest.duo.{load_duo_pattern, quest_duo_eager_sdpa}` + `flashquest.eager.llama_duo_patch.patch_llama_for_quest_duo`. Per-layer per-KV-head dispatch (retrieval ∪ streaming) wired through HF Llama. Validated on Llama-3.2-1B with a synthetic 70/30 split: passkey 25/25 across depths, matches Phase 1 all-retrieval baseline. Llama-3.1-8B AWQ end-to-end + persistent INT8 KV cache + Marlin projections deferred to Phase 5 (documented in `docs/PHASES/phase-4-notes.md`).
 - **Phase 5 — Persistent INT8 KV cache + AWQ + fused DuoAttention** ✅ **complete (tag `phase-5`)**. `flashquest.cache.PersistentInt8KVCache` (HF `Cache` subclass, KIVI-style per-page channel K + per-token V + BF16 partial-page staging) + `flashquest.runtime.load_awq_model` (autoawq 0.2.9 + transformers 4.57 compat shim, fp16 model + bf16 sparse path) + `flashquest.duo.quest_duo_fused_sdpa` (single sparse-kernel call replacing Phase 4's torch.where) + `flashquest.eager.llama_persistent_patch.patch_llama_for_quest_persistent` (dense prefill, sparse decode, online-softmax merge of completed-page sparse + partial-page tail). Validated on Llama-3.2-3B-AWQ at 32 k context with passkey + decode tok/s benchmarks. 8B at 32k blocked by 4 GB VRAM (Llama-3.1-8B AWQ alone is ~4.5 GB) — documented + 8B control script in `docs/PHASES/phase-5-notes.md`.
-- Phase 6 — Polish & release (optional Marlin / ExLlamaV2 / EAGLE-2 / INT4-KV / Mistral-7B + CPU offload).
+- **Phase 6 task 1a — Algebraic criticality + vectorized top-k** ⚠️ **partial (not tagged)**. `flashquest.eager.page_scores_int8(Q, K_scale, K_mn)` + `flashquest.eager.select_pages_vectorized(scores, retention, num_sinks, window_pages)` wired into `_quest_duo_fused_with_lse`. The Phase 5 chain `dequantize_k → repeat_interleave → compute_page_summary → page_scores → select_pages` (~329 ms / layer) reduces to two PyTorch calls (~10 ms / layer) by exploiting the exact identity `K_mn ≡ page_min, K_mn + 255*K_scale ≡ page_max` from `kv_quant._scale_mn_per_page_channel`. **Decode at 32 k: 0.092 → 2.03 tok/s (22×)**, peak VRAM 6 379 MiB, multi-step output bit-equal to Phase 5 wiring on identical seeds. SPEC ≥4 tok/s gate not yet met — remaining 17.6 ms / layer is the AWQ projections + MLP, not the sparse path. See `docs/PHASES/phase-6-notes.md`. **Methodology note:** the Phase 5 passkey 6/6 was an un-seeded `torch.rand` lucky pattern; both Phase 5 and Phase 6 wiring produce 0/6 with bit-identical outputs at ctx=4096 / seed=7 (`scripts/phase6_diag_passkey_3b.py`). RULER 4 k subset (Phase 6 task 2) replaces passkey as the SPEC's quality gate.
+- Phase 6 task 1b (deferred) — close the remaining 2.03 → 4 tok/s gap via EAGLE-2 speculative decoding OR re-profile-driven kernel work.
+- Phase 6 task 2+ — RULER 4 k eval, chat CLI, head-to-head benchmark table, INT4 KV, EAGLE-2, Marlin, ExLlamaV2.
 
 ## Configuration
 
