@@ -37,3 +37,45 @@ def test_eq18_int8_scores_match_dequant_path():
 
     assert out.shape == ref.shape
     torch.testing.assert_close(out, ref, rtol=2e-2, atol=2e-2)
+
+
+@pytest.mark.parametrize("H_kv,n_rep", [(2, 1), (2, 4), (8, 3)])
+def test_eq19_gqa_broadcast(H_kv, n_rep):
+    """EQ19: each query head sees its corresponding KV head's K_scale/K_mn."""
+    page_size = 64
+    B, S, D = 1, 256, 64
+    H_q = H_kv * n_rep
+    K = _make_kv(B=B, H_kv=H_kv, S=S, D=D, seed=H_kv * 7 + n_rep)
+    K_uint8, K_scale, K_mn = quantize_k(K, page_size=page_size)
+
+    Q = torch.randn(B, H_q, 1, D, device="cuda", dtype=torch.bfloat16)
+
+    K_dq = dequantize_k(K_uint8, K_scale, K_mn, page_size=page_size)
+    K_dq_full = K_dq.repeat_interleave(n_rep, dim=1)
+    page_min, page_max = compute_page_summary(K_dq_full.float(), page_size=page_size)
+    ref = page_scores(Q.float(), page_min, page_max)
+
+    out = page_scores_int8(Q, K_scale, K_mn)
+    torch.testing.assert_close(out, ref, rtol=2e-2, atol=2e-2)
+
+
+def test_eq20_shape_and_dtype_contract():
+    """EQ20: output shape (B, H_q, S_q, P) and fp32 dtype."""
+    page_size = 64
+    B, H_kv, H_q, S, D = 1, 2, 4, 192, 64  # 192/64 = 3 pages
+    K = _make_kv(B=B, H_kv=H_kv, S=S, D=D)
+    _, K_scale, K_mn = quantize_k(K, page_size=page_size)
+    Q = torch.randn(B, H_q, 5, D, device="cuda", dtype=torch.bfloat16)
+    out = page_scores_int8(Q, K_scale, K_mn)
+    assert out.shape == (B, H_q, 5, 3)
+    assert out.dtype == torch.float32
+
+
+def test_eq20b_h_q_not_divisible_by_h_kv_raises():
+    """EQ20: ValueError when GQA group is invalid."""
+    page_size = 64
+    B, H_kv, S, D = 1, 3, 64, 64
+    _, K_scale, K_mn = quantize_k(_make_kv(B, H_kv, S, D), page_size=page_size)
+    Q = torch.randn(B, 4, 1, D, device="cuda", dtype=torch.bfloat16)  # 4 not div by 3
+    with pytest.raises(ValueError, match="divisible"):
+        page_scores_int8(Q, K_scale, K_mn)
