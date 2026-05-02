@@ -92,3 +92,19 @@ def test_multivalue_returns_4_values(tok):
     uuid_re = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
     uuids = set(re.findall(uuid_re, prompt))
     assert len(uuids) == 1
+
+
+def test_er4_score_substring_match():
+    """ER4: score() is exact substring match per RULER; handles trailing model output."""
+    assert score("the answer is 1234567 because reasons", ["1234567"]) is True
+    assert score(" 1234567.", ["1234567"]) is True
+    assert score("12345", ["1234567"]) is False
+    assert score(
+        "v1=1111111 and v2=2222222 v3=3333333 v4=4444444",
+        ["1111111", "2222222", "3333333", "4444444"],
+    ) is True
+    assert score(
+        "only 1111111 and 2222222 are present",
+        ["1111111", "2222222", "3333333", "4444444"],
+    ) is False
+    assert score("anything", []) is True
