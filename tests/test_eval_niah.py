@@ -67,3 +67,17 @@ def test_er2_seed_determinism(tok):
     assert p0a == p0b
     assert k0a == k0b
     assert k0a != k1   # different seed → different needle value
+
+
+def test_er3_multikey_distractors_distinct(tok):
+    """ER3: multikey has 4 keys, returns expected_keys = [target_value]
+    (target key matches the question). Distractor keys must not equal target key."""
+    prompt, expected = make_prompt("multikey", ctx_len=4096, tokenizer=tok, seed=0)
+    assert len(expected) == 1
+    target_value = expected[0]
+    # The needle for the target key/value must appear in prompt.
+    assert target_value in prompt
+    # Count distinct UUIDs in the prompt — should be exactly 4.
+    uuid_re = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+    uuids = set(re.findall(uuid_re, prompt))
+    assert len(uuids) == 4, f"expected 4 distinct keys, got {len(uuids)}"

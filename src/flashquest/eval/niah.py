@@ -168,6 +168,31 @@ def make_prompt(
         )
         return prompt, [value]
 
+    if task == "multikey":
+        # 4 keys total (1 target + 3 distractors), 1 value each, query the target.
+        num_needle_k = 4
+        keys = [random_uuid(rng) for _ in range(num_needle_k)]
+        values = [random_number(rng) for _ in range(num_needle_k)]
+        needles = [
+            NEEDLE_TEMPLATE.format(type_needle_v=TYPE_NEEDLE_V, key=keys[i], value=values[i])
+            for i in range(num_needle_k)
+        ]
+        target_idx = rng.randrange(num_needle_k)
+        target_key = keys[target_idx]
+        target_value = values[target_idx]
+        rng.shuffle(needles)
+        template = _singularize(PROMPT_TEMPLATE)
+        n_words = _budget_haystack_words(
+            template, TYPE_NEEDLE_V, target_key, needles[0], tokenizer, ctx_len
+        )
+        context = _build_context(rng, n_words, needles)
+        prompt = template.format(
+            type_needle_v=TYPE_NEEDLE_V.rstrip("s"),
+            context=context,
+            query=target_key,
+        )
+        return prompt, [target_value]
+
     raise NotImplementedError(f"task={task!r} not implemented yet")
 
 
