@@ -192,6 +192,39 @@ Re-run via `python scripts/phase6_run_ruler_4k.py` (default n=20).
 Release-grade with `--n-samples 64`. Output:
 `benchmarks/phase6_ruler_4k.json`.
 
+## Phase 6 task 3 — `flashquest chat` CLI
+
+The SPEC §11 acceptance invocation, shipped:
+
+```bash
+pip install -e .
+flashquest --model casperhansen/llama-3.2-3b-instruct-awq \
+           --context 32768 \
+           --interactive
+```
+
+Single-shot mode for scripting + benchmarks:
+
+```bash
+flashquest --model casperhansen/llama-3.2-3b-instruct-awq \
+           --context 32768 \
+           --context-file long-doc.txt \
+           --prompt "Summarize the document in 3 sentences." \
+           --max-new-tokens 256
+```
+
+Pipe stdin:
+
+```bash
+cat long-doc.txt | flashquest --model casperhansen/llama-3.2-3b-instruct-awq \
+                              --context 32768 --context-file - \
+                              --prompt "Summarize."
+```
+
+Greedy by default; `--sample --temperature 0.7 --top-p 0.9 --seed 0` for
+reproducible sampled generation. `--no-patch` falls back to vanilla SDPA
+for debugging.
+
 ## Non-goals
 
 - Training kernels. Inference only.

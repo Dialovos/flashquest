@@ -259,3 +259,46 @@ the patched backend recovers all 4 distractor values across 19 of 20 prompts.
 - LongBench.
 - DuoAttention pattern training for Llama-3.2-3B (so streaming heads are real, not all-retrieval).
 - vLLM / llama.cpp head-to-head numbers (Phase 6 task 4 charter).
+
+---
+
+# Phase 6 Task 3 Notes
+
+**Started:** 2026-05-02
+**Status:** **complete (tag `phase-6-task-3`)**.
+**Spec:** [../superpowers/specs/2026-05-02-phase-6-chat-cli-design.md](../superpowers/specs/2026-05-02-phase-6-chat-cli-design.md)
+**Plan:** [../superpowers/plans/2026-05-02-phase-6-chat-cli.md](../superpowers/plans/2026-05-02-phase-6-chat-cli.md)
+
+## Summary
+
+Console-script `flashquest` exposing the SPEC §11 invocation literally:
+`flashquest --model casperhansen/llama-3.2-3b-instruct-awq --context 32768 --interactive`.
+Single-shot default + interactive REPL (`-i`); `--context-file PATH` (or
+`-` for stdin) for 32 k-context demos; greedy default with opt-in
+`--sample`/`--temperature`/`--top-p`/`--seed`; `--no-patch` falls back
+to vanilla SDPA for debugging.
+
+Streaming via `transformers.TextIteratorStreamer` running in a daemon
+thread; chat history rendered via `tokenizer.apply_chat_template`;
+persistent INT8 KV cache resets between REPL turns
+(`cache._seen_tokens = [0] * cache.num_layers`); oldest-pair history
+truncation when rendered prompt exceeds `--context - 256`.
+
+## Surface
+
+- `flashquest ...` console script (entry point in `pyproject.toml`).
+- `python -m flashquest.runtime.chat ...` (module form, equivalent).
+- 14 unit tests + 1 slow smoke on Llama-3.2-1B SDPA in
+  `tests/test_chat.py`.
+- Manual gates passed on Llama-3.2-3B-AWQ:
+  - 32 k cache budget single-shot intro: 29.6 s wall, coherent.
+  - 4 k-token PG-essay context-file summarize: 39.3 s wall, coherent on-topic summary.
+  - stdin pipe: 28 s wall, model picked up the piped sentence.
+
+## v2 follow-ups
+
+- Tool-use / function-calling.
+- Persistent on-disk chat history.
+- Token/sec live counter in REPL.
+- ANSI-colored role tags.
+- `--max-context` auto-detected from `model.config.max_position_embeddings`.
