@@ -26,7 +26,7 @@ fi
   -p "$CTX" -n 128 \
   -ngl "$NGL" \
   -t 6 \
-  -r 3 \
+  -r "${REPS:-1}" \
   -o md \
   | tee "$OUT"
 

@@ -76,12 +76,15 @@ def main() -> None:
         record["prefill_tok_s"] = n_in / elapsed if elapsed > 0 else None
         record["peak_vram_mib"] = int(torch.cuda.max_memory_allocated() / 1024 / 1024)
 
-    except (RuntimeError, torch.cuda.OutOfMemoryError) as exc:  # type: ignore[attr-defined]
-        msg = str(exc).lower()
-        if "out of memory" in msg or "kv cache" in msg or "no available" in msg:
-            record["oom"] = True
-        record["error"] = f"{type(exc).__name__}: {exc}"
     except Exception as exc:
+        msg = str(exc).lower()
+        if (
+            "out of memory" in msg
+            or "kv cache" in msg
+            or "no available" in msg
+            or "memory for the cache" in msg
+        ):
+            record["oom"] = True
         record["error"] = f"{type(exc).__name__}: {exc}"
     finally:
         record["wall_s"] = time.perf_counter() - t_start

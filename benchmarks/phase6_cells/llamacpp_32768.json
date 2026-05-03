@@ -1,0 +1,11 @@
+{
+  "backend": "llama.cpp",
+  "quant": "Q4_K_M, FP16 KV",
+  "ctx_len": 32768,
+  "decode_tok_s": null,
+  "prefill_tok_s": null,
+  "peak_vram_mib": null,
+  "wall_s": 1284.7937899430035,
+  "oom": false,
+  "error": "rc=134: bc_start_main+0x8b)[0x7ba7cb22a28b]\n/home/hoang/code/personal/active/flashquest/vendor/llama.cpp/build/bin/llama-bench(+0x14365)[0x5f4ac403a365]\n/home/hoang/code/personal/active/flashquest/scripts/bench_llamacpp.sh: line 31: 204724 Aborted                 (core dumped) \"$LLAMA_BIN\" -m \"$MODEL\" -p \"$CTX\" -n 128 -ngl \"$NGL\" -t 6 -r \"${REPS:-1}\" -o md\n     204725 Done                    | tee \"$OUT\"\n"
+}

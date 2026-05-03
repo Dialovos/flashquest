@@ -27,7 +27,21 @@ RESULTS_MD = REPO_ROOT / "benchmarks" / "phase6_headtohead.md"
 
 BACKENDS = ["flashquest", "llamacpp", "vllm"]
 CTXS = [8192, 32768, 131072]
-CELL_TIMEOUT_S = 600
+CELL_TIMEOUT_S = 1800
+
+# Canonical backend names used across all per-cell records, keyed by the
+# orchestrator's short name. Fallback (timeout / non-zero rc) records reuse these
+# so the renderer doesn't show duplicate rows for the same backend.
+CANONICAL_BACKEND = {
+    "flashquest": "flashquest",
+    "llamacpp": "llama.cpp",
+    "vllm": "vLLM 0.7.3",
+}
+CANONICAL_QUANT = {
+    "flashquest": "AWQ-INT4 + INT8 paged KV + Quest top-k retention=0.25",
+    "llamacpp": "Q4_K_M, FP16 KV",
+    "vllm": "AWQ-INT4, FP16 KV",
+}
 
 
 def planned_matrix() -> list[tuple[str, int]]:
@@ -176,7 +190,9 @@ def run_one(backend: str, ctx: int, out_path: Path) -> dict:
         )
     except subprocess.TimeoutExpired:
         record = {
-            "backend": backend, "ctx_len": ctx,
+            "backend": CANONICAL_BACKEND[backend],
+            "quant": CANONICAL_QUANT[backend],
+            "ctx_len": ctx,
             "decode_tok_s": None, "peak_vram_mib": None,
             "wall_s": time.perf_counter() - t0,
             "oom": False, "error": f"timeout (>{CELL_TIMEOUT_S}s)",
@@ -194,7 +210,9 @@ def run_one(backend: str, ctx: int, out_path: Path) -> dict:
         return json.loads(out_path.read_text())
 
     return {
-        "backend": backend, "ctx_len": ctx,
+        "backend": CANONICAL_BACKEND[backend],
+        "quant": CANONICAL_QUANT[backend],
+        "ctx_len": ctx,
         "decode_tok_s": None, "peak_vram_mib": None,
         "wall_s": time.perf_counter() - t0,
         "oom": False,
