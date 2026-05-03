@@ -46,8 +46,9 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--num-sinks", type=int, default=4)
     p.add_argument("--window-pages", type=int, default=2)
     p.add_argument("--page-size", type=int, default=64)
-    p.add_argument("--kv-bits", type=int, choices=[4, 8], default=8,
-                   help="KV cache bit width (4 = INT4 packed; 8 = INT8). Default 8.")
+    p.add_argument("--kv-bits", type=int, choices=[4, 8], default=4,
+                   help="KV cache bit width (4 = INT4 packed; 8 = INT8). "
+                        "Default 4 — RULER NIAH 4k cleared 100/100/100 vs dense.")
     p.add_argument("--no-patch", action="store_true",
                    help="Skip Quest+INT8 patch; run vanilla SDPA (debugging).")
     p.add_argument("--system-prompt", default=_DEFAULT_SYSTEM_PROMPT)

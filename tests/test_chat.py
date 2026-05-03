@@ -67,14 +67,16 @@ def test_parse_args_context_file():
     assert a2.context_file == "-"
 
 
-def test_parse_args_kv_bits_default_8():
+def test_parse_args_kv_bits_default_4():
+    """INT4 promoted to default after RULER 4k @ INT4 gate cleared 100/100/100."""
     args = _parse_args(["--model", "x", "--context", "1024", "-i"])
-    assert args.kv_bits == 8
-
-
-def test_parse_args_kv_bits_4():
-    args = _parse_args(["--model", "x", "--context", "1024", "-i", "--kv-bits", "4"])
     assert args.kv_bits == 4
+
+
+def test_parse_args_kv_bits_8_explicit():
+    """INT8 fallback still selectable via --kv-bits 8."""
+    args = _parse_args(["--model", "x", "--context", "1024", "-i", "--kv-bits", "8"])
+    assert args.kv_bits == 8
 
 
 def test_parse_args_kv_bits_rejects_other_values():
