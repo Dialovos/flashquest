@@ -7,6 +7,8 @@ default; --interactive enters a REPL that resets the cache between turns.
 from __future__ import annotations
 
 import argparse
+import sys
+from pathlib import Path
 from typing import Sequence
 
 
@@ -45,3 +47,29 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
                    help="Skip Quest+INT8 patch; run vanilla SDPA (debugging).")
     p.add_argument("--system-prompt", default=_DEFAULT_SYSTEM_PROMPT)
     return p.parse_args(argv)
+
+
+def _read_context_file(path: str) -> str:
+    """Read --context-file. '-' means stdin."""
+    if path == "-":
+        return sys.stdin.read()
+    return Path(path).read_text()
+
+
+def _build_initial_history(args: argparse.Namespace) -> list[dict]:
+    """Build the chat history from CLI args.
+
+    Order: system → (context-file as user) → (--prompt as user).
+    Single-shot mode requires at least one of --prompt or --context-file.
+    """
+    history: list[dict] = [{"role": "system", "content": args.system_prompt}]
+    if args.context_file is not None:
+        history.append({"role": "user", "content": _read_context_file(args.context_file)})
+    if args.prompt is not None:
+        history.append({"role": "user", "content": args.prompt})
+    if not args.interactive and len(history) == 1:
+        sys.stderr.write(
+            "error: single-shot mode requires --prompt or --context-file (or pass -i)\n"
+        )
+        sys.exit(2)
+    return history

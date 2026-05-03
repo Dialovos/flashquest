@@ -65,3 +65,69 @@ def test_parse_args_context_file():
     assert a1.context_file == "doc.txt"
     a2 = _parse_args(["--model", "x", "--context", "1024", "--context-file", "-", "-i"])
     assert a2.context_file == "-"
+
+
+def _ns(**overrides) -> argparse.Namespace:
+    """Minimal Namespace for _build_initial_history."""
+    base = dict(
+        prompt=None, context_file=None, interactive=False,
+        system_prompt="You are a helpful assistant.",
+    )
+    base.update(overrides)
+    return argparse.Namespace(**base)
+
+
+def test_build_initial_history_prompt_only():
+    """--prompt becomes a single user message after the system prompt."""
+    from flashquest.runtime.chat import _build_initial_history
+    h = _build_initial_history(_ns(prompt="hello"))
+    assert h == [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "hello"},
+    ]
+
+
+def test_build_initial_history_interactive_no_prompt():
+    """Interactive with no --prompt: only the system message."""
+    from flashquest.runtime.chat import _build_initial_history
+    h = _build_initial_history(_ns(interactive=True))
+    assert h == [{"role": "system", "content": "You are a helpful assistant."}]
+
+
+def test_build_initial_history_context_file_path(tmp_path):
+    """--context-file PATH reads the file and becomes the first user message."""
+    from flashquest.runtime.chat import _build_initial_history
+    p = tmp_path / "doc.txt"
+    p.write_text("doc body")
+    h = _build_initial_history(_ns(context_file=str(p), interactive=True))
+    assert h[0]["role"] == "system"
+    assert h[1] == {"role": "user", "content": "doc body"}
+
+
+def test_build_initial_history_context_file_and_prompt(tmp_path):
+    """--context-file + --prompt: doc as first user msg, prompt as second."""
+    from flashquest.runtime.chat import _build_initial_history
+    p = tmp_path / "doc.txt"
+    p.write_text("doc body")
+    h = _build_initial_history(_ns(context_file=str(p), prompt="summarize"))
+    assert h == [
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "doc body"},
+        {"role": "user", "content": "summarize"},
+    ]
+
+
+def test_build_initial_history_stdin(monkeypatch):
+    """--context-file '-' reads from stdin."""
+    from flashquest.runtime.chat import _build_initial_history
+    monkeypatch.setattr("sys.stdin", io.StringIO("piped content"))
+    h = _build_initial_history(_ns(context_file="-", prompt="ok"))
+    assert h[1] == {"role": "user", "content": "piped content"}
+    assert h[2] == {"role": "user", "content": "ok"}
+
+
+def test_build_initial_history_no_input_raises():
+    """Single-shot with no --prompt and no --context-file is an error."""
+    from flashquest.runtime.chat import _build_initial_history
+    with pytest.raises(SystemExit):
+        _build_initial_history(_ns())
