@@ -73,3 +73,25 @@ def _build_initial_history(args: argparse.Namespace) -> list[dict]:
         )
         sys.exit(2)
     return history
+
+
+def _truncate_history(messages: list[dict], tokenizer, ctx_len: int) -> list[dict]:
+    """Drop oldest non-system user/assistant pairs until the rendered prompt
+    fits in ctx_len - 256 (decode head room). Preserve the system message and
+    refuse to drop below 2 messages total."""
+    while True:
+        text = tokenizer.apply_chat_template(
+            messages, add_generation_prompt=True, tokenize=False,
+        )
+        n = len(tokenizer(text).input_ids)
+        if n <= ctx_len - 256 or len(messages) <= 2:
+            return messages
+        sys_msgs = [m for m in messages if m["role"] == "system"]
+        rest = [m for m in messages if m["role"] != "system"]
+        dropped = 1
+        if len(rest) >= 2 and rest[1]["role"] == "assistant":
+            dropped = 2
+        rest = rest[dropped:]
+        messages = sys_msgs + rest
+        if not rest:
+            return messages

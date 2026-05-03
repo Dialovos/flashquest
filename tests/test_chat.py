@@ -131,3 +131,60 @@ def test_build_initial_history_no_input_raises():
     from flashquest.runtime.chat import _build_initial_history
     with pytest.raises(SystemExit):
         _build_initial_history(_ns())
+
+
+class _StubTokenizer:
+    """Minimal stub: chat-template renders 'role: content' lines, tokenize splits on spaces."""
+
+    def apply_chat_template(self, messages, add_generation_prompt=True, tokenize=False):
+        return "\n".join(f"{m['role']}: {m['content']}" for m in messages)
+
+    def __call__(self, text, return_tensors=None):
+        class _Ids:
+            def __init__(self, n):
+                self.input_ids = [list(range(n))] if return_tensors == "pt" else list(range(n))
+        return _Ids(len(text.split()))
+
+
+def test_truncate_history_no_op_when_under_budget():
+    """If rendered tokens <= ctx_len - 256, history returned as-is."""
+    from flashquest.runtime.chat import _truncate_history
+    tok = _StubTokenizer()
+    messages = [
+        {"role": "system", "content": "sys"},
+        {"role": "user", "content": "hi"},
+    ]
+    out = _truncate_history(messages, tok, ctx_len=10000)
+    assert out == messages
+
+
+def test_truncate_history_drops_oldest_pair():
+    """Drops oldest user/assistant pair until under budget; preserves system."""
+    from flashquest.runtime.chat import _truncate_history
+    tok = _StubTokenizer()
+    messages = [
+        {"role": "system", "content": "sys p"},
+        {"role": "user", "content": "old old old"},
+        {"role": "assistant", "content": "old reply 1"},
+        {"role": "user", "content": "mid mid mid"},
+        {"role": "assistant", "content": "mid reply 2"},
+        {"role": "user", "content": "new new new"},
+    ]
+    # ctx_len=260 → budget = 260 - 256 = 4 tokens.
+    out = _truncate_history(messages, tok, ctx_len=260)
+    assert out[0]["role"] == "system"
+    assert any(m["content"] == "new new new" for m in out)
+    assert not any("old" in m["content"] for m in out)
+
+
+def test_truncate_history_minimum_two():
+    """Stops dropping when only system + one message remain."""
+    from flashquest.runtime.chat import _truncate_history
+    tok = _StubTokenizer()
+    messages = [
+        {"role": "system", "content": "s"},
+        {"role": "user", "content": " ".join(["w"] * 1000)},
+    ]
+    out = _truncate_history(messages, tok, ctx_len=10)
+    assert len(out) == 2
+    assert out[0]["role"] == "system"
