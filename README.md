@@ -225,6 +225,39 @@ Greedy by default; `--sample --temperature 0.7 --top-p 0.9 --seed 0` for
 reproducible sampled generation. `--no-patch` falls back to vanilla SDPA
 for debugging.
 
+## Phase 6 task 4 — head-to-head benchmark
+
+Llama-3.2-3B-Instruct, RTX 3050 Ti Laptop (sm_86, 4 GB VRAM, WSL2 + CUDA
+12.5). Single request, 128 decode tokens, each backend's native-strongest
+config; one process at a time, `nice -n 19` for shell-driven cells, 30
+min hard cap per cell.
+
+| Backend | Quant + KV | 8 k decode tok/s | 32 k decode tok/s | 128 k fits? | Peak VRAM @ max fit |
+|---|---|---|---|---|---|
+| **flashquest** | AWQ-INT4 + INT8 paged KV + Quest top-k retention=0.25 (all-retrieval head_pattern) | **2.29** | timeout (>1 800 s) | ✗ (CUDA alloc error) | 4 703 MiB @ 8 k |
+| llama.cpp -ngl 999 | Q4_K_M, FP16 KV | **39.88** | aborted (~21 min wall) | ✗ (failed to create context) | n/a † |
+| vLLM 0.7.3 | AWQ-INT4, FP16 KV | OOM (KV cache caps ~3 904 tokens) | OOM | ✗ (OOM) | n/a |
+
+† llama.cpp peak VRAM not captured — `nvidia-smi` polled after process exit. Phase 0 baseline at 8 k Q4_K_M reported 3 543 MiB; that's the canonical reference.
+
+**SPEC §11.4 ≥5× capability gain over `llama.cpp -ngl 999` does NOT
+clear on raw tok/s.** The 4 GB VRAM ceiling caps all three backends at
+32 k+ on a 3B model: none decoded at 32 k within the 30 min budget on
+this hardware. flashquest's 8 k number uses the all-retrieval
+head_pattern that ships with `flashquest chat`. Phase 6 task 1c
+separately measured **5.14 tok/s @ 32 k** with a synthetic 70/30
+retrieval/streaming head_pattern (`benchmarks/phase6_decode_v2.json`)
+— that's the deployment-strongest config flashquest *can* run, but a
+learned DuoAttention pattern for Llama-3.2-3B doesn't exist upstream.
+
+The gap to the 10 tok/s v1.0 target + ≥5× over llama.cpp is gated on
+**Phase 6 task 5** (INT4 KV + kernel-fused criticality + TurboQuant per
+the post-§11 research notes). Re-running the head-to-head once that
+ships is the planned re-test.
+
+Re-run via `python scripts/phase6_run_headtohead.py` (resumable with
+`--skip-existing`). Per-cell JSONs in `benchmarks/phase6_cells/`.
+
 ## Non-goals
 
 - Training kernels. Inference only.

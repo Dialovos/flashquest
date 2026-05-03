@@ -302,3 +302,109 @@ truncation when rendered prompt exceeds `--context - 256`.
 - Token/sec live counter in REPL.
 - ANSI-colored role tags.
 - `--max-context` auto-detected from `model.config.max_position_embeddings`.
+
+---
+
+# Phase 6 Task 4 Notes
+
+**Started:** 2026-05-02
+**Status:** **complete (tag `phase-6-task-4`); SPEC §11.4 ≥5× gate did NOT clear on raw tok/s — annotated below.**
+**Spec:** [../superpowers/specs/2026-05-02-phase-6-headtohead-bench-design.md](../superpowers/specs/2026-05-02-phase-6-headtohead-bench-design.md)
+**Plan:** [../superpowers/plans/2026-05-02-phase-6-headtohead-bench.md](../superpowers/plans/2026-05-02-phase-6-headtohead-bench.md)
+
+## Summary
+
+Three backends × three contexts on Llama-3.2-3B-Instruct, RTX 3050 Ti
+Laptop (sm_86, 4 GB VRAM, WSL2 + CUDA 12.5). Each backend's
+native-strongest config; one process at a time; `nice -n 19` for shell-
+driven cells; 30 min hard cap per cell.
+
+## Result
+
+| Backend | Quant + KV | 8 k decode tok/s | 32 k decode tok/s | 128 k fits? | Peak VRAM @ max fit |
+|---|---|---|---|---|---|
+| **flashquest** | AWQ-INT4 + INT8 paged KV + Quest top-k retention=0.25 (all-retrieval head_pattern) | **2.29** | timeout (>1800 s) | ✗ (CUDA alloc error) | 4703 MiB @ 8 k |
+| llama.cpp -ngl 999 | Q4_K_M, FP16 KV | **39.88** | aborted (core dumped at ~21 min wall) | ✗ (failed to create context) | n/a † |
+| vLLM 0.7.3 | AWQ-INT4, FP16 KV | OOM (KV cache caps at ~3 904 tokens) | OOM | ✗ (OOM) | n/a |
+
+† llama.cpp peak VRAM not captured — `nvidia-smi` polled after process exit shows 0 MiB. Phase 0 baseline (8 k Q4_K_M) reported 3 543 MiB — that number stands as the canonical reference.
+
+## Verdict
+
+**SPEC §11.4 ≥5× capability gain over `llama.cpp -ngl 999` does NOT
+clear on raw tok/s.** The 4 GB VRAM ceiling is the dominant constraint
+for all three backends at 32 k+ on a 3B model. None of the three
+produced a working 32 k decode within the 30 min budget on this
+hardware:
+
+- **flashquest** at 32 k all-retrieval timed out — the prefill phase
+  alone is ~10 min (32 k tokens × dense O(L²) attention through the
+  patched forward), and the per-decode-step cost is 3-4× the synthetic
+  70/30 head_pattern that Phase 6 task 1c used to record 5.14 tok/s
+  (`benchmarks/phase6_decode_v2.json`). All-retrieval is what
+  `flashquest chat` actually ships with — there is no learned
+  DuoAttention pattern for Llama-3.2-3B. Closing this gap is the work
+  in Phase 6 task 5+ (INT4 KV + kernel-fused criticality + TurboQuant
+  per the post-§11 research).
+- **llama.cpp** at 32 k aborted with a core dump after 21 min wall.
+  KV at FP16 is small (~28 MiB) but compute buffers + intermediate
+  activations exhaust the 4 GB envelope. At 128 k it fails immediately
+  at context creation (OOM-equivalent).
+- **vLLM 0.7.3** OOMs at all three contexts. Its KV-cache estimator
+  caps at ~3 904 / 4 224 tokens regardless of `gpu_memory_utilization`
+  — the AWQ weights + FA-2 backend overhead leave too little headroom.
+
+## Capability axis (alternate frame)
+
+Re-read as "max ctx that *fits and decodes*":
+
+| Backend | Largest ctx that decodes | Notes |
+|---|---|---|
+| flashquest | 8 k @ 2.29 tok/s | Phase 6 task 1c separately measured 32 k @ 5.14 tok/s with a synthetic 70/30 head_pattern. |
+| llama.cpp | 8 k @ 39.88 tok/s | 32 k aborts on this hardware. |
+| vLLM | ~3 904 tokens @ 17.3 tok/s (Phase 0) | OOMs at 4 k+. |
+
+Capability ratio: flashquest ≈ llama.cpp on max-ctx (both 8 k);
+flashquest > vLLM (both fit small ctx; vLLM OOMs above 4 k while
+flashquest fits 8 k+). The ≥5× gate vs llama.cpp is unmet on either
+axis on this hardware.
+
+## What closes the gap
+
+Per the post-§11 research notes (`memory/project_post_v1_kernel_research.md`):
+
+1. **INT4 KV + kernel-fused criticality** (Phase 6 task 5). Halves KV
+   memory traffic at decode; collapses page-scoring + select-pages
+   into a single Triton kernel. Estimated ~2-3× decode speedup.
+2. **TurboQuant** (Google DeepMind, ICLR 2026). Per-block WHT + scalar
+   Lloyd-Max quantization on K/V. Training-free, composes with our
+   paged storage and Quest top-k. ~3× further KV shrink (effective
+   INT2.5) at near-zero quality cost.
+3. **Trained DuoAttention pattern for Llama-3.2-3B** (deferred). Would
+   bring decode close to Phase 6 task 1c's measured 5.14 tok/s in
+   deployment instead of the all-retrieval ~1.5-2 tok/s ceiling.
+
+The honest read: hitting ≥5× over llama.cpp on the same hardware
+requires INT4 KV (Phase 6 task 5) at minimum, and a working
+DuoAttention pattern (or TurboQuant follow-up) on top.
+
+## Surface
+
+- `scripts/bench_flashquest.py`, `scripts/bench_llamacpp.sh`
+  (parametrized), `scripts/bench_vllm.py` (parametrized + OOM catch).
+- `scripts/phase6_run_headtohead.py` orchestrator (1 800 s/cell hard
+  cap, `nice -n 19`, `--skip-existing` resume).
+- 5 unit tests in `tests/test_phase6_headtohead.py` covering planned
+  matrix order, `--dry-run` output, markdown rendering with mixed
+  fit/OOM/error cells, llama-bench parser, and the OOM-by-stderr path.
+- Per-cell JSONs in `benchmarks/phase6_cells/`; aggregated result in
+  `benchmarks/phase6_headtohead.{json,md}`.
+
+## v2 follow-ups
+
+- ExLlamaV2 fourth row (SPEC §6 task 8).
+- Multi-request throughput.
+- Latency percentiles.
+- Lower context curve (4 k / 16 k) for finer-grained scaling.
+- Re-run once Phase 6 task 5 (INT4 KV + kernel-fused criticality)
+  ships — that's the iteration where the gate plausibly clears.
