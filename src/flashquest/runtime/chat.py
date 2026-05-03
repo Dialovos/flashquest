@@ -182,3 +182,53 @@ def _run_repl(model, tokenizer, cache, history: list[dict], args) -> None:
         print("assistant> ", end="", flush=True)
         text = _stream_one(model, tokenizer, cache, history, args)
         history.append({"role": "assistant", "content": text})
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    args = _parse_args(argv)
+
+    from flashquest.runtime.awq_load import load_awq_model
+
+    model, tokenizer = load_awq_model(args.model)
+
+    cache = None
+    if not args.no_patch:
+        from flashquest.cache.persistent_int8 import PersistentInt8KVCache
+        from flashquest.eager.llama_persistent_patch import (
+            patch_llama_for_quest_persistent,
+        )
+
+        cfg = model.config
+        head_dim = getattr(cfg, "head_dim", None) or (
+            cfg.hidden_size // cfg.num_attention_heads
+        )
+        pattern = torch.ones(
+            cfg.num_hidden_layers, cfg.num_key_value_heads, dtype=torch.bool,
+        )
+        cache = PersistentInt8KVCache(
+            batch_size=1,
+            num_layers=cfg.num_hidden_layers,
+            num_kv_heads=cfg.num_key_value_heads,
+            head_dim=head_dim,
+            max_seq_len=args.context + args.max_new_tokens + 128,
+            page_size=args.page_size,
+            device="cuda",
+        )
+        patch_llama_for_quest_persistent(
+            model, cache=cache, head_pattern=pattern,
+            retention=args.retention, num_sinks=args.num_sinks,
+            window_pages=args.window_pages, page_size=args.page_size,
+        )
+
+    history = _build_initial_history(args)
+
+    if args.interactive:
+        _run_repl(model, tokenizer, cache, history, args)
+        return
+
+    history = _truncate_history(history, tokenizer, args.context)
+    _stream_one(model, tokenizer, cache, history, args)
+
+
+if __name__ == "__main__":
+    main()

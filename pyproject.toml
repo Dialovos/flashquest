@@ -36,6 +36,9 @@ bench = [
   "autoawq>=0.2,<1",
 ]
 
+[project.scripts]
+flashquest = "flashquest.runtime.chat:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
