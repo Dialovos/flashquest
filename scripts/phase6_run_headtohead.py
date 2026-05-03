@@ -98,6 +98,110 @@ def render_markdown(cells: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _build_results(cells: list[dict]) -> dict:
+    return {
+        "host": {"gpu": "NVIDIA GeForce RTX 3050 Ti Laptop GPU",
+                 "vram_mib": 4095, "cuda": "12.5", "wsl2": True},
+        "model": "Llama-3.2-3B-Instruct",
+        "date": time.strftime("%Y-%m-%d"),
+        "headline_metric": "decode tok/s at ctx=32768",
+        "capability_axis": "max ctx that decodes (≥1 tok/s, no OOM)",
+        "results": cells,
+    }
+
+
+def _parse_llamacpp_log(log_path: Path, ctx: int, rc: int, stderr: str) -> dict:
+    """Extract prefill/decode tok/s + peak VRAM from llama-bench markdown."""
+    record = {
+        "backend": "llama.cpp",
+        "quant": "Q4_K_M, FP16 KV",
+        "ctx_len": ctx,
+        "decode_tok_s": None, "prefill_tok_s": None, "peak_vram_mib": None,
+        "wall_s": None, "oom": False, "error": None,
+    }
+    if rc != 0 or not log_path.exists():
+        msg = (stderr or "").lower()
+        if "out of memory" in msg or ("cuda" in msg and "fail" in msg):
+            record["oom"] = True
+        record["error"] = f"rc={rc}: {(stderr or '')[-400:]}"
+        return record
+
+    text = log_path.read_text()
+    pp_match = re.search(rf"pp{ctx}\s*\|\s*([0-9.]+)\s*", text)
+    tg_match = re.search(r"tg128\s*\|\s*([0-9.]+)\s*", text)
+    if pp_match:
+        record["prefill_tok_s"] = float(pp_match.group(1))
+    if tg_match:
+        record["decode_tok_s"] = float(tg_match.group(1))
+    smi_match = re.search(r"(\d+)\s*MiB,\s*\d+\s*MiB", text)
+    if smi_match:
+        record["peak_vram_mib"] = int(smi_match.group(1))
+    if record["decode_tok_s"] is None:
+        record["error"] = "could not parse llama-bench output"
+    return record
+
+
+def run_one(backend: str, ctx: int, out_path: Path) -> dict:
+    """Drive a per-backend bench script, parse its JSON / log output."""
+    env_overrides: dict[str, str] = {}
+    log_path: Path | None = None
+    if backend == "flashquest":
+        cmd = [
+            "nice", "-n", "19",
+            sys.executable, str(REPO_ROOT / "scripts" / "bench_flashquest.py"),
+            "--ctx-len", str(ctx),
+            "--n-decode", "32",
+            "--out", str(out_path),
+        ]
+    elif backend == "llamacpp":
+        log_path = out_path.with_suffix(".llamacpp.txt")
+        cmd = ["bash", str(REPO_ROOT / "scripts" / "bench_llamacpp.sh")]
+        env_overrides = {"CTX": str(ctx), "OUT": str(log_path)}
+    elif backend == "vllm":
+        cmd = [
+            "nice", "-n", "19",
+            sys.executable, str(REPO_ROOT / "scripts" / "bench_vllm.py"),
+            "--max-model-len", str(ctx),
+            "--out", str(out_path),
+        ]
+    else:
+        raise ValueError(f"unknown backend: {backend}")
+
+    t0 = time.perf_counter()
+    try:
+        env = {**os.environ, **env_overrides} if env_overrides else None
+        res = subprocess.run(
+            cmd, env=env, capture_output=True, text=True,
+            timeout=CELL_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        record = {
+            "backend": backend, "ctx_len": ctx,
+            "decode_tok_s": None, "peak_vram_mib": None,
+            "wall_s": time.perf_counter() - t0,
+            "oom": False, "error": f"timeout (>{CELL_TIMEOUT_S}s)",
+        }
+        out_path.write_text(json.dumps(record, indent=2))
+        return record
+
+    if backend == "llamacpp":
+        record = _parse_llamacpp_log(log_path, ctx, res.returncode, res.stderr)
+        record["wall_s"] = time.perf_counter() - t0
+        out_path.write_text(json.dumps(record, indent=2))
+        return record
+
+    if out_path.exists():
+        return json.loads(out_path.read_text())
+
+    return {
+        "backend": backend, "ctx_len": ctx,
+        "decode_tok_s": None, "peak_vram_mib": None,
+        "wall_s": time.perf_counter() - t0,
+        "oom": False,
+        "error": f"subprocess returned {res.returncode}: {res.stderr[-500:]}",
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--dry-run", action="store_true",
@@ -114,8 +218,25 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"  - {b} @ {c}")
         return 0
 
-    sys.stderr.write("error: full run not yet implemented (use --dry-run)\n")
-    return 2
+    CELL_DIR.mkdir(parents=True, exist_ok=True)
+    cells: list[dict] = []
+    for backend, ctx in matrix:
+        cell_path = _cell_path(backend, ctx)
+        if args.skip_existing and cell_path.exists():
+            print(f"[skip] {backend} @ {ctx} (cached at {cell_path})")
+            cells.append(json.loads(cell_path.read_text()))
+            continue
+        print(f"[run]  {backend} @ {ctx} → {cell_path}", flush=True)
+        cell = run_one(backend, ctx, cell_path)
+        cells.append(cell)
+        _free_gpu()
+
+    RESULTS_JSON.write_text(json.dumps(_build_results(cells), indent=2))
+    RESULTS_MD.write_text(render_markdown(cells))
+    print(f"\nWrote {RESULTS_JSON}")
+    print(f"Wrote {RESULTS_MD}\n")
+    print(render_markdown(cells))
+    return 0
 
 
 if __name__ == "__main__":

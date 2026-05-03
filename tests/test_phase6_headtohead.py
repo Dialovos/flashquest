@@ -63,3 +63,34 @@ def test_render_markdown_table_has_three_backend_rows():
     assert "vLLM" in md
     assert "5.14" in md
     assert "OOM" in md
+
+
+def test_parse_llamacpp_log(tmp_path):
+    """_parse_llamacpp_log extracts pp + tg + smi from an llama-bench markdown."""
+    log = tmp_path / "llamacpp_8192.txt"
+    log.write_text(
+        "| model | size | params | backend | ngl | test | t/s |\n"
+        "|---|---|---|---|---|---|---|\n"
+        "| llama 3B Q4_K_M | 1.87 GiB | 3.21 B | CUDA | 999 | pp8192      | 736.55 ± 55.81 |\n"
+        "| llama 3B Q4_K_M | 1.87 GiB | 3.21 B | CUDA | 999 | tg128       | 39.60 ± 0.11   |\n"
+        "---\n"
+        "VRAM at run-tail (nvidia-smi):\n"
+        "memory.used [MiB], memory.free [MiB]\n"
+        "3543 MiB, 552 MiB\n"
+    )
+    rec = H._parse_llamacpp_log(log, ctx=8192, rc=0, stderr="")
+    assert rec["prefill_tok_s"] == 736.55
+    assert rec["decode_tok_s"] == 39.60
+    assert rec["peak_vram_mib"] == 3543
+    assert rec["oom"] is False
+
+
+def test_parse_llamacpp_log_oom(tmp_path):
+    """A non-zero rc with 'out of memory' in stderr → oom=true."""
+    log = tmp_path / "fake.txt"
+    log.write_text("")
+    rec = H._parse_llamacpp_log(
+        log, ctx=131072, rc=1,
+        stderr="ggml_cuda_compute_forward: out of memory",
+    )
+    assert rec["oom"] is True
