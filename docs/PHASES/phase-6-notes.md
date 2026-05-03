@@ -182,3 +182,80 @@ Phase 6 task 1a ships:
 
 Phase 6 task 1b begins (when prioritised): close the 2.03 → 4 tok/s gap via
 EAGLE-2 speculation OR re-profile-driven kernel work.
+
+---
+
+# Phase 6 Task 2 Notes
+
+**Started:** 2026-05-02
+**Status:** **complete (tag `phase-6-task-2`); SPEC §6 task 2 gate cleared.**
+**Spec:** [../superpowers/specs/2026-05-02-phase-6-ruler-niah-4k-design.md](../superpowers/specs/2026-05-02-phase-6-ruler-niah-4k-design.md)
+**Plan:** [../superpowers/plans/2026-05-02-phase-6-ruler-niah-4k.md](../superpowers/plans/2026-05-02-phase-6-ruler-niah-4k.md)
+
+## Summary
+
+Replaced the broken passkey methodology (Phase 5/6 task 1's un-seeded
+`torch.rand` head_pattern variance) with the SPEC's actual quality gate —
+RULER NIAH (single, multikey, multivalue) at ctx=4 k on
+Llama-3.2-3B-AWQ, retention=0.25 vs dense SDPA, ≥85 % pass per task.
+
+## Decisions
+
+- **Hybrid harness.** Own pure-Python generator (no `nltk`/`wonderwords`/`tqdm`
+  deps) but RULER's prompt template + scoring vendored verbatim from
+  `vendor/RULER/scripts/data/synthetic/niah.py`. UUIDs for keys, 7-digit
+  numbers for values (RULER defaults `type_needle_k=uuids`,
+  `type_needle_v=numbers`).
+- **All-retrieval head_pattern** (`head_pattern = ones(L, H_kv)`). Eliminates
+  the un-seeded `torch.rand` variance that broke the passkey eval. Every
+  head runs Quest top-k at retention=0.25 + sinks + window. Harder test
+  (no streaming-head escape); DuoAttention pattern training deferred.
+- **Dense baseline = vanilla SDPA**, same model, no flashquest patches.
+  SPEC gate is exactly "≥85 % vs dense"; this is dense.
+- **n=20/task** by default (CI ~±10 %, ~45 min wall on 3050 Ti). CLI takes
+  `--n-samples 64` for release-grade.
+- **Corpus committed** (`data/PaulGrahamEssays.json`, ~660 KB).
+  RULER ships URLs and a download script that needs html2text + bs4 + tqdm
+  to scrape paulgraham.com; we fetch the gkamradt-pre-extracted .txt subset
+  via `scripts/fetch_ruler_corpus.sh` to avoid that dep tree, and commit
+  the resulting JSON for reproducibility.
+
+## Result (2026-05-02)
+
+`benchmarks/phase6_ruler_4k.json`:
+
+| task | dense | patched | ratio | pass |
+|---|---|---|---|---|
+| niah_single | 20/20 | 20/20 | 100 % | ✅ |
+| niah_multikey | 20/20 | 20/20 | 100 % | ✅ |
+| niah_multivalue | 20/20 | 19/20 | 95 % | ✅ |
+
+**all_pass: True.** Wall: dense 15.2 min, patched 25.2 min, total 40.4 min.
+
+The single multivalue miss at retention=0.25 is below the 85 % gate margin;
+the patched backend recovers all 4 distractor values across 19 of 20 prompts.
+
+## Surface
+
+- `flashquest.eval.niah` — `make_prompt(task, ctx_len, tokenizer, seed)`,
+  `score(generated, expected_keys)`, `random_uuid`, `random_number`,
+  `NEEDLE_TEMPLATE`, `PROMPT_TEMPLATE`.
+- `flashquest.eval.runner.run_niah(model, tokenizer, task, n_samples, ctx_len, ..., pre_sample=None)`.
+- `scripts/phase6_run_ruler_4k.py` — CLI loads dense + patched, runs all 3 tasks under both, writes JSON.
+- `scripts/fetch_ruler_corpus.sh` — re-build `data/PaulGrahamEssays.json` from upstream.
+
+## Tests
+
+- `tests/test_eval_niah.py` — ER1 (prompt fits ctx), ER2 (seed determinism),
+  ER3 (multikey 4 distinct keys), multivalue 4-values check, ER4 (score
+  substring rule), ER6 (n=0), ER5 (slow-marked smoke on Llama-3.2-1B).
+- 10 fast tests + 1 slow smoke; all green; full fast suite 164 passed
+  (no regressions in Phases 1–6).
+
+## v2 follow-ups
+
+- Variable context lengths (8 k, 16 k, 32 k).
+- Other RULER tasks (variable_tracking, qa_*, common_words, freq_words).
+- LongBench.
+- DuoAttention pattern training for Llama-3.2-3B (so streaming heads are real, not all-retrieval).
+- vLLM / llama.cpp head-to-head numbers (Phase 6 task 4 charter).
