@@ -152,3 +152,33 @@ def _stream_one(model, tokenizer, cache, messages: list[dict], args) -> str:
     thread.join()
     print()
     return "".join(pieces)
+
+
+def _run_repl(model, tokenizer, cache, history: list[dict], args) -> None:
+    """REPL: read user line, append to history, truncate, stream, append assistant."""
+    backend = "patched" if cache is not None else "sdpa"
+    print(
+        f"flashquest chat — model={args.model}, ctx={args.context}, backend={backend}.",
+        flush=True,
+    )
+    print("Ctrl-C or empty EOF to exit.\n", flush=True)
+
+    if len(history) >= 2 and history[-1]["role"] == "user":
+        history = _truncate_history(history, tokenizer, args.context)
+        print("assistant> ", end="", flush=True)
+        text = _stream_one(model, tokenizer, cache, history, args)
+        history.append({"role": "assistant", "content": text})
+
+    while True:
+        try:
+            user = input("you> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+        if not user:
+            continue
+        history.append({"role": "user", "content": user})
+        history = _truncate_history(history, tokenizer, args.context)
+        print("assistant> ", end="", flush=True)
+        text = _stream_one(model, tokenizer, cache, history, args)
+        history.append({"role": "assistant", "content": text})
