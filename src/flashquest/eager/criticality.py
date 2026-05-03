@@ -123,3 +123,41 @@ def page_scores_int8_fast(
     term2 = torch.matmul(Q_pos_g, Kscale_f.transpose(-1, -2)) * 255.0
     scores_g = term1 + term2  # (B, H_kv, n_rep * S_q, P)
     return scores_g.view(B, H_q, S_q, P)
+
+
+def page_scores_int4_fast(
+    Q: torch.Tensor,
+    K_scale: torch.Tensor,
+    K_mn: torch.Tensor,
+) -> torch.Tensor:
+    """Algebraic Quest criticality for INT4 KV.
+
+    Identity: max(Q·K_mn, Q·K_mx) = Q·K_mn + 15·relu(Q)·K_scale,
+    since K_scale ≥ 0 and page_max ≡ K_mn + 15·K_scale (asymmetric INT4 KIVI).
+    Two-matmul reformulation; same shape contracts as page_scores_int8_fast,
+    only the constant changes (15 vs 255).
+
+    Args:
+        Q: (B, H_q, S_q, D) bf16/fp16/fp32.
+        K_scale: (B, H_kv, P, D) bf16 — per-page channel-wise scale (≥0).
+        K_mn:    (B, H_kv, P, D) bf16 — per-page channel-wise minimum.
+
+    Returns:
+        (B, H_q, S_q, P) fp32 page-criticality scores.
+    """
+    B, H_q, S_q, D = Q.shape
+    H_kv, P = K_scale.shape[1], K_scale.shape[2]
+    if H_q % H_kv != 0:
+        raise ValueError(f"H_q={H_q} must be divisible by H_kv={H_kv}")
+    n_rep = H_q // H_kv
+
+    Q_f = Q.float()
+    Q_g = Q_f.view(B, H_kv, n_rep * S_q, D)
+    Q_pos_g = Q_g.clamp(min=0)
+    Kmn_f = K_mn.float()
+    Kscale_f = K_scale.float()
+
+    term1 = torch.matmul(Q_g, Kmn_f.transpose(-1, -2))
+    term2 = torch.matmul(Q_pos_g, Kscale_f.transpose(-1, -2)) * 15.0
+    scores_g = term1 + term2
+    return scores_g.view(B, H_q, S_q, P)
