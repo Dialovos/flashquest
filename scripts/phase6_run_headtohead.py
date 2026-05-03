@@ -165,6 +165,7 @@ def run_one(backend: str, ctx: int, out_path: Path) -> dict:
             sys.executable, str(REPO_ROOT / "scripts" / "bench_flashquest.py"),
             "--ctx-len", str(ctx),
             "--n-decode", "32",
+            "--kv-bits", "4",
             "--out", str(out_path),
         ]
     elif backend == "llamacpp":
