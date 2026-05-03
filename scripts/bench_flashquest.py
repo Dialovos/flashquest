@@ -14,7 +14,6 @@ from pathlib import Path
 
 import torch
 
-from flashquest.cache.persistent_int8 import PersistentInt8KVCache
 from flashquest.eager.llama_persistent_patch import patch_llama_for_quest_persistent
 from flashquest.runtime.awq_load import load_awq_model
 
@@ -34,12 +33,19 @@ def main() -> None:
     p.add_argument("--num-sinks", type=int, default=4)
     p.add_argument("--window-pages", type=int, default=2)
     p.add_argument("--page-size", type=int, default=64)
+    p.add_argument("--kv-bits", type=int, choices=[4, 8], default=8,
+                   help="KV cache bit width (4 = INT4 packed; 8 = INT8). Default 8.")
     p.add_argument("--out", type=str, required=True)
     args = p.parse_args()
 
+    quant_label = (
+        "AWQ-INT4 + INT4 paged KV + Quest top-k retention=0.25"
+        if args.kv_bits == 4
+        else "AWQ-INT4 + INT8 paged KV + Quest top-k retention=0.25"
+    )
     record = {
         "backend": "flashquest",
-        "quant": "AWQ-INT4 + INT8 paged KV + Quest top-k retention=0.25",
+        "quant": quant_label,
         "ctx_len": args.ctx_len,
         "decode_tok_s": None,
         "prefill_tok_s": None,
@@ -52,6 +58,10 @@ def main() -> None:
     t_start = time.perf_counter()
     try:
         torch.cuda.reset_peak_memory_stats()
+        if args.kv_bits == 4:
+            from flashquest.cache.persistent_int4 import PersistentInt4KVCache as CacheCls
+        else:
+            from flashquest.cache.persistent_int8 import PersistentInt8KVCache as CacheCls
         model, tok = load_awq_model(args.model)
         cfg = model.config
         head_dim = getattr(cfg, "head_dim", None) or (
@@ -60,7 +70,7 @@ def main() -> None:
         pattern = torch.ones(
             cfg.num_hidden_layers, cfg.num_key_value_heads, dtype=torch.bool,
         )
-        cache = PersistentInt8KVCache(
+        cache = CacheCls(
             batch_size=1,
             num_layers=cfg.num_hidden_layers,
             num_kv_heads=cfg.num_key_value_heads,

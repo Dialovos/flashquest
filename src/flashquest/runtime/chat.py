@@ -46,6 +46,8 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--num-sinks", type=int, default=4)
     p.add_argument("--window-pages", type=int, default=2)
     p.add_argument("--page-size", type=int, default=64)
+    p.add_argument("--kv-bits", type=int, choices=[4, 8], default=8,
+                   help="KV cache bit width (4 = INT4 packed; 8 = INT8). Default 8.")
     p.add_argument("--no-patch", action="store_true",
                    help="Skip Quest+INT8 patch; run vanilla SDPA (debugging).")
     p.add_argument("--system-prompt", default=_DEFAULT_SYSTEM_PROMPT)
@@ -193,7 +195,10 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     cache = None
     if not args.no_patch:
-        from flashquest.cache.persistent_int8 import PersistentInt8KVCache
+        if args.kv_bits == 4:
+            from flashquest.cache.persistent_int4 import PersistentInt4KVCache as CacheCls
+        else:
+            from flashquest.cache.persistent_int8 import PersistentInt8KVCache as CacheCls
         from flashquest.eager.llama_persistent_patch import (
             patch_llama_for_quest_persistent,
         )
@@ -205,7 +210,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         pattern = torch.ones(
             cfg.num_hidden_layers, cfg.num_key_value_heads, dtype=torch.bool,
         )
-        cache = PersistentInt8KVCache(
+        cache = CacheCls(
             batch_size=1,
             num_layers=cfg.num_hidden_layers,
             num_kv_heads=cfg.num_key_value_heads,

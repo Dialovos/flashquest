@@ -67,6 +67,21 @@ def test_parse_args_context_file():
     assert a2.context_file == "-"
 
 
+def test_parse_args_kv_bits_default_8():
+    args = _parse_args(["--model", "x", "--context", "1024", "-i"])
+    assert args.kv_bits == 8
+
+
+def test_parse_args_kv_bits_4():
+    args = _parse_args(["--model", "x", "--context", "1024", "-i", "--kv-bits", "4"])
+    assert args.kv_bits == 4
+
+
+def test_parse_args_kv_bits_rejects_other_values():
+    with pytest.raises(SystemExit):
+        _parse_args(["--model", "x", "--context", "1024", "-i", "--kv-bits", "16"])
+
+
 def _ns(**overrides) -> argparse.Namespace:
     """Minimal Namespace for _build_initial_history."""
     base = dict(
