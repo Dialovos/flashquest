@@ -1,71 +1,100 @@
-"""vLLM decode + prefill timing at 8k context, single request.
+"""vLLM single-request decode bench, parametric over --max-model-len.
 
-vLLM does not load Q4_K_M GGUF directly, so this baseline uses
-Llama-3.2-3B AWQ-INT4 — same model, comparable bit-width, different
-quant method. Document this caveat when comparing against the
-llama.cpp Q4_K_M number.
+Catches OOM during LLM(...) construction and llm.generate(...) and writes a
+per-cell JSON record so the orchestrator can keep going.
 """
+from __future__ import annotations
+
+import argparse
+import gc
 import json
 import time
 from pathlib import Path
 
-import torch
-from vllm import LLM, SamplingParams
+
+def _record_skeleton(model_id: str, max_model_len: int) -> dict:
+    return {
+        "backend": "vLLM 0.7.3",
+        "quant": "AWQ-INT4, FP16 KV",
+        "ctx_len": max_model_len,
+        "decode_tok_s": None,
+        "prefill_tok_s": None,
+        "peak_vram_mib": None,
+        "wall_s": None,
+        "oom": False,
+        "error": None,
+    }
 
 
 def main() -> None:
-    # casperhansen runs the canonical AutoAWQ pipeline. The originally cited
-    # `hugging-quants/Llama-3.2-3B-Instruct-AWQ-INT4` does not exist on the Hub.
-    model_id = "casperhansen/llama-3.2-3b-instruct-awq"
-    llm = LLM(
-        model=model_id,
-        quantization="awq",
-        dtype="float16",
-        gpu_memory_utilization=0.95,
-        # vLLM cannot fit 8 k context on 4 GB even at util=0.95 (max KV cache
-        # tops out at ~3904 tokens — the AWQ-INT4 weights + framework overhead
-        # leave too little for a full 8 k KV cache). Falling back to 4 k for a
-        # comparable single-request baseline. This is itself a finding: it is
-        # *why* flashquest exists.
-        max_model_len=4096,
-        enforce_eager=False,
-        swap_space=0,
-    )
+    p = argparse.ArgumentParser()
+    p.add_argument("--model", default="casperhansen/llama-3.2-3b-instruct-awq")
+    p.add_argument("--max-model-len", type=int, required=True)
+    p.add_argument("--out", type=str, required=True)
+    args = p.parse_args()
 
-    # ~3500 input tokens leaves headroom for 128 generated tokens within 4 k
-    # (max_model_len above; see comment on the OOM at 8 k).
-    prompt = ("The quick brown fox jumps over the lazy dog. " * 1000)[:14000]
+    record = _record_skeleton(args.model, args.max_model_len)
+    t_start = time.perf_counter()
 
-    # Warm-up
-    llm.generate([prompt], SamplingParams(max_tokens=8, temperature=0.0))
-    torch.cuda.synchronize()
+    import torch  # imported here so OOM during import is caught below
 
-    # Measure
-    t0 = time.perf_counter()
-    outputs = llm.generate([prompt], SamplingParams(max_tokens=128, temperature=0.0))
-    torch.cuda.synchronize()
-    t1 = time.perf_counter()
+    try:
+        from vllm import LLM, SamplingParams
 
-    out = outputs[0]
-    n_in = len(out.prompt_token_ids)
-    n_out = len(out.outputs[0].token_ids)
-    elapsed = t1 - t0
+        torch.cuda.reset_peak_memory_stats()
 
-    peak_mb = torch.cuda.max_memory_allocated() / 1024 / 1024
+        llm = LLM(
+            model=args.model,
+            quantization="awq",
+            dtype="float16",
+            gpu_memory_utilization=0.95,
+            max_model_len=args.max_model_len,
+            enforce_eager=False,
+            swap_space=0,
+        )
 
-    result = {
-        "model": model_id,
-        "input_tokens": n_in,
-        "output_tokens": n_out,
-        "elapsed_s": elapsed,
-        "tok_s_total": (n_in + n_out) / elapsed,
-        "decode_tok_s_approx": n_out / elapsed,
-        "peak_vram_mb": peak_mb,
-    }
-    print(json.dumps(result, indent=2))
+        target_in = max(64, int(args.max_model_len * 0.8))
+        prompt = ("The quick brown fox jumps over the lazy dog. " * (target_in // 8 + 1))
+        tok = llm.get_tokenizer()
+        ids = tok.encode(prompt)[:target_in]
+        prompt = tok.decode(ids, skip_special_tokens=True)
 
-    out_path = Path(__file__).resolve().parents[1] / "benchmarks" / "vllm_4k.json"
-    out_path.write_text(json.dumps(result, indent=2))
+        llm.generate([prompt], SamplingParams(max_tokens=4, temperature=0.0))
+        torch.cuda.synchronize()
+
+        t0 = time.perf_counter()
+        outputs = llm.generate([prompt], SamplingParams(max_tokens=128, temperature=0.0))
+        torch.cuda.synchronize()
+        t1 = time.perf_counter()
+
+        out = outputs[0]
+        n_in = len(out.prompt_token_ids)
+        n_out = len(out.outputs[0].token_ids)
+        elapsed = t1 - t0
+
+        record["decode_tok_s"] = n_out / elapsed if elapsed > 0 else None
+        record["prefill_tok_s"] = n_in / elapsed if elapsed > 0 else None
+        record["peak_vram_mib"] = int(torch.cuda.max_memory_allocated() / 1024 / 1024)
+
+    except (RuntimeError, torch.cuda.OutOfMemoryError) as exc:  # type: ignore[attr-defined]
+        msg = str(exc).lower()
+        if "out of memory" in msg or "kv cache" in msg or "no available" in msg:
+            record["oom"] = True
+        record["error"] = f"{type(exc).__name__}: {exc}"
+    except Exception as exc:
+        record["error"] = f"{type(exc).__name__}: {exc}"
+    finally:
+        record["wall_s"] = time.perf_counter() - t_start
+        gc.collect()
+        try:
+            torch.cuda.empty_cache()
+        except Exception:
+            pass
+
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(record, indent=2))
+    print(json.dumps(record, indent=2))
 
 
 if __name__ == "__main__":
