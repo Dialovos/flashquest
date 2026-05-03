@@ -188,3 +188,39 @@ def test_truncate_history_minimum_two():
     out = _truncate_history(messages, tok, ctx_len=10)
     assert len(out) == 2
     assert out[0]["role"] == "system"
+
+
+@pytest.mark.slow
+def test_smoke_single_shot_llama_3_2_1b_sdpa(capsys, monkeypatch):
+    """ER1: end-to-end single-shot streaming on Llama-3.2-1B (SDPA, no patch).
+
+    Bypasses load_awq_model (which requires AWQ weights) by monkeypatching
+    flashquest.runtime.awq_load.load_awq_model to return the pre-loaded pair.
+    """
+    import time
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from flashquest.runtime import chat as chat_mod
+    import flashquest.runtime.awq_load as awq_mod
+
+    name = "unsloth/Llama-3.2-1B-Instruct"
+    tokenizer = AutoTokenizer.from_pretrained(name)
+    model = AutoModelForCausalLM.from_pretrained(
+        name, torch_dtype=torch.bfloat16, attn_implementation="sdpa",
+    ).cuda().eval()
+
+    monkeypatch.setattr(awq_mod, "load_awq_model", lambda _name, **_kw: (model, tokenizer))
+
+    t0 = time.perf_counter()
+    chat_mod.main([
+        "--model", name,
+        "--context", "512",
+        "--prompt", "Say hello in one word.",
+        "--max-new-tokens", "16",
+        "--no-patch",
+    ])
+    elapsed = time.perf_counter() - t0
+
+    assert elapsed < 90, f"smoke too slow: {elapsed:.1f}s"
+    out = capsys.readouterr().out
+    assert len(out.strip()) > 0
