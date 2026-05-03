@@ -15,10 +15,13 @@ import torch
 from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotary_pos_emb
 
 from ..cache.persistent_int8 import PersistentInt8KVCache
-from ..eager.criticality import page_scores_int8_fast
+from ..eager.criticality import page_scores_int4_fast, page_scores_int8_fast
 from ..eager.selection import select_pages_vectorized
 from ..kernel import flash_attn_sparse_fwd
-from ..kernel.kv_quant import dequantize_k, dequantize_v
+from ..kernel.kv_quant import (
+    dequantize_k, dequantize_k_int4, dequantize_v, dequantize_v_int4,
+)
+from ..kernel.sparse_int4_fwd import flash_attn_sparse_int4_fwd
 
 
 def _bf16_dense_attn_with_lse(
@@ -56,12 +59,18 @@ def _merge_two_attentions(
 
 
 def _quest_duo_fused_with_lse(
-    Q, K_uint8, K_scale, K_mn, V_uint8, V_scale, V_mn,
-    *, head_pattern, page_size, retention, num_sinks, window_pages,
+    Q, K_storage, K_scale, K_mn, V_storage, V_scale, V_mn,
+    *, head_pattern, page_size, retention, num_sinks, window_pages, kv_bits,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Fused dispatch returning (O, lse) — needed for online-softmax merge."""
+    """Fused dispatch returning (O, lse) — needed for online-softmax merge.
+
+    kv_bits ∈ {4, 8} selects the criticality fast path and the sparse kernel.
+    K_storage / V_storage are uint8 tensors:
+        kv_bits=8 → shape (B, H_kv, S_kv, D)        (full uint8)
+        kv_bits=4 → shape (B, H_kv, S_kv, D//2)     (packed 2-per-byte)
+    """
     B, H_q, S_q, D = Q.shape
-    _, H_kv, _, _ = K_uint8.shape
+    _, H_kv, _, _ = K_storage.shape
     n_rep = H_q // H_kv
     pattern_per_q = head_pattern.to(Q.device).repeat_interleave(n_rep)
     retention_per_q = torch.where(
@@ -70,27 +79,61 @@ def _quest_duo_fused_with_lse(
         torch.zeros(H_q, device=Q.device),
     )
 
-    scores = page_scores_int8_fast(Q, K_scale, K_mn)
+    if kv_bits == 4:
+        scores = page_scores_int4_fast(Q, K_scale, K_mn)
+    elif kv_bits == 8:
+        scores = page_scores_int8_fast(Q, K_scale, K_mn)
+    else:
+        raise ValueError(f"unsupported kv_bits={kv_bits!r}")
+
     sel = select_pages_vectorized(
         scores, retention=retention_per_q,
         num_sinks=num_sinks, window_pages=window_pages,
     )
-    O, lse = flash_attn_sparse_fwd(
-        Q, K_uint8, K_scale, K_mn, V_uint8, V_scale, V_mn,
-        selection_mask=sel, page_size=page_size, return_lse=True,
-    )
+
+    if kv_bits == 4:
+        O, lse = flash_attn_sparse_int4_fwd(
+            Q, K_storage, K_scale, K_mn, V_storage, V_scale, V_mn,
+            selection_mask=sel, page_size=page_size, return_lse=True,
+        )
+    else:
+        O, lse = flash_attn_sparse_fwd(
+            Q, K_storage, K_scale, K_mn, V_storage, V_scale, V_mn,
+            selection_mask=sel, page_size=page_size, return_lse=True,
+        )
     return O, lse
 
 
 def make_quest_persistent_forward(
     *,
-    cache: PersistentInt8KVCache,
+    cache,
     head_pattern_layer: torch.Tensor,
     retention: float,
     num_sinks: int,
     window_pages: int,
     page_size: int,
 ):
+    kv_bits = getattr(cache, "kv_bits", 8)
+    if kv_bits == 4:
+        K_view_key = "K_packed"
+        V_view_key = "V_packed"
+
+        def _dequant_k(k_storage, k_scale, k_mn):
+            return dequantize_k_int4(k_storage, k_scale, k_mn, page_size=page_size)
+
+        def _dequant_v(v_storage, v_scale, v_mn):
+            return dequantize_v_int4(v_storage, v_scale, v_mn)
+    elif kv_bits == 8:
+        K_view_key = "K_uint8"
+        V_view_key = "V_uint8"
+
+        def _dequant_k(k_storage, k_scale, k_mn):
+            return dequantize_k(k_storage, k_scale, k_mn, page_size=page_size)
+
+        def _dequant_v(v_storage, v_scale, v_mn):
+            return dequantize_v(v_storage, v_scale, v_mn)
+    else:
+        raise ValueError(f"unsupported cache.kv_bits={kv_bits!r}")
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -129,14 +172,14 @@ def make_quest_persistent_forward(
             # we keep prefill dense (SPEC win condition is decode tok/s, not prefill).
             K_full = torch.cat(
                 [
-                    dequantize_k(views["K_uint8"], views["K_scale"], views["K_mn"], page_size=page_size),
+                    _dequant_k(views[K_view_key], views["K_scale"], views["K_mn"]),
                     views["K_partial"],
                 ],
                 dim=2,
             )
             V_full = torch.cat(
                 [
-                    dequantize_v(views["V_uint8"], views["V_scale"], views["V_mn"]),
+                    _dequant_v(views[V_view_key], views["V_scale"], views["V_mn"]),
                     views["V_partial"],
                 ],
                 dim=2,
@@ -157,11 +200,12 @@ def make_quest_persistent_forward(
                 )
             else:
                 O_sparse, lse_sparse = _quest_duo_fused_with_lse(
-                    q, views["K_uint8"], views["K_scale"], views["K_mn"],
-                    views["V_uint8"], views["V_scale"], views["V_mn"],
+                    q, views[K_view_key], views["K_scale"], views["K_mn"],
+                    views[V_view_key], views["V_scale"], views["V_mn"],
                     head_pattern=head_pattern_layer,
                     page_size=page_size, retention=retention,
                     num_sinks=num_sinks, window_pages=window_pages,
+                    kv_bits=kv_bits,
                 )
                 if partial_len == 0:
                     attn_output = O_sparse
@@ -187,7 +231,7 @@ def make_quest_persistent_forward(
 def patch_llama_for_quest_persistent(
     model: torch.nn.Module,
     *,
-    cache: PersistentInt8KVCache,
+    cache,
     head_pattern: torch.Tensor,
     retention: float = 0.25,
     num_sinks: int = 4,

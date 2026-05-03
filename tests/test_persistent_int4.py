@@ -73,3 +73,37 @@ def test_max_seq_len_overflow_rejected():
     V = torch.randn(1, 2, 200, 64, dtype=torch.bfloat16, device="cuda")
     with pytest.raises(RuntimeError, match="exceeds.*max_seq_len"):
         c.update_quantized(K, V, layer_idx=0)
+
+
+@pytest.mark.slow
+def test_int4_dispatcher_smoke_llama_1b():
+    """End-to-end: patch Llama-3.2-1B with INT4 cache + all-retrieval pattern, decode 1 step."""
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from flashquest.eager.llama_persistent_patch import patch_llama_for_quest_persistent
+
+    name = "unsloth/Llama-3.2-1B-Instruct"
+    AutoTokenizer.from_pretrained(name)
+    model = AutoModelForCausalLM.from_pretrained(
+        name, torch_dtype=torch.bfloat16, attn_implementation="eager",
+    ).cuda().eval()
+
+    cfg = model.config
+    head_dim = getattr(cfg, "head_dim", None) or (cfg.hidden_size // cfg.num_attention_heads)
+    pattern = torch.ones(cfg.num_hidden_layers, cfg.num_key_value_heads, dtype=torch.bool)
+    cache = PersistentInt4KVCache(
+        batch_size=1, num_layers=cfg.num_hidden_layers,
+        num_kv_heads=cfg.num_key_value_heads, head_dim=head_dim,
+        max_seq_len=512, page_size=64, device="cuda",
+    )
+    patch_llama_for_quest_persistent(
+        model, cache=cache, head_pattern=pattern,
+        retention=0.5, num_sinks=4, window_pages=2, page_size=64,
+    )
+
+    ids = torch.randint(0, cfg.vocab_size, (1, 256), device="cuda")
+    with torch.no_grad():
+        out = model(input_ids=ids, use_cache=True)
+        next_id = out.logits[:, -1:].argmax(dim=-1)
+        out2 = model(input_ids=next_id, use_cache=True)
+    assert out2.logits.shape[-1] == cfg.vocab_size
+    assert torch.isfinite(out2.logits).all()

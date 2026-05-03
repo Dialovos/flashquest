@@ -132,6 +132,8 @@ class PersistentInt4KVCache(Cache):
         self._seen_tokens[layer_idx] = seen + S_new
 
     def get_views(self, layer_idx: int) -> dict[str, torch.Tensor]:
+        """Mirror PersistentInt8KVCache.get_views — same keys (incl. seq_len /
+        completed_len / partial_len) but K_uint8/V_uint8 → K_packed/V_packed."""
         if layer_idx < 0 or layer_idx >= self.num_layers:
             raise IndexError(
                 f"layer_idx {layer_idx} out of range [0, {self.num_layers})"
@@ -143,6 +145,9 @@ class PersistentInt4KVCache(Cache):
         n_complete_pages = completed_len // page_size
 
         return {
+            "seq_len": seen,
+            "completed_len": completed_len,
+            "partial_len": partial_len,
             "K_packed": self.K_packed[layer_idx, :, :, :completed_len, :],
             "V_packed": self.V_packed[layer_idx, :, :, :completed_len, :],
             "K_scale": self.K_scale[layer_idx, :, :, :n_complete_pages, :],
