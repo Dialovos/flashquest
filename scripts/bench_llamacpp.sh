@@ -5,7 +5,8 @@ set -euo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 LLAMA_BIN="$REPO_ROOT/vendor/llama.cpp/build/bin/llama-bench"
 MODEL="${MODEL:-$HOME/models/llama-3.2-3b/Llama-3.2-3B-Instruct-Q4_K_M.gguf}"
-OUT="$REPO_ROOT/benchmarks/llamacpp_8k.txt"
+CTX="${CTX:-8192}"
+OUT="${OUT:-$REPO_ROOT/benchmarks/llamacpp_${CTX}.txt}"
 NGL="${NGL:-999}"
 
 mkdir -p "$REPO_ROOT/benchmarks"
@@ -19,10 +20,10 @@ if [ ! -f "$MODEL" ]; then
   exit 1
 fi
 
-# -p 8192 prefill, -n 128 decode tokens, -ngl 999 = all layers on GPU.
+# -p $CTX prefill, -n 128 decode tokens, -ngl 999 = all layers on GPU.
 "$LLAMA_BIN" \
   -m "$MODEL" \
-  -p 8192 -n 128 \
+  -p "$CTX" -n 128 \
   -ngl "$NGL" \
   -t 6 \
   -r 3 \
