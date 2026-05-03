@@ -8,8 +8,11 @@ from __future__ import annotations
 
 import argparse
 import sys
+import threading
 from pathlib import Path
 from typing import Sequence
+
+import torch
 
 
 _DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant."
@@ -95,3 +98,57 @@ def _truncate_history(messages: list[dict], tokenizer, ctx_len: int) -> list[dic
         messages = sys_msgs + rest
         if not rest:
             return messages
+
+
+def _generate_with_no_grad(model, gen_kwargs: dict) -> None:
+    with torch.no_grad():
+        model.generate(**gen_kwargs)
+
+
+def _stream_one(model, tokenizer, cache, messages: list[dict], args) -> str:
+    """Render history → tokenize → spawn generate-thread → stream pieces.
+
+    Returns the full assistant text. Resets the persistent cache (if any)
+    before generation so the rendered chat is the entire context.
+    """
+    if cache is not None:
+        cache._seen_tokens = [0] * cache.num_layers
+
+    text = tokenizer.apply_chat_template(
+        messages, add_generation_prompt=True, tokenize=False,
+    )
+    ids = tokenizer(text, return_tensors="pt").input_ids.to(model.device)
+
+    from transformers import TextIteratorStreamer
+
+    streamer = TextIteratorStreamer(
+        tokenizer, skip_prompt=True, skip_special_tokens=True,
+    )
+    gen_kwargs = dict(
+        input_ids=ids,
+        max_new_tokens=args.max_new_tokens,
+        do_sample=args.sample,
+        streamer=streamer,
+        use_cache=True,
+    )
+    if args.sample:
+        gen_kwargs["temperature"] = args.temperature
+        gen_kwargs["top_p"] = args.top_p
+        if args.seed is not None:
+            torch.manual_seed(args.seed)
+
+    thread = threading.Thread(
+        target=_generate_with_no_grad, args=(model, gen_kwargs),
+    )
+    thread.start()
+
+    pieces: list[str] = []
+    try:
+        for piece in streamer:
+            print(piece, end="", flush=True)
+            pieces.append(piece)
+    except KeyboardInterrupt:
+        pass
+    thread.join()
+    print()
+    return "".join(pieces)
