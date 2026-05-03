@@ -258,6 +258,50 @@ ships is the planned re-test.
 Re-run via `python scripts/phase6_run_headtohead.py` (resumable with
 `--skip-existing`). Per-cell JSONs in `benchmarks/phase6_cells/`.
 
+## Phase 6 task 5 — INT4 KV cache
+
+KIVI-style asymmetric INT4 KV (range 0-15, per-page channel-wise K,
+per-token V), packed 2-per-byte uint8 along `head_dim` for a 2× storage
+shrink vs INT8. CLI flag `--kv-bits {4,8}` (default 4 after the RULER
+gate cleared).
+
+### Quality gate — RULER NIAH 4k @ INT4 (`benchmarks/phase6_ruler_4k_int4.json`)
+
+| task | dense | patched (INT4) | ratio | gate ≥85 % |
+|---|---|---|---|---|
+| niah_single | 20/20 | 20/20 | 100 % | ✅ |
+| niah_multikey | 20/20 | 20/20 | 100 % | ✅ |
+| niah_multivalue | 20/20 | 20/20 | 100 % | ✅ |
+
+INT4 quality is statistically indistinguishable from INT8 — multivalue
+ticks up from INT8's 19/20 to 20/20. **All three tasks clear the
+≥85 % gate; INT4 is now the default.**
+
+### Throughput re-test — `benchmarks/phase6_headtohead_int4.json`
+
+| backend | quant + KV | 8 k tok/s | 32 k tok/s | 128 k fits? |
+|---|---|---|---|---|
+| flashquest INT4 | AWQ-INT4 + INT4 paged | **1.81** | OOM (BF16 dequant intermediate) | ✗ |
+| flashquest INT8 (prior) | AWQ-INT4 + INT8 paged | 2.29 | timeout (>30 min) | ✗ |
+| llama.cpp -ngl 999 | Q4_K_M, FP16 KV | 40.43 | timeout | ✗ |
+| vLLM 0.7.3 | AWQ-INT4, FP16 KV | OOM | OOM | ✗ |
+
+This iteration ships INT4 as a *reference path* (INT4 → BF16 → INT8 →
+existing kernel) — it validates the full plumbing + clears quality, but
+the BF16 dequant intermediate at 32 k is itself ~7 GiB and OOMs on a
+4 GB GPU. **The kernel-fused inline INT4 unpack** (sketch in
+`src/flashquest/kernel/sparse_int4_fwd.py` docstring) is the closing
+axis for SPEC §11.4 ≥5× — it eliminates the BF16 intermediate and lets
+the 2× storage shrink translate into long-ctx throughput. Queued v2.
+
+Re-run via:
+```bash
+flashquest --model casperhansen/llama-3.2-3b-instruct-awq \
+           --context 32768 -i                       # default --kv-bits 4
+python scripts/phase6_run_ruler_4k_int4.py         # quality re-test
+python scripts/phase6_run_headtohead.py            # head-to-head re-test
+```
+
 ## Non-goals
 
 - Training kernels. Inference only.

@@ -408,3 +408,88 @@ DuoAttention pattern (or TurboQuant follow-up) on top.
 - Lower context curve (4 k / 16 k) for finer-grained scaling.
 - Re-run once Phase 6 task 5 (INT4 KV + kernel-fused criticality)
   ships — that's the iteration where the gate plausibly clears.
+
+---
+
+# Phase 6 Task 5 Notes
+
+**Started:** 2026-05-03
+**Status:** **complete (tag `phase-6-task-5`); RULER NIAH 4k @ INT4 gate cleared 100/100/100. SPEC §11.4 ≥5× gate still gated — closing axis is the kernel-fused INT4 unpack (queued v2).**
+**Spec:** [../superpowers/specs/2026-05-03-phase-6-int4-kv-design.md](../superpowers/specs/2026-05-03-phase-6-int4-kv-design.md)
+**Plan:** [../superpowers/plans/2026-05-03-phase-6-int4-kv.md](../superpowers/plans/2026-05-03-phase-6-int4-kv.md)
+
+## Summary
+
+KIVI-style asymmetric INT4 KV cache as a parallel sibling of the
+existing INT8 path, packed 2-per-byte uint8 along `head_dim`. Algebraic
+page-max identity becomes `K_mn + 15 × K_scale` (one constant change
+from INT8's 255). `page_scores_int4_fast` is a clean port of the INT8
+fast path. Triton sparse forward ships as a *reference path*: INT4 →
+BF16 → INT8 → existing kernel (validates plumbing; kernel-fused inline
+INT4 unpack is queued v2). CLI flag `--kv-bits {4,8}` defaults to 4
+after the RULER gate cleared.
+
+## Result — RULER NIAH 4k @ INT4 (the SPEC quality commitment)
+
+`benchmarks/phase6_ruler_4k_int4.json`:
+
+| task | dense | patched (INT4) | ratio | gate ≥85 % |
+|---|---|---|---|---|
+| niah_single | 20/20 | 20/20 | 100 % | ✅ |
+| niah_multikey | 20/20 | 20/20 | 100 % | ✅ |
+| niah_multivalue | 20/20 | 20/20 | 100 % | ✅ |
+
+**all_pass: True. INT4 promoted to default.** Multivalue improved from
+INT8's 19/20 to 20/20 (within sampling variance, but conclusively passes).
+Wall: dense 14.3 min, patched-INT4 37.4 min, total ~52 min.
+
+## Result — head-to-head re-test (SPEC §11.4)
+
+`benchmarks/phase6_headtohead_int4.json`:
+
+| backend | quant + KV | 8 k tok/s | 32 k tok/s | 128 k fits? |
+|---|---|---|---|---|
+| flashquest INT4 | AWQ-INT4 + INT4 paged | **1.81** | OOM (BF16 dequant int.) | ✗ |
+| flashquest INT8 (prior) | AWQ-INT4 + INT8 paged | 2.29 | timeout (>30 min) | ✗ |
+| llama.cpp -ngl 999 | Q4_K_M, FP16 KV | 40.43 | timeout | ✗ |
+| vLLM 0.7.3 | AWQ-INT4, FP16 KV | OOM | OOM | ✗ |
+
+**INT4 8 k decode is *slower* than INT8** (1.81 vs 2.29). The reference
+path's INT4 → BF16 → INT8 round-trip costs more than the 2× storage
+shrink at this ctx. Cache VRAM does drop ~5% (4475 vs 4703 MiB).
+
+**INT4 32 k OOMs allocating the BF16 K dequant intermediate** (~7 GiB
+at 32 k). The 2× storage shrink doesn't help when the reference path
+materializes a full-precision intermediate. The fix is the kernel-fused
+inline INT4 unpack (sketch in `sparse_int4_fwd.py` docstring) — that
+path eliminates the BF16 intermediate and would let the 2× storage
+shrink translate into 2× decode throughput at long ctx.
+
+**SPEC §11.4 ≥5× gate still gated.** Closing axis is the
+kernel-fused INT4 unpack, plus the TurboQuant follow-up
+(`memory/project_post_v1_kernel_research.md`). Capability axis unchanged
+— 4 GB VRAM still caps every backend at 32 k+ on a 3B model.
+
+## Surface
+
+- `flashquest.kernel.kv_quant.{quantize_k_int4, quantize_v_int4, _pack_int4, _unpack_int4}`
+- `flashquest.cache.PersistentInt4KVCache`
+- `flashquest.eager.{criticality.page_scores_int4_fast, sparse_int4}`
+- `flashquest.kernel.sparse_int4_fwd` (reference path)
+- `--kv-bits {4,8}` flag in `flashquest chat` and `bench_flashquest.py`
+  (default 4)
+- Dispatcher in `llama_persistent_patch.py` branches on `cache.kv_bits`
+- 8 quant + 7 cache + 1 criticality + 1 sparse INT4 unit tests, plus 1
+  slow Llama-3.2-1B integration smoke. Full fast suite 199+ green.
+
+## v2 follow-ups
+
+- **Kernel-fused inline INT4 unpack** (the sketch in `sparse_int4_fwd.py`
+  docstring) — replaces the dequant→INT8→sparse reference path with a
+  direct uint8 tile load. This is the closing axis for SPEC §11.4 ≥5×;
+  expected to translate the 2× storage shrink into 2× long-ctx
+  throughput and unlock 32 k decode within the 30-min budget.
+- **TurboQuant** (Walsh-Hadamard rotation + Lloyd-Max codebook) —
+  separate spec; further ~3 × KV shrink at near-zero quality cost.
+- **DuoAttention pattern training** for Llama-3.2-3B (so 70/30 retrieval/
+  streaming is a learned property, not a synthetic 70/30).
