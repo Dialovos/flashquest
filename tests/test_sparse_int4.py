@@ -42,3 +42,44 @@ def test_sparse_int4_matches_dense():
 
     err = (out.float() - ref.float()).abs().max()
     assert err < 5e-2, f"max abs diff {err}"
+
+
+def test_fused_matches_reference():
+    """Fused Triton kernel ≡ reference path on small fixtures (FP rtol=1e-3).
+
+    Fixture is intentionally tiny so that any divergence surfaces at the per-element
+    level, not buried under attention-scale variance. retention=1.0 (all pages
+    selected) so we test every dequant path, not the page-selection logic.
+    """
+    from flashquest.kernel.sparse_int4_fwd import (
+        flash_attn_sparse_int4_fwd,
+        _flash_attn_sparse_int4_fwd_reference,
+    )
+    torch.manual_seed(17)
+    B, H_q, H_kv, S_q, S_kv, D, page_size = 1, 2, 1, 1, 64, 64, 64
+    P = S_kv // page_size
+
+    Q = torch.randn(B, H_q, S_q, D, dtype=torch.bfloat16, device="cuda")
+    K = torch.randn(B, H_kv, S_kv, D, dtype=torch.bfloat16, device="cuda")
+    V = torch.randn(B, H_kv, S_kv, D, dtype=torch.bfloat16, device="cuda")
+
+    K_packed, K_scale, K_mn = quantize_k_int4(K, page_size=page_size)
+    V_packed, V_scale, V_mn = quantize_v_int4(V)
+
+    sel = torch.ones(B, H_q, S_q, P, dtype=torch.bool, device="cuda")
+    kw = dict(
+        selection_mask=sel, page_size=page_size,
+        sm_scale=D ** -0.5, return_lse=True,
+    )
+
+    O_ref, lse_ref = _flash_attn_sparse_int4_fwd_reference(
+        Q, K_packed, K_scale, K_mn, V_packed, V_scale, V_mn, **kw,
+    )
+    O_fused, lse_fused = flash_attn_sparse_int4_fwd(
+        Q, K_packed, K_scale, K_mn, V_packed, V_scale, V_mn, **kw,
+    )
+
+    err_O = (O_fused.float() - O_ref.float()).abs().max()
+    err_lse = (lse_fused.float() - lse_ref.float()).abs().max()
+    assert err_O < 1e-2, f"fused vs reference O max abs err {err_O}"
+    assert err_lse < 1e-2, f"fused vs reference lse max abs err {err_lse}"
