@@ -16,8 +16,8 @@
       "total": 20,
       "ratio": 1.0,
       "pass": true,
-      "dense_wall_s": 279.03265544999886,
-      "patched_int4_wall_s": 541.6397864109967
+      "dense_wall_s": 315.38800336400163,
+      "patched_int4_wall_s": 431.72259720500733
     },
     "niah_multikey": {
       "dense_hits": 20,
@@ -25,8 +25,8 @@
       "total": 20,
       "ratio": 1.0,
       "pass": true,
-      "dense_wall_s": 268.0055482349999,
-      "patched_int4_wall_s": 754.3486979009976
+      "dense_wall_s": 292.1954043680016,
+      "patched_int4_wall_s": 645.9628063470009
     },
     "niah_multivalue": {
       "dense_hits": 20,
@@ -34,8 +34,8 @@
       "total": 20,
       "ratio": 1.0,
       "pass": true,
-      "dense_wall_s": 313.1348445580006,
-      "patched_int4_wall_s": 944.6699146570027
+      "dense_wall_s": 337.5473826339876,
+      "patched_int4_wall_s": 764.464878882005
     }
   },
   "gate": "\u226585% vs dense at retention=0.25 + all-retrieval head_pattern + INT4 KV",
