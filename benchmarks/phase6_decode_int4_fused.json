@@ -1,0 +1,11 @@
+{
+  "backend": "flashquest",
+  "quant": "AWQ-INT4 + INT4 paged KV + Quest top-k retention=0.25",
+  "ctx_len": 32768,
+  "decode_tok_s": 3.3167829760030245,
+  "prefill_tok_s": 65.00083040724041,
+  "peak_vram_mib": 5478,
+  "wall_s": 534.585160785995,
+  "oom": false,
+  "error": null
+}

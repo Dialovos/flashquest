@@ -91,7 +91,9 @@ def main() -> None:
         torch.cuda.synchronize()
         t_pf0 = time.perf_counter()
         with torch.no_grad():
-            _ = model(input_ids=ids, use_cache=True)
+            # logits_to_keep=1 — bench discards prefill logits; without this,
+            # lm_head materialises (1, ctx_len, vocab=128256) = 7.83 GiB at 32 k.
+            _ = model(input_ids=ids, use_cache=True, logits_to_keep=1)
         torch.cuda.synchronize()
         t_pf1 = time.perf_counter()
         record["prefill_tok_s"] = args.ctx_len / (t_pf1 - t_pf0)
@@ -101,7 +103,7 @@ def main() -> None:
         t_dec0 = time.perf_counter()
         with torch.no_grad():
             for _ in range(args.n_decode):
-                out = model(input_ids=next_ids, use_cache=True)
+                out = model(input_ids=next_ids, use_cache=True, logits_to_keep=1)
                 next_ids = out.logits[:, -1:].argmax(dim=-1)
         torch.cuda.synchronize()
         t_dec1 = time.perf_counter()

@@ -184,11 +184,11 @@ def make_quest_persistent_forward(
                 ],
                 dim=2,
             )
-            n_rep = q.shape[1] // K_full.shape[1]
-            K_rep = K_full.repeat_interleave(n_rep, dim=1)
-            V_rep = V_full.repeat_interleave(n_rep, dim=1)
+            # enable_gqa=True keeps K/V at H_kv heads — SDPA broadcasts internally
+            # and can stay on the Flash backend. Materializing K.repeat_interleave to
+            # H_q heads at long S_kv pushed SDPA off Flash and OOM'd at 32 k.
             attn_output = torch.nn.functional.scaled_dot_product_attention(
-                q, K_rep, V_rep, is_causal=True,
+                q, K_full, V_full, is_causal=True, enable_gqa=True,
             )
         else:
             partial_len = views["partial_len"]
