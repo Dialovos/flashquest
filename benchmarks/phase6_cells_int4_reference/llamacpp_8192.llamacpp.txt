@@ -1,7 +1,7 @@
 | model                          |       size |     params | backend    | ngl | threads |            test |                  t/s |
 | ------------------------------ | ---------: | ---------: | ---------- | --: | ------: | --------------: | -------------------: |
-| llama 3B Q4_K - Medium         |   1.87 GiB |     3.21 B | CUDA       | 999 |       6 |          pp8192 |        703.88 ± 0.00 |
-| llama 3B Q4_K - Medium         |   1.87 GiB |     3.21 B | CUDA       | 999 |       6 |           tg128 |         39.16 ± 0.00 |
+| llama 3B Q4_K - Medium         |   1.87 GiB |     3.21 B | CUDA       | 999 |       6 |          pp8192 |        726.68 ± 0.00 |
+| llama 3B Q4_K - Medium         |   1.87 GiB |     3.21 B | CUDA       | 999 |       6 |           tg128 |         40.43 ± 0.00 |
 
 build: d775992 (1)
 ---
