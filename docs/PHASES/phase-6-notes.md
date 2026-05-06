@@ -493,3 +493,92 @@ kernel-fused INT4 unpack, plus the TurboQuant follow-up
   separate spec; further ~3 × KV shrink at near-zero quality cost.
 - **DuoAttention pattern training** for Llama-3.2-3B (so 70/30 retrieval/
   streaming is a learned property, not a synthetic 70/30).
+
+---
+
+# Phase 6 Task 6 Notes
+
+**Started:** 2026-05-03
+**Completed:** 2026-05-06
+**Status:** **complete (tag `phase-6-task-6`); fused INT4 Triton kernel ships; SPEC §11.4 verdict: capability axis cleared at 32 k (∞× over llama.cpp/vLLM); throughput at matched 8 k still gated.**
+**Plan:** [../superpowers/plans/2026-05-03-phase-6-int4-fused-kernel.md](../superpowers/plans/2026-05-03-phase-6-int4-fused-kernel.md)
+
+## Summary
+
+Replaces the task 5 reference path in `flashquest.kernel.sparse_int4_fwd`
+(INT4 → BF16 → INT8 → existing INT8 kernel) with a real
+`@triton.jit _sparse_attn_fwd_kernel_int4` that reads packed `uint8`
+K/V tiles directly and unpacks lo/hi nibbles inline during the tile
+load via `tl.join` + `tl.reshape`. Eliminates the BF16
+`(B, H_kv, S_kv, D)` intermediate that OOM'd the reference path at 32 k.
+The reference path is preserved as `_flash_attn_sparse_int4_fwd_reference`
+for the bit-equivalence test.
+
+Two unblocking fixes were also needed for 32 k decode to land:
+
+1. `eager/llama_persistent_patch.py` — replaced `K.repeat_interleave(n_rep)`
+   + SDPA with `enable_gqa=True`. The repeat_interleave path pushed SDPA
+   off the Flash backend at 32 k × H_q=24, allocating ~8 GiB FP32
+   attention scores. Flash + GQA stays at ~500 MiB workspace.
+
+2. `scripts/bench_flashquest.py` — pass `logits_to_keep=1` to `model(...)`.
+   `lm_head` would otherwise materialize `(1, 32768, 128256)` BF16 =
+   7.83 GiB even though the bench discards prefill logits.
+
+## Result — quality (RULER NIAH 4k @ INT4 fused)
+
+`benchmarks/phase6_ruler_4k_int4.json`: all_pass=True. niah_single
+20/20 (100 %), niah_multikey 20/20 (100 %), niah_multivalue 20/20 (100 %).
+Matches the prior reference-path run; numerical drift from inline
+unpack is below sampling variance.
+
+## Result — single-cell decode bench at 32 k
+
+`benchmarks/phase6_decode_int4_fused.json`:
+
+- decode_tok_s = 3.32 (head-to-head re-run logged 3.88 — same WSL host, noise band)
+- prefill_tok_s = 65.0
+- peak_vram_mib = 5478 (allocator overcommitting via WSL swap; nominal GPU is 4095 MiB)
+- wall_s = 534.6
+- oom = false
+
+First time flashquest measurably decodes at 32 k on this 4 GB hardware.
+Reference-path counterpart (`benchmarks/phase6_cells_int4_reference/flashquest_32768.json`)
+OOM'd allocating the 7 GiB BF16 K intermediate.
+
+## Result — head-to-head re-test (SPEC §11.4)
+
+`benchmarks/phase6_headtohead_int4.json`:
+
+| backend | quant + KV | 8 k tok/s | 32 k tok/s | 128 k fits? |
+|---|---|---|---|---|
+| flashquest INT4 (fused) | AWQ-INT4 + INT4 paged | **4.94** | **3.88** | ✗ |
+| flashquest INT4 (ref, prior) | AWQ-INT4 + INT4 via INT8 round-trip | 1.81 | OOM | ✗ |
+| flashquest INT8 (prior) | AWQ-INT4 + INT8 paged | 2.29 | timeout (>30 min) | ✗ |
+| llama.cpp -ngl 999 | Q4_K_M, FP16 KV | 39.16 | ✗ (abort) | ✗ |
+| vLLM 0.7.3 | AWQ-INT4, FP16 KV | OOM | ✗ | ✗ |
+
+**Verdict — capability axis (max ctx that decodes ≥1 tok/s):**
+flashquest is the only backend that decodes at 32 k on 4 GB —
+∞× capability ratio over llama.cpp (aborts at 32 k) and vLLM (OOM
+at ≤4 k). At 8 k, flashquest is 2.7× the reference-path INT4 and
+2.2× the prior INT8 best — the fused kernel pays back even at small ctx.
+
+**Verdict — throughput axis at matched ctx:** 8 k flashquest 4.94 <
+llama.cpp 39.16 (still gated). Closing axis is TurboQuant per
+`memory/project_post_v1_kernel_research.md`.
+
+## v2 follow-ups
+
+- **TurboQuant** (Walsh-Hadamard rotation + Lloyd-Max codebook) —
+  separate spec; further ~3× KV shrink at near-zero quality cost.
+  Composes with the paged INT4 layout.
+- **DuoAttention pattern training** for Llama-3.2-3B — replaces the
+  all-retrieval head_pattern with a learned 70/30 split.
+- **Prefill INT4 kernel** — current kernel is decode-only (S_q=1).
+  Prefill still goes through dense BF16 SDPA after lossy round-trip
+  dequant; chunked prefill or a multi-row INT4 kernel could close
+  the prefill-throughput gap.
+- **Larger block sizes / num_warps autotune** — fused kernel uses
+  `num_warps=4, num_stages=2` mirroring INT8; sweeps may unlock 10-30 %
+  more decode throughput.

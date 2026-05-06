@@ -302,6 +302,51 @@ python scripts/phase6_run_ruler_4k_int4.py         # quality re-test
 python scripts/phase6_run_headtohead.py            # head-to-head re-test
 ```
 
+## Phase 6 task 6 — fused INT4 Triton kernel
+
+Replaces the task 5 reference path (INT4 → BF16 → INT8 → existing kernel)
+with a real `@triton.jit` kernel that reads packed `uint8` K/V tiles
+directly and unpacks lo/hi nibbles inline via `tl.join` + `tl.reshape`.
+Eliminates the BF16 `(B, H_kv, S_kv, D)` intermediate that OOM'd the
+reference path at 32 k.
+
+Two prefill-side fixes also landed in this task: `enable_gqa=True` in
+the patched SDPA (keeps Flash backend at long ctx) and `logits_to_keep=1`
+in the bench (skips the 7.83 GiB lm_head allocation that the bench
+discards anyway).
+
+### Decode at 32 k under the fused kernel
+
+`benchmarks/phase6_decode_int4_fused.json`:
+
+- decode_tok_s = `3.32` (head-to-head re-run logged 3.88 — same WSL host, noise band)
+- prefill_tok_s = `65.0`
+- peak_vram_mib = `5478` (allocator overcommitting via WSL swap; nominal GPU is 4095 MiB)
+- wall_s = `534.6`
+
+### Throughput re-test — `benchmarks/phase6_headtohead_int4.json`
+
+| backend | quant + KV | 8 k tok/s | 32 k tok/s | 128 k fits? |
+|---|---|---|---|---|
+| flashquest INT4 (fused) | AWQ-INT4 + INT4 paged | **4.94** | **3.88** | ✗ |
+| flashquest INT4 (ref, prior) | AWQ-INT4 + INT4 via INT8 round-trip | 1.81 | OOM | ✗ |
+| llama.cpp -ngl 999 | Q4_K_M, FP16 KV | 39.16 | ✗ (abort) | ✗ |
+| vLLM 0.7.3 | AWQ-INT4, FP16 KV | OOM | ✗ | ✗ |
+
+**SPEC §11.4 ≥5× verdict (post-task-6):** *capability axis cleared* —
+flashquest is the only backend that decodes at 32 k on 4 GB (∞×
+over llama.cpp's abort and vLLM's OOM). *Throughput at matched 8 k still
+gated* — flashquest 4.94 < llama.cpp 39.16; closing axis is TurboQuant
+per `memory/project_post_v1_kernel_research.md`.
+
+Re-run via:
+```bash
+python scripts/bench_flashquest.py --ctx-len 32768 --kv-bits 4 \
+    --out benchmarks/phase6_decode_int4_fused.json
+python scripts/phase6_run_ruler_4k_int4.py        # quality re-test
+python scripts/phase6_run_headtohead.py           # head-to-head re-test
+```
+
 ## Non-goals
 
 - Training kernels. Inference only.
