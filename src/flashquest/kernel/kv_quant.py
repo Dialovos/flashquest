@@ -213,3 +213,113 @@ def dequantize_v_int4(
     V_q4 = _unpack_int4(V_packed)
     out = V_q4.to(torch.float32) * scale.float() + mn.float()
     return out.to(torch.bfloat16)
+
+
+# === Phase 7: TurboQuant primitives (bit-split, INT2 packing, codebooks) ===
+
+# Lloyd-Max optimal codepoints for unit-variance Gaussian. The TurboQuant
+# paper derives bounds from Rayleigh quantile statistics; these are the
+# widely-tabulated symmetric-Lloyd-Max levels and serve as the data-oblivious
+# codebook for K (3-bit, 8 levels) and V (2-bit, 4 levels). Values may be
+# refined during quality validation if needed.
+K_TURBO_CODEBOOK = torch.tensor(
+    [-2.1519, -1.3439, -0.7560, -0.2451, 0.2451, 0.7560, 1.3439, 2.1519],
+    dtype=torch.float32, device="cuda",
+)  # 8 codepoints, indices 0..7
+V_TURBO_CODEBOOK = torch.tensor(
+    [-1.5104, -0.4528, 0.4528, 1.5104],
+    dtype=torch.float32, device="cuda",
+)  # 4 codepoints, indices 0..3
+
+# c_max for per-token scaling: s = max(|x_rot|) / c_max so that the largest
+# rotated value lands on the largest codepoint.
+_K_TURBO_C_MAX = 2.1519
+_V_TURBO_C_MAX = 1.5104
+
+
+def _quantize_to_codebook(x: torch.Tensor, codebook: torch.Tensor) -> torch.Tensor:
+    """Round each x to nearest codepoint; return uint8 indices.
+
+    Args:
+        x: any shape, fp32 or bf16. Last-dim values are quantized independently.
+        codebook: (K,) fp32 codepoints. K must be ≤ 256.
+
+    Returns:
+        uint8 tensor same shape as x, values in 0..K-1.
+    """
+    diffs = (x.float().unsqueeze(-1) - codebook.view(*([1] * x.dim()), -1)).abs()
+    return diffs.argmin(dim=-1).to(torch.uint8)
+
+
+def _pack_bit_split(idx: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """Split 3-bit uint8 indices into 1-bit MSB plane (8/byte) + 2-bit LSB plane (4/byte).
+
+    Args:
+        idx: uint8 with values in 0..7. Last axis must be a multiple of 8.
+
+    Returns:
+        (msb, lsb) where msb shape == idx.shape[:-1] + (D/8,),
+                       lsb shape == idx.shape[:-1] + (D/4,), both uint8.
+    """
+    if idx.shape[-1] % 8 != 0:
+        raise ValueError(f"_pack_bit_split: last axis must be multiple of 8, got {idx.shape[-1]}")
+    if idx.dtype != torch.uint8:
+        raise ValueError(f"_pack_bit_split: idx must be uint8, got {idx.dtype}")
+    msb_bits = (idx >> 2) & 0x1
+    lsb_bits = idx & 0x3
+
+    *prefix, D = idx.shape
+    msb_reshaped = msb_bits.reshape(*prefix, D // 8, 8)
+    shifts = torch.arange(8, device=idx.device, dtype=torch.uint8)
+    msb = (msb_reshaped << shifts).sum(dim=-1, dtype=torch.int32).to(torch.uint8)
+
+    lsb_reshaped = lsb_bits.reshape(*prefix, D // 4, 4)
+    shifts2 = (torch.arange(4, device=idx.device, dtype=torch.uint8) * 2)
+    lsb = (lsb_reshaped << shifts2).sum(dim=-1, dtype=torch.int32).to(torch.uint8)
+
+    return msb, lsb
+
+
+def _unpack_bit_split(msb: torch.Tensor, lsb: torch.Tensor, head_dim: int) -> torch.Tensor:
+    """Inverse of _pack_bit_split. Returns uint8 indices in 0..7."""
+    *prefix, D_msb = msb.shape
+    if D_msb * 8 != head_dim:
+        raise ValueError(f"_unpack_bit_split: msb last axis {D_msb} * 8 != head_dim {head_dim}")
+    if lsb.shape[-1] * 4 != head_dim:
+        raise ValueError(f"_unpack_bit_split: lsb last axis {lsb.shape[-1]} * 4 != head_dim {head_dim}")
+
+    bit_offsets = torch.arange(8, device=msb.device, dtype=torch.uint8)
+    msb_bits = (msb.unsqueeze(-1) >> bit_offsets) & 0x1
+    msb_full = msb_bits.reshape(*prefix, head_dim)
+
+    lsb_offsets = (torch.arange(4, device=lsb.device, dtype=torch.uint8) * 2)
+    lsb_bits = (lsb.unsqueeze(-1) >> lsb_offsets) & 0x3
+    lsb_full = lsb_bits.reshape(*prefix, head_dim)
+
+    return ((msb_full << 2) | lsb_full).to(torch.uint8)
+
+
+def _pack_int2(idx: torch.Tensor) -> torch.Tensor:
+    """Pack 4 × 2-bit values per byte along last axis.
+
+    Args:
+        idx: uint8 with values in 0..3. Last axis must be a multiple of 4.
+    """
+    if idx.shape[-1] % 4 != 0:
+        raise ValueError(f"_pack_int2: last axis must be multiple of 4, got {idx.shape[-1]}")
+    if idx.dtype != torch.uint8:
+        raise ValueError(f"_pack_int2: idx must be uint8, got {idx.dtype}")
+    *prefix, D = idx.shape
+    reshaped = idx.reshape(*prefix, D // 4, 4)
+    shifts = (torch.arange(4, device=idx.device, dtype=torch.uint8) * 2)
+    return (reshaped << shifts).sum(dim=-1, dtype=torch.int32).to(torch.uint8)
+
+
+def _unpack_int2(packed: torch.Tensor, head_dim: int) -> torch.Tensor:
+    """Inverse of _pack_int2. Returns uint8 indices in 0..3."""
+    *prefix, D_packed = packed.shape
+    if D_packed * 4 != head_dim:
+        raise ValueError(f"_unpack_int2: packed last axis {D_packed} * 4 != head_dim {head_dim}")
+    offsets = (torch.arange(4, device=packed.device, dtype=torch.uint8) * 2)
+    bits = (packed.unsqueeze(-1) >> offsets) & 0x3
+    return bits.reshape(*prefix, head_dim).to(torch.uint8)
