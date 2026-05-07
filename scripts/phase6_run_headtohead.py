@@ -160,12 +160,13 @@ def run_one(backend: str, ctx: int, out_path: Path) -> dict:
     env_overrides: dict[str, str] = {}
     log_path: Path | None = None
     if backend == "flashquest":
+        kv_bits = os.environ.get("KV_BITS", "4")
         cmd = [
             "nice", "-n", "19",
             sys.executable, str(REPO_ROOT / "scripts" / "bench_flashquest.py"),
             "--ctx-len", str(ctx),
             "--n-decode", "32",
-            "--kv-bits", "4",
+            "--kv-bits", kv_bits,
             "--out", str(out_path),
         ]
     elif backend == "llamacpp":

@@ -33,17 +33,17 @@ def main() -> None:
     p.add_argument("--num-sinks", type=int, default=4)
     p.add_argument("--window-pages", type=int, default=2)
     p.add_argument("--page-size", type=int, default=64)
-    p.add_argument("--kv-bits", type=int, choices=[4, 8], default=4,
-                   help="KV cache bit width (4 = INT4 packed; 8 = INT8). "
-                        "Default 4 — RULER NIAH 4k cleared 100/100/100 vs dense.")
+    p.add_argument("--kv-bits", type=int, choices=[4, 8, 3], default=4,
+                   help="KV cache bit width. 4 = KIVI-INT4 (default, RULER 100/100/100). "
+                        "3 = TurboQuant K3-V2 (Phase 7). 8 = KIVI-INT8.")
     p.add_argument("--out", type=str, required=True)
     args = p.parse_args()
 
-    quant_label = (
-        "AWQ-INT4 + INT4 paged KV + Quest top-k retention=0.25"
-        if args.kv_bits == 4
-        else "AWQ-INT4 + INT8 paged KV + Quest top-k retention=0.25"
-    )
+    quant_label = {
+        3: "AWQ-INT4 + TurboQuant K3-V2 paged KV + Quest top-k retention=0.25",
+        4: "AWQ-INT4 + INT4 paged KV + Quest top-k retention=0.25",
+        8: "AWQ-INT4 + INT8 paged KV + Quest top-k retention=0.25",
+    }[args.kv_bits]
     record = {
         "backend": "flashquest",
         "quant": quant_label,
@@ -59,7 +59,9 @@ def main() -> None:
     t_start = time.perf_counter()
     try:
         torch.cuda.reset_peak_memory_stats()
-        if args.kv_bits == 4:
+        if args.kv_bits == 3:
+            from flashquest.cache.persistent_turbo import PersistentTurboKVCache as CacheCls
+        elif args.kv_bits == 4:
             from flashquest.cache.persistent_int4 import PersistentInt4KVCache as CacheCls
         else:
             from flashquest.cache.persistent_int8 import PersistentInt8KVCache as CacheCls

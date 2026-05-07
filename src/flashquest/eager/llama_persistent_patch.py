@@ -19,9 +19,11 @@ from ..eager.criticality import page_scores_int4_fast, page_scores_int8_fast
 from ..eager.selection import select_pages_vectorized
 from ..kernel import flash_attn_sparse_fwd
 from ..kernel.kv_quant import (
-    dequantize_k, dequantize_k_int4, dequantize_v, dequantize_v_int4,
+    dequantize_k, dequantize_k_int4, dequantize_k_turbo,
+    dequantize_v, dequantize_v_int4, dequantize_v_turbo,
 )
 from ..kernel.sparse_int4_fwd import flash_attn_sparse_int4_fwd
+from ..kernel.sparse_turbo_fwd import flash_attn_sparse_turbo_fwd
 
 
 def _bf16_dense_attn_with_lse(
@@ -58,52 +60,6 @@ def _merge_two_attentions(
     return ((wa * O_a.float() + wb * O_b.float()) / (wa + wb)).to(O_a.dtype)
 
 
-def _quest_duo_fused_with_lse(
-    Q, K_storage, K_scale, K_mn, V_storage, V_scale, V_mn,
-    *, head_pattern, page_size, retention, num_sinks, window_pages, kv_bits,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Fused dispatch returning (O, lse) — needed for online-softmax merge.
-
-    kv_bits ∈ {4, 8} selects the criticality fast path and the sparse kernel.
-    K_storage / V_storage are uint8 tensors:
-        kv_bits=8 → shape (B, H_kv, S_kv, D)        (full uint8)
-        kv_bits=4 → shape (B, H_kv, S_kv, D//2)     (packed 2-per-byte)
-    """
-    B, H_q, S_q, D = Q.shape
-    _, H_kv, _, _ = K_storage.shape
-    n_rep = H_q // H_kv
-    pattern_per_q = head_pattern.to(Q.device).repeat_interleave(n_rep)
-    retention_per_q = torch.where(
-        pattern_per_q,
-        torch.full((H_q,), retention, device=Q.device),
-        torch.zeros(H_q, device=Q.device),
-    )
-
-    if kv_bits == 4:
-        scores = page_scores_int4_fast(Q, K_scale, K_mn)
-    elif kv_bits == 8:
-        scores = page_scores_int8_fast(Q, K_scale, K_mn)
-    else:
-        raise ValueError(f"unsupported kv_bits={kv_bits!r}")
-
-    sel = select_pages_vectorized(
-        scores, retention=retention_per_q,
-        num_sinks=num_sinks, window_pages=window_pages,
-    )
-
-    if kv_bits == 4:
-        O, lse = flash_attn_sparse_int4_fwd(
-            Q, K_storage, K_scale, K_mn, V_storage, V_scale, V_mn,
-            selection_mask=sel, page_size=page_size, return_lse=True,
-        )
-    else:
-        O, lse = flash_attn_sparse_fwd(
-            Q, K_storage, K_scale, K_mn, V_storage, V_scale, V_mn,
-            selection_mask=sel, page_size=page_size, return_lse=True,
-        )
-    return O, lse
-
-
 def make_quest_persistent_forward(
     *,
     cache,
@@ -114,24 +70,68 @@ def make_quest_persistent_forward(
     page_size: int,
 ):
     kv_bits = getattr(cache, "kv_bits", 8)
-    if kv_bits == 4:
-        K_view_key = "K_packed"
-        V_view_key = "V_packed"
+    head_dim = cache.head_dim
 
-        def _dequant_k(k_storage, k_scale, k_mn):
-            return dequantize_k_int4(k_storage, k_scale, k_mn, page_size=page_size)
+    if kv_bits == 3:
+        def _dequant_k_from_views(views):
+            return dequantize_k_turbo(
+                views["K_msb"], views["K_lsb"], views["K_scale_turbo"],
+                head_dim=head_dim,
+            )
 
-        def _dequant_v(v_storage, v_scale, v_mn):
-            return dequantize_v_int4(v_storage, v_scale, v_mn)
+        def _dequant_v_from_views(views):
+            return dequantize_v_turbo(
+                views["V_packed"], views["V_scale_turbo"], head_dim=head_dim,
+            )
+
+        def _criticality_scores(q, views):
+            return page_scores_int4_fast(q, views["K_scale_raw"], views["K_mn_raw"])
+
+        def _sparse_fwd_call(q, views, sel):
+            return flash_attn_sparse_turbo_fwd(
+                q,
+                views["K_msb"], views["K_lsb"], views["K_scale_turbo"],
+                views["V_packed"], views["V_scale_turbo"],
+                selection_mask=sel, page_size=page_size, return_lse=True,
+            )
+    elif kv_bits == 4:
+        def _dequant_k_from_views(views):
+            return dequantize_k_int4(
+                views["K_packed"], views["K_scale"], views["K_mn"], page_size=page_size,
+            )
+
+        def _dequant_v_from_views(views):
+            return dequantize_v_int4(views["V_packed"], views["V_scale"], views["V_mn"])
+
+        def _criticality_scores(q, views):
+            return page_scores_int4_fast(q, views["K_scale"], views["K_mn"])
+
+        def _sparse_fwd_call(q, views, sel):
+            return flash_attn_sparse_int4_fwd(
+                q,
+                views["K_packed"], views["K_scale"], views["K_mn"],
+                views["V_packed"], views["V_scale"], views["V_mn"],
+                selection_mask=sel, page_size=page_size, return_lse=True,
+            )
     elif kv_bits == 8:
-        K_view_key = "K_uint8"
-        V_view_key = "V_uint8"
+        def _dequant_k_from_views(views):
+            return dequantize_k(
+                views["K_uint8"], views["K_scale"], views["K_mn"], page_size=page_size,
+            )
 
-        def _dequant_k(k_storage, k_scale, k_mn):
-            return dequantize_k(k_storage, k_scale, k_mn, page_size=page_size)
+        def _dequant_v_from_views(views):
+            return dequantize_v(views["V_uint8"], views["V_scale"], views["V_mn"])
 
-        def _dequant_v(v_storage, v_scale, v_mn):
-            return dequantize_v(v_storage, v_scale, v_mn)
+        def _criticality_scores(q, views):
+            return page_scores_int8_fast(q, views["K_scale"], views["K_mn"])
+
+        def _sparse_fwd_call(q, views, sel):
+            return flash_attn_sparse_fwd(
+                q,
+                views["K_uint8"], views["K_scale"], views["K_mn"],
+                views["V_uint8"], views["V_scale"], views["V_mn"],
+                selection_mask=sel, page_size=page_size, return_lse=True,
+            )
     else:
         raise ValueError(f"unsupported cache.kv_bits={kv_bits!r}")
     def forward(
@@ -167,26 +167,8 @@ def make_quest_persistent_forward(
         views = cache.get_views(self.layer_idx)
 
         if S_q > 1:
-            # Prefill: dense attention over the dequant'd cache.
-            # Sparse selection at long S_q would balloon criticality intermediates;
-            # we keep prefill dense (SPEC win condition is decode tok/s, not prefill).
-            K_full = torch.cat(
-                [
-                    _dequant_k(views[K_view_key], views["K_scale"], views["K_mn"]),
-                    views["K_partial"],
-                ],
-                dim=2,
-            )
-            V_full = torch.cat(
-                [
-                    _dequant_v(views[V_view_key], views["V_scale"], views["V_mn"]),
-                    views["V_partial"],
-                ],
-                dim=2,
-            )
-            # enable_gqa=True keeps K/V at H_kv heads — SDPA broadcasts internally
-            # and can stay on the Flash backend. Materializing K.repeat_interleave to
-            # H_q heads at long S_kv pushed SDPA off Flash and OOM'd at 32 k.
+            K_full = torch.cat([_dequant_k_from_views(views), views["K_partial"]], dim=2)
+            V_full = torch.cat([_dequant_v_from_views(views), views["V_partial"]], dim=2)
             attn_output = torch.nn.functional.scaled_dot_product_attention(
                 q, K_full, V_full, is_causal=True, enable_gqa=True,
             )
@@ -199,14 +181,22 @@ def make_quest_persistent_forward(
                     q, views["K_partial"], views["V_partial"],
                 )
             else:
-                O_sparse, lse_sparse = _quest_duo_fused_with_lse(
-                    q, views[K_view_key], views["K_scale"], views["K_mn"],
-                    views[V_view_key], views["V_scale"], views["V_mn"],
-                    head_pattern=head_pattern_layer,
-                    page_size=page_size, retention=retention,
-                    num_sinks=num_sinks, window_pages=window_pages,
-                    kv_bits=kv_bits,
+                B, H_q, _, _ = q.shape
+                H_kv = cache.num_kv_heads
+                n_rep = H_q // H_kv
+                pattern_per_q = head_pattern_layer.to(q.device).repeat_interleave(n_rep)
+                retention_per_q = torch.where(
+                    pattern_per_q,
+                    torch.full((H_q,), retention, device=q.device),
+                    torch.zeros(H_q, device=q.device),
                 )
+                scores = _criticality_scores(q, views)
+                sel = select_pages_vectorized(
+                    scores, retention=retention_per_q,
+                    num_sinks=num_sinks, window_pages=window_pages,
+                )
+                O_sparse, lse_sparse = _sparse_fwd_call(q, views, sel)
+
                 if partial_len == 0:
                     attn_output = O_sparse
                 else:
