@@ -63,3 +63,53 @@ def test_pack_bit_split_requires_multiple_of_8():
     x = torch.zeros(1, 1, 1, 12, dtype=torch.uint8, device="cuda")
     with pytest.raises(ValueError, match="multiple of 8"):
         _pack_bit_split(x)
+
+
+def test_quantize_k_turbo_shapes():
+    """quantize_k_turbo returns five tensors with the documented shapes."""
+    from flashquest.kernel.kv_quant import quantize_k_turbo
+    torch.manual_seed(2)
+    B, H, S, D, page_size = 1, 4, 256, 128, 64
+    K = torch.randn(B, H, S, D, dtype=torch.bfloat16, device="cuda")
+    K_msb, K_lsb, K_scale_turbo, K_scale_raw, K_mn_raw = quantize_k_turbo(K, page_size=page_size)
+    assert K_msb.shape == (B, H, S, D // 8) and K_msb.dtype == torch.uint8
+    assert K_lsb.shape == (B, H, S, D // 4) and K_lsb.dtype == torch.uint8
+    assert K_scale_turbo.shape == (B, H, S, 1) and K_scale_turbo.dtype == torch.bfloat16
+    num_pages = S // page_size
+    assert K_scale_raw.shape == (B, H, num_pages, D)
+    assert K_mn_raw.shape == (B, H, num_pages, D)
+
+
+def test_quantize_v_turbo_shapes():
+    """quantize_v_turbo returns (V_packed, V_scale_turbo)."""
+    from flashquest.kernel.kv_quant import quantize_v_turbo
+    torch.manual_seed(3)
+    B, H, S, D = 1, 4, 256, 128
+    V = torch.randn(B, H, S, D, dtype=torch.bfloat16, device="cuda")
+    V_packed, V_scale_turbo = quantize_v_turbo(V)
+    assert V_packed.shape == (B, H, S, D // 4) and V_packed.dtype == torch.uint8
+    assert V_scale_turbo.shape == (B, H, S, 1) and V_scale_turbo.dtype == torch.bfloat16
+
+
+def test_dequantize_k_turbo_roundtrip():
+    """K → quant → dequant ≈ K within 3-bit Lloyd-Max noise band on Gaussian inputs."""
+    from flashquest.kernel.kv_quant import quantize_k_turbo, dequantize_k_turbo
+    torch.manual_seed(4)
+    K = torch.randn(1, 4, 256, 128, dtype=torch.bfloat16, device="cuda")
+    K_msb, K_lsb, K_scale_turbo, _, _ = quantize_k_turbo(K, page_size=64)
+    K_back = dequantize_k_turbo(K_msb, K_lsb, K_scale_turbo, head_dim=128)
+    err = (K - K_back).float().abs().max()
+    assert err < 1.5, f"K dequant max abs err {err} exceeds 1.5"
+    mean_err = (K - K_back).float().abs().mean()
+    assert mean_err < 0.4, f"K dequant mean abs err {mean_err} exceeds 0.4"
+
+
+def test_dequantize_v_turbo_roundtrip():
+    """V → quant → dequant ≈ V within 2-bit Lloyd-Max noise band."""
+    from flashquest.kernel.kv_quant import quantize_v_turbo, dequantize_v_turbo
+    torch.manual_seed(5)
+    V = torch.randn(1, 4, 256, 128, dtype=torch.bfloat16, device="cuda")
+    V_packed, V_scale_turbo = quantize_v_turbo(V)
+    V_back = dequantize_v_turbo(V_packed, V_scale_turbo, head_dim=128)
+    mean_err = (V - V_back).float().abs().mean()
+    assert mean_err < 0.7, f"V dequant mean abs err {mean_err} exceeds 0.7"

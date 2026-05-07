@@ -323,3 +323,93 @@ def _unpack_int2(packed: torch.Tensor, head_dim: int) -> torch.Tensor:
     offsets = (torch.arange(4, device=packed.device, dtype=torch.uint8) * 2)
     bits = (packed.unsqueeze(-1) >> offsets) & 0x3
     return bits.reshape(*prefix, head_dim).to(torch.uint8)
+
+
+def quantize_k_turbo(K: torch.Tensor, page_size: int):
+    """TurboQuant K: WHT → per-token scale → 3-bit Lloyd-Max → bit-split pack.
+
+    Also computes un-rotated per-page channel-wise (K_scale_raw, K_mn_raw) for
+    `page_scores_int4_fast` in the dispatcher.
+
+    Returns:
+        K_msb         (B, H, S, D/8)        uint8
+        K_lsb         (B, H, S, D/4)        uint8
+        K_scale_turbo (B, H, S, 1)          bf16
+        K_scale_raw   (B, H, num_pages, D)  bf16  -- KIVI-INT4-equivalent
+        K_mn_raw      (B, H, num_pages, D)  bf16
+    """
+    from flashquest.kernel.wht import wht_along_head_dim
+
+    B, H, S, D = K.shape
+    if D % 8 != 0:
+        raise ValueError(f"quantize_k_turbo requires head_dim multiple of 8; got {D}")
+
+    K_rot = wht_along_head_dim(K)
+
+    K_abs_max = K_rot.float().abs().amax(dim=-1, keepdim=True)
+    K_scale_turbo = (K_abs_max / _K_TURBO_C_MAX).clamp_min(_EPS)
+
+    K_normalized = K_rot.float() / K_scale_turbo
+    K_idx = _quantize_to_codebook(K_normalized, K_TURBO_CODEBOOK)
+
+    K_msb, K_lsb = _pack_bit_split(K_idx)
+
+    K_scale_raw, K_mn_raw = _scale_mn_per_page_channel_int4(K, page_size)
+
+    return (
+        K_msb, K_lsb,
+        K_scale_turbo.to(torch.bfloat16),
+        K_scale_raw.to(torch.bfloat16),
+        K_mn_raw.to(torch.bfloat16),
+    )
+
+
+def dequantize_k_turbo(
+    K_msb: torch.Tensor,
+    K_lsb: torch.Tensor,
+    K_scale_turbo: torch.Tensor,
+    head_dim: int,
+) -> torch.Tensor:
+    """Inverse: bit-split unpack → codebook lookup → multiply scale → inverse WHT → BF16."""
+    from flashquest.kernel.wht import wht_along_head_dim
+
+    K_idx = _unpack_bit_split(K_msb, K_lsb, head_dim=head_dim)
+    K_rot = K_TURBO_CODEBOOK[K_idx.long()] * K_scale_turbo.float()
+    K = wht_along_head_dim(K_rot)
+    return K.to(torch.bfloat16)
+
+
+def quantize_v_turbo(V: torch.Tensor):
+    """TurboQuant V: WHT → per-token scale → 2-bit Lloyd-Max → INT2 pack.
+
+    Returns:
+        V_packed       (B, H, S, D/4) uint8
+        V_scale_turbo  (B, H, S, 1)   bf16
+    """
+    from flashquest.kernel.wht import wht_along_head_dim
+
+    B, H, S, D = V.shape
+    if D % 4 != 0:
+        raise ValueError(f"quantize_v_turbo requires head_dim multiple of 4; got {D}")
+
+    V_rot = wht_along_head_dim(V)
+    V_abs_max = V_rot.float().abs().amax(dim=-1, keepdim=True)
+    V_scale_turbo = (V_abs_max / _V_TURBO_C_MAX).clamp_min(_EPS)
+    V_normalized = V_rot.float() / V_scale_turbo
+    V_idx = _quantize_to_codebook(V_normalized, V_TURBO_CODEBOOK)
+    V_packed = _pack_int2(V_idx)
+    return V_packed, V_scale_turbo.to(torch.bfloat16)
+
+
+def dequantize_v_turbo(
+    V_packed: torch.Tensor,
+    V_scale_turbo: torch.Tensor,
+    head_dim: int,
+) -> torch.Tensor:
+    """Inverse of quantize_v_turbo."""
+    from flashquest.kernel.wht import wht_along_head_dim
+
+    V_idx = _unpack_int2(V_packed, head_dim=head_dim)
+    V_rot = V_TURBO_CODEBOOK[V_idx.long()] * V_scale_turbo.float()
+    V = wht_along_head_dim(V_rot)
+    return V.to(torch.bfloat16)
