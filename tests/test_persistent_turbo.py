@@ -85,3 +85,34 @@ def test_requires_head_dim_multiple_of_8():
             batch_size=1, num_layers=1, num_kv_heads=1, head_dim=4,
             max_seq_len=64, page_size=64, device="cuda",
         )
+
+
+@pytest.mark.slow
+def test_turbo_dispatcher_smoke_llama_1b():
+    """End-to-end: patch Llama-3.2-1B with TurboQuant cache + all-retrieval, decode 1 step."""
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+    from flashquest.eager.llama_persistent_patch import patch_llama_for_quest_persistent
+
+    name = "unsloth/Llama-3.2-1B-Instruct"
+    tok = AutoTokenizer.from_pretrained(name)
+    model = AutoModelForCausalLM.from_pretrained(
+        name, torch_dtype=torch.bfloat16, attn_implementation="eager",
+    ).cuda().eval()
+
+    cfg = model.config
+    head_dim = getattr(cfg, "head_dim", None) or (cfg.hidden_size // cfg.num_attention_heads)
+    pattern = torch.ones(cfg.num_hidden_layers, cfg.num_key_value_heads, dtype=torch.bool)
+    cache = PersistentTurboKVCache(
+        batch_size=1, num_layers=cfg.num_hidden_layers,
+        num_kv_heads=cfg.num_key_value_heads, head_dim=head_dim,
+        max_seq_len=256, page_size=64, device="cuda",
+    )
+    patch_llama_for_quest_persistent(
+        model, cache=cache, head_pattern=pattern,
+        retention=0.25, num_sinks=4, window_pages=2, page_size=64,
+    )
+
+    ids = tok("The quick brown fox", return_tensors="pt").input_ids.cuda()
+    with torch.no_grad():
+        out = model(input_ids=ids, use_cache=True, logits_to_keep=1)
+    assert torch.isfinite(out.logits).all(), "non-finite logits"
