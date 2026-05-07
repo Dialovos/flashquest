@@ -90,12 +90,29 @@ _SUPPORTED_HEAD_DIMS = (64, 128)
 
 
 @triton.jit
+def _codebook_lookup_3bit(idx):
+    """Map uint8 idx ∈ {0..7} → fp32 codebook value via SELP chain.
+
+    Codebook: 8 Lloyd-Max levels for unit-variance Gaussian, identical for K and V
+    in the K3-V3 design. Inlining as tl.where avoids the GMEM scatter-gather
+    pattern that dominated the kernel time.
+    """
+    return tl.where(idx == 0, -2.1519,
+           tl.where(idx == 1, -1.3439,
+           tl.where(idx == 2, -0.7560,
+           tl.where(idx == 3, -0.2451,
+           tl.where(idx == 4, 0.2451,
+           tl.where(idx == 5, 0.7560,
+           tl.where(idx == 6, 1.3439,
+                              2.1519)))))))
+
+
+@triton.jit
 def _sparse_attn_fwd_kernel_turbo(
     Q_rot_ptr,
     K_msb_ptr, K_lsb_ptr, V_msb_ptr, V_lsb_ptr,
     O_rot_ptr, L_ptr,
     K_scale_t_ptr, V_scale_t_ptr,
-    K_codebook_ptr, V_codebook_ptr,
     sel_ptr,
     sm_scale,
     stride_qb, stride_qh, stride_qd,
@@ -170,7 +187,7 @@ def _sparse_attn_fwd_kernel_turbo(
 
             # Combine: idx = (msb << 2) | lsb  ∈  0..7
             k_idx = (k_msb_full.to(tl.int32) << 2) | k_lsb_full.to(tl.int32)
-            k_rot = tl.load(K_codebook_ptr + k_idx)
+            k_rot = _codebook_lookup_3bit(k_idx)
 
             k_scale_t = tl.load(
                 K_scale_t_ptr + b * stride_kstb + h_kv * stride_ksth + n_idx * stride_ksts,
@@ -210,7 +227,7 @@ def _sparse_attn_fwd_kernel_turbo(
             v_lsb_expanded = (v_lsb_byte[:, :, None] >> lsb_offsets[None, None, :]) & 0x3
             v_lsb_full = tl.reshape(v_lsb_expanded, (PAGE_SIZE, HEAD_DIM))
             v_idx = (v_msb_full.to(tl.int32) << 2) | v_lsb_full.to(tl.int32)
-            v_rot = tl.load(V_codebook_ptr + v_idx)
+            v_rot = _codebook_lookup_3bit(v_idx)
 
             v_scale_t = tl.load(
                 V_scale_t_ptr + b * stride_vstb + h_kv * stride_vsth + n_idx * stride_vsts,
@@ -301,7 +318,6 @@ def flash_attn_sparse_turbo_fwd(
         K_msb, K_lsb, V_msb, V_lsb,
         O_rot_2d, L_ptr,
         K_scale_turbo, V_scale_turbo,
-        K_TURBO_CODEBOOK, V_TURBO_CODEBOOK,
         sel_2d,
         sm_scale,
         Q_2d.stride(0), Q_2d.stride(1), Q_2d.stride(2),
