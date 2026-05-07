@@ -81,7 +81,8 @@ def make_quest_persistent_forward(
 
         def _dequant_v_from_views(views):
             return dequantize_v_turbo(
-                views["V_packed"], views["V_scale_turbo"], head_dim=head_dim,
+                views["V_msb"], views["V_lsb"], views["V_scale_turbo"],
+                head_dim=head_dim,
             )
 
         def _criticality_scores(q, views):
@@ -91,7 +92,7 @@ def make_quest_persistent_forward(
             return flash_attn_sparse_turbo_fwd(
                 q,
                 views["K_msb"], views["K_lsb"], views["K_scale_turbo"],
-                views["V_packed"], views["V_scale_turbo"],
+                views["V_msb"], views["V_lsb"], views["V_scale_turbo"],
                 selection_mask=sel, page_size=page_size, return_lse=True,
             )
     elif kv_bits == 4:

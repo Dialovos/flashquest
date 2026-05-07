@@ -225,16 +225,15 @@ def dequantize_v_int4(
 K_TURBO_CODEBOOK = torch.tensor(
     [-2.1519, -1.3439, -0.7560, -0.2451, 0.2451, 0.7560, 1.3439, 2.1519],
     dtype=torch.float32, device="cuda",
-)  # 8 codepoints, indices 0..7
-V_TURBO_CODEBOOK = torch.tensor(
-    [-1.5104, -0.4528, 0.4528, 1.5104],
-    dtype=torch.float32, device="cuda",
-)  # 4 codepoints, indices 0..3
+)  # 8 codepoints, indices 0..7 (3-bit Lloyd-Max for unit Gaussian)
+V_TURBO_CODEBOOK = K_TURBO_CODEBOOK.clone()  # K3-V3: V also 8 levels (Phase 7 task 11b)
 
-# c_max for per-token scaling: s = max(|x_rot|) / c_max so that the largest
-# rotated value lands on the largest codepoint.
-_K_TURBO_C_MAX = 2.1519
-_V_TURBO_C_MAX = 1.5104
+# Per-token RMS scale: s = sqrt(mean(x_rot**2)). Lloyd-Max codebook is optimal
+# for unit-variance Gaussian, so RMS scaling puts the data at the right
+# variance for the codebook. Outliers beyond the largest codepoint clip
+# naturally via argmin (~0.1% of values at D=128 Gaussian).
+_K_TURBO_C_MAX = 2.1519  # retained for reference / docs
+_V_TURBO_C_MAX = 2.1519  # K3-V3 — V codebook now matches K
 
 
 def _quantize_to_codebook(x: torch.Tensor, codebook: torch.Tensor) -> torch.Tensor:
@@ -346,8 +345,8 @@ def quantize_k_turbo(K: torch.Tensor, page_size: int):
 
     K_rot = wht_along_head_dim(K)
 
-    K_abs_max = K_rot.float().abs().amax(dim=-1, keepdim=True)
-    K_scale_turbo = (K_abs_max / _K_TURBO_C_MAX).clamp_min(_EPS)
+    K_rms = K_rot.float().pow(2).mean(dim=-1, keepdim=True).sqrt()
+    K_scale_turbo = K_rms.clamp_min(_EPS)
 
     K_normalized = K_rot.float() / K_scale_turbo
     K_idx = _quantize_to_codebook(K_normalized, K_TURBO_CODEBOOK)
@@ -380,36 +379,42 @@ def dequantize_k_turbo(
 
 
 def quantize_v_turbo(V: torch.Tensor):
-    """TurboQuant V: WHT → per-token scale → 2-bit Lloyd-Max → INT2 pack.
+    """TurboQuant V: WHT → per-token RMS → 3-bit Lloyd-Max → bit-split pack.
+
+    K3-V3 (Phase 7 task 11b): bumped V from 2-bit to 3-bit because the
+    2-bit V codebook couldn't pass RULER multivalue. V now uses the same
+    8-codepoint codebook + bit-split layout as K.
 
     Returns:
-        V_packed       (B, H, S, D/4) uint8
+        V_msb          (B, H, S, D/8) uint8
+        V_lsb          (B, H, S, D/4) uint8
         V_scale_turbo  (B, H, S, 1)   bf16
     """
     from flashquest.kernel.wht import wht_along_head_dim
 
     B, H, S, D = V.shape
-    if D % 4 != 0:
-        raise ValueError(f"quantize_v_turbo requires head_dim multiple of 4; got {D}")
+    if D % 8 != 0:
+        raise ValueError(f"quantize_v_turbo requires head_dim multiple of 8; got {D}")
 
     V_rot = wht_along_head_dim(V)
-    V_abs_max = V_rot.float().abs().amax(dim=-1, keepdim=True)
-    V_scale_turbo = (V_abs_max / _V_TURBO_C_MAX).clamp_min(_EPS)
+    V_rms = V_rot.float().pow(2).mean(dim=-1, keepdim=True).sqrt()
+    V_scale_turbo = V_rms.clamp_min(_EPS)
     V_normalized = V_rot.float() / V_scale_turbo
     V_idx = _quantize_to_codebook(V_normalized, V_TURBO_CODEBOOK)
-    V_packed = _pack_int2(V_idx)
-    return V_packed, V_scale_turbo.to(torch.bfloat16)
+    V_msb, V_lsb = _pack_bit_split(V_idx)
+    return V_msb, V_lsb, V_scale_turbo.to(torch.bfloat16)
 
 
 def dequantize_v_turbo(
-    V_packed: torch.Tensor,
+    V_msb: torch.Tensor,
+    V_lsb: torch.Tensor,
     V_scale_turbo: torch.Tensor,
     head_dim: int,
 ) -> torch.Tensor:
-    """Inverse of quantize_v_turbo."""
+    """Inverse of quantize_v_turbo (K3-V3)."""
     from flashquest.kernel.wht import wht_along_head_dim
 
-    V_idx = _unpack_int2(V_packed, head_dim=head_dim)
+    V_idx = _unpack_bit_split(V_msb, V_lsb, head_dim=head_dim)
     V_rot = V_TURBO_CODEBOOK[V_idx.long()] * V_scale_turbo.float()
     V = wht_along_head_dim(V_rot)
     return V.to(torch.bfloat16)

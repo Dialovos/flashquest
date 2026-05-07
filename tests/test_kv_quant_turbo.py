@@ -11,9 +11,9 @@ from flashquest.kernel.kv_quant import (
 
 
 def test_codebook_shapes_and_symmetry():
-    """K codebook has 8 entries; V has 4. Both symmetric around 0."""
+    """K and V codebooks: 8 entries each (K3-V3); both symmetric around 0."""
     assert K_TURBO_CODEBOOK.shape == (8,)
-    assert V_TURBO_CODEBOOK.shape == (4,)
+    assert V_TURBO_CODEBOOK.shape == (8,)
     for cb in (K_TURBO_CODEBOOK, V_TURBO_CODEBOOK):
         sorted_cb = torch.sort(cb).values
         assert torch.allclose(sorted_cb, -sorted_cb.flip(0), atol=1e-5), (
@@ -81,13 +81,14 @@ def test_quantize_k_turbo_shapes():
 
 
 def test_quantize_v_turbo_shapes():
-    """quantize_v_turbo returns (V_packed, V_scale_turbo)."""
+    """quantize_v_turbo returns (V_msb, V_lsb, V_scale_turbo) — K3-V3."""
     from flashquest.kernel.kv_quant import quantize_v_turbo
     torch.manual_seed(3)
     B, H, S, D = 1, 4, 256, 128
     V = torch.randn(B, H, S, D, dtype=torch.bfloat16, device="cuda")
-    V_packed, V_scale_turbo = quantize_v_turbo(V)
-    assert V_packed.shape == (B, H, S, D // 4) and V_packed.dtype == torch.uint8
+    V_msb, V_lsb, V_scale_turbo = quantize_v_turbo(V)
+    assert V_msb.shape == (B, H, S, D // 8) and V_msb.dtype == torch.uint8
+    assert V_lsb.shape == (B, H, S, D // 4) and V_lsb.dtype == torch.uint8
     assert V_scale_turbo.shape == (B, H, S, 1) and V_scale_turbo.dtype == torch.bfloat16
 
 
@@ -105,11 +106,11 @@ def test_dequantize_k_turbo_roundtrip():
 
 
 def test_dequantize_v_turbo_roundtrip():
-    """V → quant → dequant ≈ V within 2-bit Lloyd-Max noise band."""
+    """V → quant → dequant ≈ V within 3-bit Lloyd-Max noise band (K3-V3)."""
     from flashquest.kernel.kv_quant import quantize_v_turbo, dequantize_v_turbo
     torch.manual_seed(5)
     V = torch.randn(1, 4, 256, 128, dtype=torch.bfloat16, device="cuda")
-    V_packed, V_scale_turbo = quantize_v_turbo(V)
-    V_back = dequantize_v_turbo(V_packed, V_scale_turbo, head_dim=128)
+    V_msb, V_lsb, V_scale_turbo = quantize_v_turbo(V)
+    V_back = dequantize_v_turbo(V_msb, V_lsb, V_scale_turbo, head_dim=128)
     mean_err = (V - V_back).float().abs().mean()
-    assert mean_err < 0.7, f"V dequant mean abs err {mean_err} exceeds 0.7"
+    assert mean_err < 0.4, f"V dequant mean abs err {mean_err} exceeds 0.4"

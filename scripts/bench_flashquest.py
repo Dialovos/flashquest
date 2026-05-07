@@ -35,12 +35,12 @@ def main() -> None:
     p.add_argument("--page-size", type=int, default=64)
     p.add_argument("--kv-bits", type=int, choices=[4, 8, 3], default=4,
                    help="KV cache bit width. 4 = KIVI-INT4 (default, RULER 100/100/100). "
-                        "3 = TurboQuant K3-V2 (Phase 7). 8 = KIVI-INT8.")
+                        "3 = TurboQuant K3-V3 (Phase 7). 8 = KIVI-INT8.")
     p.add_argument("--out", type=str, required=True)
     args = p.parse_args()
 
     quant_label = {
-        3: "AWQ-INT4 + TurboQuant K3-V2 paged KV + Quest top-k retention=0.25",
+        3: "AWQ-INT4 + TurboQuant K3-V3 paged KV + Quest top-k retention=0.25",
         4: "AWQ-INT4 + INT4 paged KV + Quest top-k retention=0.25",
         8: "AWQ-INT4 + INT8 paged KV + Quest top-k retention=0.25",
     }[args.kv_bits]

@@ -21,16 +21,16 @@ def test_sparse_turbo_matches_dense():
     V = torch.randn(B, H_kv, S_kv, D, dtype=torch.bfloat16, device="cuda")
 
     K_msb, K_lsb, K_scale_t, _, _ = quantize_k_turbo(K, page_size=page_size)
-    V_packed, V_scale_t = quantize_v_turbo(V)
+    V_msb, V_lsb, V_scale_t = quantize_v_turbo(V)
 
     sel = torch.ones(B, H_q, S_q, P, dtype=torch.bool, device="cuda")
     out, _ = flash_attn_sparse_turbo_fwd(
-        Q, K_msb, K_lsb, K_scale_t, V_packed, V_scale_t,
+        Q, K_msb, K_lsb, K_scale_t, V_msb, V_lsb, V_scale_t,
         selection_mask=sel, page_size=page_size, sm_scale=D ** -0.5, return_lse=True,
     )
 
     K_deq = dequantize_k_turbo(K_msb, K_lsb, K_scale_t, head_dim=D)
-    V_deq = dequantize_v_turbo(V_packed, V_scale_t, head_dim=D)
+    V_deq = dequantize_v_turbo(V_msb, V_lsb, V_scale_t, head_dim=D)
     n_rep = H_q // H_kv
     K_deq_q = K_deq.repeat_interleave(n_rep, dim=1)
     V_deq_q = V_deq.repeat_interleave(n_rep, dim=1)
@@ -58,7 +58,7 @@ def test_fused_matches_reference():
     V = torch.randn(B, H_kv, S_kv, D, dtype=torch.bfloat16, device="cuda")
 
     K_msb, K_lsb, K_scale_t, _, _ = quantize_k_turbo(K, page_size=page_size)
-    V_packed, V_scale_t = quantize_v_turbo(V)
+    V_msb, V_lsb, V_scale_t = quantize_v_turbo(V)
     sel = torch.ones(B, H_q, S_q, P, dtype=torch.bool, device="cuda")
 
     kw = dict(
@@ -66,10 +66,10 @@ def test_fused_matches_reference():
         sm_scale=D ** -0.5, return_lse=True,
     )
     O_ref, lse_ref = _flash_attn_sparse_turbo_fwd_reference(
-        Q, K_msb, K_lsb, K_scale_t, V_packed, V_scale_t, **kw,
+        Q, K_msb, K_lsb, K_scale_t, V_msb, V_lsb, V_scale_t, **kw,
     )
     O_fused, lse_fused = flash_attn_sparse_turbo_fwd(
-        Q, K_msb, K_lsb, K_scale_t, V_packed, V_scale_t, **kw,
+        Q, K_msb, K_lsb, K_scale_t, V_msb, V_lsb, V_scale_t, **kw,
     )
 
     err_O = (O_fused.float() - O_ref.float()).abs().max()
@@ -93,7 +93,7 @@ def test_no_kv_shaped_bf16_intermediate(monkeypatch):
     K = torch.randn(B, H_kv, S_kv, D, dtype=torch.bfloat16, device="cuda")
     V = torch.randn(B, H_kv, S_kv, D, dtype=torch.bfloat16, device="cuda")
     K_msb, K_lsb, K_scale_t, _, _ = quantize_k_turbo(K, page_size=page_size)
-    V_packed, V_scale_t = quantize_v_turbo(V)
+    V_msb, V_lsb, V_scale_t = quantize_v_turbo(V)
     sel = torch.ones(B, H_q, 1, S_kv // page_size, dtype=torch.bool, device="cuda")
 
     kv_bytes_threshold = B * H_kv * S_kv * D * 2
@@ -115,7 +115,7 @@ def test_no_kv_shaped_bf16_intermediate(monkeypatch):
     monkeypatch.setattr(torch, "zeros", _track(orig_zeros))
 
     flash_attn_sparse_turbo_fwd(
-        Q, K_msb, K_lsb, K_scale_t, V_packed, V_scale_t,
+        Q, K_msb, K_lsb, K_scale_t, V_msb, V_lsb, V_scale_t,
         selection_mask=sel, page_size=page_size,
         sm_scale=D ** -0.5, return_lse=True,
     )

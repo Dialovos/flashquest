@@ -1,10 +1,11 @@
-"""Phase 7 — Persistent TurboQuant KV cache (K=3-bit bit-split, V=2-bit).
+"""Phase 7 — Persistent TurboQuant KV cache (K3-V3, both 3-bit bit-split).
 
-Mirrors `PersistentInt4KVCache` but with seven storage tensors:
+Mirrors `PersistentInt4KVCache` but with eight storage tensors:
   K_msb, K_lsb       : 3-bit K split into 1-bit MSB plane + 2-bit LSB plane
   K_scale_turbo      : per-token scalar for kernel dequant
   K_scale_raw, K_mn_raw : per-page channel-wise from un-rotated K, for criticality
-  V_packed           : 2-bit V (4 values per byte)
+  V_msb, V_lsb       : 3-bit V same bit-split layout as K (Phase 7 task 11b
+                       upgrade from 2-bit; cleared RULER multivalue ≥85 %)
   V_scale_turbo      : per-token scalar for kernel dequant
 
 `kv_bits = 3` is read by the dispatcher in `eager/llama_persistent_patch.py`.
@@ -53,10 +54,8 @@ class PersistentTurboKVCache(Cache):
 
         D_msb = head_dim // 8
         D_lsb = head_dim // 4
-        D_v = head_dim // 4
         shape_msb = (num_layers, batch_size, num_kv_heads, max_seq_len, D_msb)
         shape_lsb = (num_layers, batch_size, num_kv_heads, max_seq_len, D_lsb)
-        shape_vpk = (num_layers, batch_size, num_kv_heads, max_seq_len, D_v)
         shape_kscale_t = (num_layers, batch_size, num_kv_heads, max_seq_len, 1)
         shape_vscale_t = (num_layers, batch_size, num_kv_heads, max_seq_len, 1)
         shape_kpage = (num_layers, batch_size, num_kv_heads, max_pages, head_dim)
@@ -67,7 +66,8 @@ class PersistentTurboKVCache(Cache):
         self.K_scale_turbo = torch.zeros(shape_kscale_t, dtype=torch.bfloat16, device=dev)
         self.K_scale_raw = torch.zeros(shape_kpage, dtype=torch.bfloat16, device=dev)
         self.K_mn_raw = torch.zeros(shape_kpage, dtype=torch.bfloat16, device=dev)
-        self.V_packed = torch.zeros(shape_vpk, dtype=torch.uint8, device=dev)
+        self.V_msb = torch.zeros(shape_msb, dtype=torch.uint8, device=dev)
+        self.V_lsb = torch.zeros(shape_lsb, dtype=torch.uint8, device=dev)
         self.V_scale_turbo = torch.zeros(shape_vscale_t, dtype=torch.bfloat16, device=dev)
         self.K_partial = torch.zeros(shape_partial, dtype=torch.bfloat16, device=dev)
         self.V_partial = torch.zeros(shape_partial, dtype=torch.bfloat16, device=dev)
@@ -123,7 +123,7 @@ class PersistentTurboKVCache(Cache):
             K_msb, K_lsb, K_scale_t, K_scale_r, K_mn_r = quantize_k_turbo(
                 K_complete, page_size=page_size,
             )
-            V_packed, V_scale_t = quantize_v_turbo(V_complete)
+            V_msb, V_lsb, V_scale_t = quantize_v_turbo(V_complete)
 
             tok_start = seen - partial_len
             tok_end = tok_start + complete_len
@@ -135,7 +135,8 @@ class PersistentTurboKVCache(Cache):
             self.K_scale_turbo[layer_idx, :, :, tok_start:tok_end, :] = K_scale_t
             self.K_scale_raw[layer_idx, :, :, page_idx_start:page_idx_end, :] = K_scale_r
             self.K_mn_raw[layer_idx, :, :, page_idx_start:page_idx_end, :] = K_mn_r
-            self.V_packed[layer_idx, :, :, tok_start:tok_end, :] = V_packed
+            self.V_msb[layer_idx, :, :, tok_start:tok_end, :] = V_msb
+            self.V_lsb[layer_idx, :, :, tok_start:tok_end, :] = V_lsb
             self.V_scale_turbo[layer_idx, :, :, tok_start:tok_end, :] = V_scale_t
 
         new_partial_len = total_stream_len - complete_len
@@ -165,7 +166,8 @@ class PersistentTurboKVCache(Cache):
             "K_scale_turbo": self.K_scale_turbo[layer_idx, :, :, :completed_len, :],
             "K_scale_raw": self.K_scale_raw[layer_idx, :, :, :n_complete_pages, :],
             "K_mn_raw": self.K_mn_raw[layer_idx, :, :, :n_complete_pages, :],
-            "V_packed": self.V_packed[layer_idx, :, :, :completed_len, :],
+            "V_msb": self.V_msb[layer_idx, :, :, :completed_len, :],
+            "V_lsb": self.V_lsb[layer_idx, :, :, :completed_len, :],
             "V_scale_turbo": self.V_scale_turbo[layer_idx, :, :, :completed_len, :],
             "K_partial": self.K_partial[layer_idx, :, :, :partial_len, :],
             "V_partial": self.V_partial[layer_idx, :, :, :partial_len, :],

@@ -28,7 +28,8 @@ def _flash_attn_sparse_turbo_fwd_reference(
     K_msb: torch.Tensor,
     K_lsb: torch.Tensor,
     K_scale_turbo: torch.Tensor,
-    V_packed: torch.Tensor,
+    V_msb: torch.Tensor,
+    V_lsb: torch.Tensor,
     V_scale_turbo: torch.Tensor,
     *,
     selection_mask: torch.Tensor,
@@ -36,7 +37,7 @@ def _flash_attn_sparse_turbo_fwd_reference(
     sm_scale: Optional[float] = None,
     return_lse: bool = True,
 ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
-    """Reference path — Python, used for kernel equivalence testing.
+    """Reference path — Python, used for kernel equivalence testing (K3-V3).
 
     Algorithm: dequant the entire K, V cache to BF16 (raw basis), build a
     per-token attention mask from the page selection, run dense attention.
@@ -46,8 +47,8 @@ def _flash_attn_sparse_turbo_fwd_reference(
         raise ValueError(f"Q must be 4D (B, H_q, 1, D); got {Q.shape}")
     if K_msb.dtype != torch.uint8 or K_lsb.dtype != torch.uint8:
         raise ValueError("K_msb/K_lsb must be uint8")
-    if V_packed.dtype != torch.uint8:
-        raise ValueError("V_packed must be uint8")
+    if V_msb.dtype != torch.uint8 or V_lsb.dtype != torch.uint8:
+        raise ValueError("V_msb/V_lsb must be uint8")
 
     B, H_q, S_q, D = Q.shape
     if S_q != 1:
@@ -57,7 +58,7 @@ def _flash_attn_sparse_turbo_fwd_reference(
     n_rep = H_q // H_kv
 
     K_full = dequantize_k_turbo(K_msb, K_lsb, K_scale_turbo, head_dim=D)
-    V_full = dequantize_v_turbo(V_packed, V_scale_turbo, head_dim=D)
+    V_full = dequantize_v_turbo(V_msb, V_lsb, V_scale_turbo, head_dim=D)
 
     if sm_scale is None:
         sm_scale = 1.0 / math.sqrt(D)
@@ -90,7 +91,8 @@ _SUPPORTED_HEAD_DIMS = (64, 128)
 
 @triton.jit
 def _sparse_attn_fwd_kernel_turbo(
-    Q_rot_ptr, K_msb_ptr, K_lsb_ptr, V_packed_ptr,
+    Q_rot_ptr,
+    K_msb_ptr, K_lsb_ptr, V_msb_ptr, V_lsb_ptr,
     O_rot_ptr, L_ptr,
     K_scale_t_ptr, V_scale_t_ptr,
     K_codebook_ptr, V_codebook_ptr,
@@ -99,7 +101,8 @@ def _sparse_attn_fwd_kernel_turbo(
     stride_qb, stride_qh, stride_qd,
     stride_kmb, stride_kmh, stride_kms, stride_kmd,
     stride_klb, stride_klh, stride_kls, stride_kld,
-    stride_vb, stride_vh, stride_vs, stride_vd,
+    stride_vmb, stride_vmh, stride_vms, stride_vmd,
+    stride_vlb, stride_vlh, stride_vls, stride_vld,
     stride_ob, stride_oh, stride_od,
     stride_lb, stride_lh,
     stride_kstb, stride_ksth, stride_ksts,
@@ -112,7 +115,7 @@ def _sparse_attn_fwd_kernel_turbo(
     PAGE_SIZE: tl.constexpr,
     WRITE_LSE: tl.constexpr,
 ):
-    """Decode-only sparse forward, TurboQuant K3-V2. One CTA per (batch, query head)."""
+    """Decode-only sparse forward, TurboQuant K3-V3. One CTA per (batch, query head)."""
     pid_bh = tl.program_id(0)
     b = pid_bh // H_q
     h_q = pid_bh % H_q
@@ -191,14 +194,22 @@ def _sparse_attn_fwd_kernel_turbo(
             l_i = l_i * alpha + tl.sum(p_softmax, axis=0)
             acc = acc * alpha
 
-            # === Load V_packed (PAGE_SIZE, D/4), 2-bit unpack, codebook gather. ===
-            v_byte = tl.load(
-                V_packed_ptr + b * stride_vb + h_kv * stride_vh
-                + n_idx[:, None] * stride_vs + offs_d_lsb[None, :] * stride_vd,
+            # === Load V_msb (PAGE_SIZE, D/8) + V_lsb (PAGE_SIZE, D/4), 3-bit unpack. ===
+            v_msb_byte = tl.load(
+                V_msb_ptr + b * stride_vmb + h_kv * stride_vmh
+                + n_idx[:, None] * stride_vms + offs_d_msb[None, :] * stride_vmd,
                 mask=valid_kv[:, None], other=0,
             )
-            v_expanded = (v_byte[:, :, None] >> lsb_offsets[None, None, :]) & 0x3
-            v_idx = tl.reshape(v_expanded, (PAGE_SIZE, HEAD_DIM)).to(tl.int32)
+            v_lsb_byte = tl.load(
+                V_lsb_ptr + b * stride_vlb + h_kv * stride_vlh
+                + n_idx[:, None] * stride_vls + offs_d_lsb[None, :] * stride_vld,
+                mask=valid_kv[:, None], other=0,
+            )
+            v_msb_expanded = (v_msb_byte[:, :, None] >> bit_offsets_8[None, None, :]) & 0x1
+            v_msb_full = tl.reshape(v_msb_expanded, (PAGE_SIZE, HEAD_DIM))
+            v_lsb_expanded = (v_lsb_byte[:, :, None] >> lsb_offsets[None, None, :]) & 0x3
+            v_lsb_full = tl.reshape(v_lsb_expanded, (PAGE_SIZE, HEAD_DIM))
+            v_idx = (v_msb_full.to(tl.int32) << 2) | v_lsb_full.to(tl.int32)
             v_rot = tl.load(V_codebook_ptr + v_idx)
 
             v_scale_t = tl.load(
@@ -228,7 +239,8 @@ def flash_attn_sparse_turbo_fwd(
     K_msb: torch.Tensor,
     K_lsb: torch.Tensor,
     K_scale_turbo: torch.Tensor,
-    V_packed: torch.Tensor,
+    V_msb: torch.Tensor,
+    V_lsb: torch.Tensor,
     V_scale_turbo: torch.Tensor,
     *,
     selection_mask: torch.Tensor,
@@ -236,7 +248,7 @@ def flash_attn_sparse_turbo_fwd(
     sm_scale: Optional[float] = None,
     return_lse: bool = True,
 ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
-    """Decode-only fused TurboQuant sparse forward.
+    """Decode-only fused TurboQuant sparse forward (K3-V3).
 
     Wrapper applies WHT to Q (single vector per head) and inverse-WHT to the
     output (V was stored rotated). Kernel handles tile loads, bit-plane unpack,
@@ -244,10 +256,9 @@ def flash_attn_sparse_turbo_fwd(
 
     Args:
         Q: (B, H_q, 1, D) bf16 cuda. RAW basis (wrapper rotates).
-        K_msb: (B, H_kv, S_kv, D/8) uint8.
-        K_lsb: (B, H_kv, S_kv, D/4) uint8.
+        K_msb / K_lsb: (B, H_kv, S_kv, D/8) / (B, H_kv, S_kv, D/4) uint8.
         K_scale_turbo: (B, H_kv, S_kv, 1) bf16.
-        V_packed: (B, H_kv, S_kv, D/4) uint8.
+        V_msb / V_lsb: (B, H_kv, S_kv, D/8) / (B, H_kv, S_kv, D/4) uint8.
         V_scale_turbo: (B, H_kv, S_kv, 1) bf16.
         selection_mask: (B, H_q, 1, num_pages) bool.
 
@@ -256,7 +267,7 @@ def flash_attn_sparse_turbo_fwd(
     """
     assert Q.is_cuda and Q.dtype == torch.bfloat16
     assert K_msb.dtype == torch.uint8 and K_lsb.dtype == torch.uint8
-    assert V_packed.dtype == torch.uint8
+    assert V_msb.dtype == torch.uint8 and V_lsb.dtype == torch.uint8
 
     B, H_q, S_q, D = Q.shape
     if S_q != 1:
@@ -286,7 +297,8 @@ def flash_attn_sparse_turbo_fwd(
 
     grid = (B * H_q,)
     _sparse_attn_fwd_kernel_turbo[grid](
-        Q_2d, K_msb, K_lsb, V_packed,
+        Q_2d,
+        K_msb, K_lsb, V_msb, V_lsb,
         O_rot_2d, L_ptr,
         K_scale_turbo, V_scale_turbo,
         K_TURBO_CODEBOOK, V_TURBO_CODEBOOK,
@@ -295,7 +307,8 @@ def flash_attn_sparse_turbo_fwd(
         Q_2d.stride(0), Q_2d.stride(1), Q_2d.stride(2),
         K_msb.stride(0), K_msb.stride(1), K_msb.stride(2), K_msb.stride(3),
         K_lsb.stride(0), K_lsb.stride(1), K_lsb.stride(2), K_lsb.stride(3),
-        V_packed.stride(0), V_packed.stride(1), V_packed.stride(2), V_packed.stride(3),
+        V_msb.stride(0), V_msb.stride(1), V_msb.stride(2), V_msb.stride(3),
+        V_lsb.stride(0), V_lsb.stride(1), V_lsb.stride(2), V_lsb.stride(3),
         O_rot_2d.stride(0), O_rot_2d.stride(1), O_rot_2d.stride(2),
         sl_b, sl_h,
         K_scale_turbo.stride(0), K_scale_turbo.stride(1), K_scale_turbo.stride(2),

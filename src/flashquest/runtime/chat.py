@@ -48,7 +48,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--page-size", type=int, default=64)
     p.add_argument("--kv-bits", type=int, choices=[4, 8, 3], default=4,
                    help="KV cache bit width. 4 = KIVI-INT4 (default, RULER 100/100/100). "
-                        "3 = TurboQuant K3-V2 (Phase 7). 8 = KIVI-INT8.")
+                        "3 = TurboQuant K3-V3 (Phase 7). 8 = KIVI-INT8.")
     p.add_argument("--no-patch", action="store_true",
                    help="Skip Quest+INT8 patch; run vanilla SDPA (debugging).")
     p.add_argument("--system-prompt", default=_DEFAULT_SYSTEM_PROMPT)

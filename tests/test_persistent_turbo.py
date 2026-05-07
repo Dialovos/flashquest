@@ -25,7 +25,8 @@ def test_storage_shapes():
     assert cache.K_scale_turbo.shape == (L, B, H, S, 1)
     assert cache.K_scale_raw.shape == (L, B, H, P, D)
     assert cache.K_mn_raw.shape == (L, B, H, P, D)
-    assert cache.V_packed.shape == (L, B, H, S, D // 4)
+    assert cache.V_msb.shape == (L, B, H, S, D // 8)
+    assert cache.V_lsb.shape == (L, B, H, S, D // 4)
     assert cache.V_scale_turbo.shape == (L, B, H, S, 1)
 
 
@@ -43,7 +44,8 @@ def test_update_quantized_writes_one_full_page():
     assert views["partial_len"] == 0
     assert views["K_msb"].shape == (1, 4, 64, 64 // 8)
     assert views["K_lsb"].shape == (1, 4, 64, 64 // 4)
-    assert views["V_packed"].shape == (1, 4, 64, 64 // 4)
+    assert views["V_msb"].shape == (1, 4, 64, 64 // 8)
+    assert views["V_lsb"].shape == (1, 4, 64, 64 // 4)
     assert views["K_scale_turbo"].shape == (1, 4, 64, 1)
     assert views["V_scale_turbo"].shape == (1, 4, 64, 1)
     assert views["K_scale_raw"].shape == (1, 4, 1, 64)
@@ -73,9 +75,9 @@ def test_roundtrip_through_cache():
     cache.update_quantized(K, V, layer_idx=0)
     views = cache.get_views(0)
     K_back = dequantize_k_turbo(views["K_msb"], views["K_lsb"], views["K_scale_turbo"], head_dim=64)
-    V_back = dequantize_v_turbo(views["V_packed"], views["V_scale_turbo"], head_dim=64)
+    V_back = dequantize_v_turbo(views["V_msb"], views["V_lsb"], views["V_scale_turbo"], head_dim=64)
     assert (K - K_back).float().abs().mean() < 0.4
-    assert (V - V_back).float().abs().mean() < 0.7
+    assert (V - V_back).float().abs().mean() < 0.4
 
 
 def test_requires_head_dim_multiple_of_8():
