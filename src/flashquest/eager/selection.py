@@ -124,3 +124,41 @@ def select_pages_vectorized(
         mask[..., P - w:] = True
 
     return mask
+
+
+def build_compact_selection(
+    mask: torch.Tensor,
+    BUCKET_MAX: int,
+) -> torch.Tensor:
+    """Convert (B, H, S_q, P) bool mask -> (B, H, S_q, BUCKET_MAX) int32.
+
+    Selected page indices are placed first (sorted descending by index — order
+    inside the bucket doesn't matter for softmax); remaining slots are -1
+    sentinels. GPU-resident, no `.item()`. Bool mask handles dedup naturally
+    (each page is True or False, no duplicates).
+
+    Args:
+        mask: (B, H, S_q, P) bool — output of select_pages_vectorized.
+        BUCKET_MAX: int >= 1 — fixed length of the output's last axis.
+
+    Returns:
+        (B, H, S_q, BUCKET_MAX) int32 with values in [-1, P).
+    """
+    if BUCKET_MAX < 1:
+        raise ValueError(f"BUCKET_MAX must be >= 1, got {BUCKET_MAX}")
+    if mask.dtype != torch.bool:
+        raise ValueError(f"mask must be bool, got {mask.dtype}")
+
+    B, H, S_q, P = mask.shape
+    positions = torch.arange(P, device=mask.device, dtype=torch.int32)
+    positions = positions.expand(B, H, S_q, P)
+    pos_or_neg1 = torch.where(mask, positions, torch.full_like(positions, -1))
+    sorted_pos, _ = pos_or_neg1.sort(dim=-1, descending=True)
+
+    if P >= BUCKET_MAX:
+        return sorted_pos[..., :BUCKET_MAX].contiguous()
+    out = torch.full(
+        (B, H, S_q, BUCKET_MAX), -1, dtype=torch.int32, device=mask.device,
+    )
+    out[..., :P] = sorted_pos
+    return out.contiguous()
