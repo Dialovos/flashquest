@@ -16,13 +16,14 @@ from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotar
 
 from ..cache.persistent_int8 import PersistentInt8KVCache
 from ..eager.criticality import page_scores_int4_fast, page_scores_int8_fast
-from ..eager.selection import select_pages_vectorized
+from ..eager.selection import build_compact_selection, select_pages_vectorized
 from ..kernel import flash_attn_sparse_fwd
 from ..kernel.kv_quant import (
     dequantize_k, dequantize_k_int4, dequantize_k_turbo,
     dequantize_v, dequantize_v_int4, dequantize_v_turbo,
 )
 from ..kernel.sparse_int4_fwd import flash_attn_sparse_int4_fwd
+from ..kernel.sparse_int4_fwd_compact import flash_attn_sparse_int4_fwd_compact
 from ..kernel.sparse_turbo_fwd import flash_attn_sparse_turbo_fwd
 
 
@@ -68,9 +69,26 @@ def make_quest_persistent_forward(
     num_sinks: int,
     window_pages: int,
     page_size: int,
+    use_compact_kernel: bool = False,
 ):
     kv_bits = getattr(cache, "kv_bits", 8)
     head_dim = cache.head_dim
+
+    # Phase 8a: precompute static k_max + BUCKET_MAX (no per-step .item())
+    max_seq_len = getattr(cache, "max_seq_len", 32768)
+    P_max = max_seq_len // page_size
+    if isinstance(retention, float):
+        retention_max = float(retention)
+    else:
+        retention_max = float(retention.max().item())
+    k_max_static = math.ceil(retention_max * P_max)
+    bucket_max_static = k_max_static + num_sinks + window_pages
+
+    if use_compact_kernel and kv_bits != 4:
+        raise NotImplementedError(
+            f"Phase 8a: use_compact_kernel only supports kv_bits=4; got {kv_bits}. "
+            f"INT8/Turbo compact kernels deferred to Phase 8b."
+        )
 
     if kv_bits == 3:
         def _dequant_k_from_views(views):
@@ -113,6 +131,14 @@ def make_quest_persistent_forward(
                 views["K_packed"], views["K_scale"], views["K_mn"],
                 views["V_packed"], views["V_scale"], views["V_mn"],
                 selection_mask=sel, page_size=page_size, return_lse=True,
+            )
+
+        def _sparse_fwd_call_compact(q, views, sel_compact):
+            return flash_attn_sparse_int4_fwd_compact(
+                q,
+                views["K_packed"], views["K_scale"], views["K_mn"],
+                views["V_packed"], views["V_scale"], views["V_mn"],
+                selected_page_ids=sel_compact, page_size=page_size, return_lse=True,
             )
     elif kv_bits == 8:
         def _dequant_k_from_views(views):
@@ -195,8 +221,17 @@ def make_quest_persistent_forward(
                 sel = select_pages_vectorized(
                     scores, retention=retention_per_q,
                     num_sinks=num_sinks, window_pages=window_pages,
+                    k_max_static=k_max_static,
                 )
-                O_sparse, lse_sparse = _sparse_fwd_call(q, views, sel)
+                if use_compact_kernel:
+                    sel_compact = build_compact_selection(
+                        sel, BUCKET_MAX=bucket_max_static,
+                    )
+                    O_sparse, lse_sparse = _sparse_fwd_call_compact(
+                        q, views, sel_compact,
+                    )
+                else:
+                    O_sparse, lse_sparse = _sparse_fwd_call(q, views, sel)
 
                 if partial_len == 0:
                     attn_output = O_sparse
@@ -228,6 +263,7 @@ def patch_llama_for_quest_persistent(
     num_sinks: int = 4,
     window_pages: int = 2,
     page_size: int = 64,
+    use_compact_kernel: bool = False,
 ) -> None:
     """Replace every LlamaAttention.forward with the persistent-cache version."""
     if head_pattern.ndim != 2:
@@ -250,6 +286,7 @@ def patch_llama_for_quest_persistent(
                 num_sinks=num_sinks,
                 window_pages=window_pages,
                 page_size=page_size,
+                use_compact_kernel=use_compact_kernel,
             )
             module.forward = fwd.__get__(module, type(module))
             n_patched += 1
