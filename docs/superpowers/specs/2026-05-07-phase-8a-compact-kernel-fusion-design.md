@@ -115,16 +115,38 @@ for i in range(0, BUCKET_MAX):
     page_start = p_safe * PAGE_SIZE
     n_idx = page_start + offs_n
     # combine per-page validity with per-token validity
-    valid_kv = (n_idx < S_kv) & page_valid
+    valid_kv = (n_idx < S_kv) & page_valid  # (PAGE_SIZE,) bool
 
-    # ALL K/V loads use the combined mask (codex r2 finding #2)
+    # === ALL loads explicitly safe under sentinel ===
+    # Per-token loads (mask with valid_kv):
     k_byte = tl.load(k_byte_ptrs, mask=valid_kv[:, None], other=0)
-    # ... unpack INT4 nibbles, scale ...
+    v_byte = tl.load(v_byte_ptrs, mask=valid_kv[:, None], other=0)
+    # Per-page loads (use p_safe for address; result discarded via qk = -inf below):
+    k_scale = tl.load(ks_ptrs).to(tl.float32)  # uses p_safe; safe load
+    k_mn    = tl.load(km_ptrs).to(tl.float32)  # uses p_safe; safe load
+    # Per-token V scale/mn loads (mask with valid_kv):
+    v_scale = tl.load(vs_ptrs, mask=valid_kv, other=0.0).to(tl.float32)
+    v_mn    = tl.load(vm_ptrs, mask=valid_kv, other=0.0).to(tl.float32)
+    # ============================================
+
+    # Unpack INT4 nibbles, dequantize K
+    k_lo = (k_byte & 0xF).to(tl.uint8)
+    k_hi = ((k_byte >> 4) & 0xF).to(tl.uint8)
+    k_int = tl.reshape(tl.join(k_lo, k_hi), (PAGE_SIZE, HEAD_DIM))
+    k = k_int.to(tl.float32) * k_scale[None, :] + k_mn[None, :]
+
     qk = tl.sum(q[None, :].to(tl.float32) * k, axis=1)
-    # padded slots and out-of-range tokens contribute -inf to softmax (no effect)
+    # Padded slots (page_valid=False) AND out-of-range tokens (n_idx >= S_kv)
+    # contribute -inf to softmax → exp(-inf) = 0 → no contribution to m_i, l_i, acc.
     qk = tl.where(valid_kv, qk, NEG_INF)
-    # ... rest of online-softmax body unchanged ...
+    # ... rest of online-softmax body unchanged (m_ij, p_softmax, alpha, l_i, acc, V) ...
 ```
+
+**Per-page vs per-token loads:**
+- K_scale, K_mn are per-page (one value per page, broadcast across the page's tokens). Loaded with `p_safe`; for invalid `p=-1` they read page 0's data, but the resulting qk is masked to `-inf` so the load result is discarded by softmax.
+- K_byte, V_byte, V_scale, V_mn are per-token. Masked with `valid_kv` directly; padded slots load 0.
+
+(Codex r2 finding #2 + r3 reminder: every load applies the safe pattern — either masked at load time, or addressed via `p_safe` with downstream `qk = -inf` discarding the result.)
 
 **Sentinel padding (codex r2 #2, #3, #4):**
 - Caller pads `selected_page_ids` with `-1` for unused slots.
@@ -150,9 +172,14 @@ if k_max > 0:
 def select_pages_vectorized(scores, retention, num_sinks, window_pages,
                             k_max_static: int):
     # k_max_static precomputed at module init from retention × P_max
-    if k_max_static > 0:
-        topk_idx = scores.topk(k_max_static, dim=-1).indices
-    # ... rest unchanged
+    B, H, S_q, P = scores.shape
+    # Codex r3 finding: topk(k) requires k <= P. Early decode has small P;
+    # clamp at runtime. P is a tensor shape, available without .item().
+    k_runtime = min(k_max_static, P)  # both ints; min() is Python int op
+    if k_runtime > 0:
+        topk_idx = scores.topk(k_runtime, dim=-1).indices
+    # ... build bool mask as before (sinks + window + topk) ...
+    # then materialize compact list (see §4.2.1)
 ```
 
 `k_max_static` is computed once at the top of `make_quest_persistent_forward`:
@@ -164,11 +191,44 @@ else:
     k_max_static = math.ceil(float(retention.max().item()) * P_max)
 ```
 
-This is a one-time `.item()` at module init, not a per-step sync.
+This is a one-time `.item()` at module init, not a per-step sync. `P` (current num_pages) is a tensor `.shape[-1]` lookup — Python-side and free.
 
 **Note:** Phase 8a doesn't yet use `k_max_static` to drive `BUCKET_MAX` for the kernel — kernel sees `BUCKET_MAX = k_max_static + num_sinks + window_pages` (slack for sink/window pages). Phase 8b will tighten this.
 
 **Note:** the `partial_len`, `completed_len` Python-int reads in `llama_persistent_patch.py:177-201` are **not** removed in 8a. They're not blocking anything in 8a (no graphs). They become Phase 8b's concern (graph-friendly cache views).
+
+### 4.2.1 Compact-selection builder (codex r3 finding #2)
+
+After `select_pages_vectorized` builds the bool mask `(B, H_q, S_q, P)` containing topk ∪ sinks ∪ window (deduplicated naturally by mask semantics — each page is True or False, no duplicates), convert to a compact `int32` list of length `BUCKET_MAX`:
+
+```python
+def build_compact_selection(mask: torch.Tensor, BUCKET_MAX: int) -> torch.Tensor:
+    """Convert (B, H_q, S_q, P) bool mask → (B, H_q, S_q, BUCKET_MAX) int32
+    with selected page indices first, sentinel -1 padding after.
+
+    GPU-resident, no .item(), no Python loops.
+    """
+    B, H, S_q, P = mask.shape
+    # positions[..., p] = p; -1 where mask is False
+    positions = torch.arange(P, device=mask.device, dtype=torch.int32)
+    positions = positions.expand_as(mask)  # (B, H_q, S_q, P)
+    pos_or_neg1 = torch.where(mask, positions, torch.full_like(positions, -1))
+    # Sort descending: positive integers first, -1 sentinels last
+    sorted_pos, _ = pos_or_neg1.sort(dim=-1, descending=True)
+    # Take first BUCKET_MAX (always BUCKET_MAX ≥ max possible selection size)
+    return sorted_pos[..., :BUCKET_MAX].contiguous()
+```
+
+**Why this is correct:**
+- Bool mask handles dedup naturally — topk ∪ sinks ∪ window cannot have duplicate page indices because mask is bool per (B, H_q, S_q, p). Setting `mask[..., p] = True` twice still gives `True`.
+- `descending=True` sort puts all positive page indices first (sorted by value, but order doesn't matter for the kernel — softmax is symmetric over selected pages); `-1` sentinels go to the back.
+- The first BUCKET_MAX entries are guaranteed to contain all selected pages (since BUCKET_MAX ≥ k_max_static + num_sinks + window_pages ≥ max possible selection count).
+
+**Cost:** one sort op per layer per step. Sort cost is `O(B × H_q × S_q × P × log P)` = at 32k decode `1 × 24 × 1 × 512 × 9 ≈ 110k ops` per layer — negligible vs. attention compute.
+
+**Tests:**
+- `tests/test_build_compact_selection.py` — given a known mask, verify the compact list is correct (selected pages present, padded with -1, no duplicates).
+- `tests/test_build_compact_selection_overlap.py` — mask with deliberately overlapping topk+sinks+window. Verify no duplicate page index appears in the compact list.
 
 ### 4.3 Triton fused QKV + gate+up
 
@@ -183,17 +243,20 @@ This is a one-time `.item()` at module init, not a per-step sync.
 
 Different AWQ implementations (vLLM, AutoAWQ, MLX) sometimes differ on which axis is packed. Phase 8a Task 2 prints the actual shapes from a real loaded Llama-3.2-3B-AWQ checkpoint and locks the kernel against those shapes.
 
-**Fused QKV kernel:**
-- Stack `q_proj.qweight`, `k_proj.qweight`, `v_proj.qweight` along the N axis into `qweight_qkv: (in // 8, N_q + N_k + N_v) = (3072//8, 5120)`.
-- Same for scales and zeros.
-- One Triton GEMM: `O[1, N_q+N_k+N_v]`.
-- Slice into Q (N_q), K (N_k), V (N_v) views.
-- Apply RoPE on Q and K views (existing path).
+**Fused QKV kernel — in-place multi-tensor read (codex r3 finding #3):**
+- Kernel takes **three separate weight pointers** (`q_proj.qweight`, `k_proj.qweight`, `v_proj.qweight`) and three separate scale/zero pointers, NOT a materialized stacked tensor.
+- Inside the kernel, the N-dimension tile dispatches to the correct source tensor based on a static N-offset table: tile_n in `[0, N_q)` reads from q_proj; `[N_q, N_q+N_k)` reads from k_proj; `[N_q+N_k, N_q+N_k+N_v)` reads from v_proj.
+- Output is a single `(1, N_q+N_k+N_v)` BF16 tensor.
+- Apply RoPE on Q and K slices (existing path).
+- **VRAM cost: zero extra weight memory.** The original AWQ modules' `qweight`/`scales`/`qzeros` are read in place; no copy.
 
-**Fused gate+up kernel:**
-- Stack `gate_proj.qweight`, `up_proj.qweight` along N: `qweight_gu: (3072//8, 8192*2)`.
-- Same fusion pattern. Slice into gate (8192), up (8192).
-- Apply SwiGLU: `output = silu(gate) * up`.
+**Fused gate+up kernel — same in-place pattern:**
+- Two separate weight pointers (`gate_proj.qweight`, `up_proj.qweight`).
+- Tile N-offset dispatches: `[0, 8192)` → gate, `[8192, 16384)` → up.
+- One BF16 output, sliced into gate/up; SwiGLU applied: `silu(gate) * up`.
+- **VRAM cost: zero extra weight memory.**
+
+**Why no stacked tensor:** materializing `qweight_qkv` (5120 N) + `qweight_gu` (16384 N) per layer × 28 layers = ~1.2 GB extra at INT4. Way over the +100 MiB gate. The in-place kernel reads multiple source pointers — same effect, no memory cost. (Codex r3 finding #3.)
 
 **Down projection (`down_proj`) stays as separate AWQ Linear** — only one GEMM per layer, no fusion benefit.
 
@@ -245,7 +308,7 @@ Compact kernel runs **~134 loop iterations per (B, H_q)**, vs current **512 iter
 
 `tests/test_sparse_int4_fwd_compact_padding.py`:
 - Selection of 8 pages, BUCKET_MAX=16 (padded with 8× sentinel `-1`). Output identical to BUCKET_MAX=8 unpadded version.
-- Edge case: all sentinel (`real_count=0`, BUCKET_MAX=16, all -1). Output should be all-zeros (no contribution to softmax → degenerate case; document expected behavior).
+- Edge case: all sentinel (`real_count=0`, BUCKET_MAX=16, all -1). Output should be all-zeros AND `lse == -inf` (codex r3 confirmation: degenerate case where softmax denominator stays 0, output is the safe-divide-by-1 zero, lse stays at NEG_INF). Document expected behavior; merge code (online softmax with the partial-page tail) handles `lse=-inf` correctly by deferring to the other branch.
 
 `tests/test_sparse_compact_kernel_address_safety.py`:
 - Unit test that confirms negative-page-id `p=-1` does NOT cause out-of-bounds memory access. Use a small cache; verify CUDA doesn't crash and output is zero-contribution for the padded slot. Run under compute-sanitizer if available.
@@ -343,6 +406,8 @@ VRAM overhead is modest (no graph pools, no static buffers, no Marlin workspaces
 - `tests/test_sparse_int4_fwd_compact_padding.py`
 - `tests/test_sparse_compact_kernel_address_safety.py`
 - `tests/test_select_pages_static_kmax.py`
+- `tests/test_build_compact_selection.py`
+- `tests/test_build_compact_selection_overlap.py`
 - `tests/test_fused_qkv_triton.py`
 - `tests/test_fused_gate_up_triton.py`
 - `tests/test_awq_layout_audit.py`
@@ -398,10 +463,20 @@ Dropped Marlin and async pipeline. Added compact-list kernel, sync elimination, 
 - 3 graph-viability issues: dynamic cache views graph-hostile, predicated partial-merge under-specified, capture boundary inconsistent (~250 launches → 1 launch claim overstated).
 - 6 misc.
 
-### r3 (2026-05-07, this spec) — split Phase 8 → 8a + 8b
-- **Phase 8a (this):** compact kernel + sync removal + Triton fusion only. Honest 1.3-1.5× ceiling. All r2 kernel-correctness bugs fixed. No CUDA Graphs.
+### r3 (2026-05-07) — split Phase 8 → 8a + 8b
+- **Phase 8a:** compact kernel + sync removal + Triton fusion only. Honest 1.3-1.5× ceiling. All r2 kernel-correctness bugs fixed. No CUDA Graphs.
 - **Phase 8b (future):** cache-view redesign + bucketed graphs. Future brainstorm starts after 8a lands and we have measurements. Estimated standalone +1.2-1.4× on top of 8a.
 
 The split avoids piling cache-redesign + graph engineering + kernel rewrite into one phase. Each phase is small, well-bounded, and ships independently.
+
+### r4 (2026-05-07, this spec) — codex r3 review pass: 3 inline fixes
+Codex r3 confirmed all r2 issues addressed; surfaced 3 new findings:
+- **HIGH (#1):** `topk(k_max_static)` unsafe when current `P < k_max_static` (early decode). Fixed §4.2 with `k_runtime = min(k_max_static, P)` clamp.
+- **HIGH (#2):** Compact-list materialization was underspecified. Added §4.2.1 — explicit GPU-resident `build_compact_selection` (sort-based, no `.item()`, dedup-naturally via bool mask). Includes overlap test.
+- **MEDIUM (#3):** Fused-proj VRAM accounting was wrong if stacked tensors materialized. Fixed §4.3 to specify in-place multi-tensor read (kernel takes 3 separate weight pointers, no stacked tensor; zero extra VRAM).
+
+Plus minor: §4.1 kernel pseudocode now shows ALL load types (per-token K/V/Vscale/Vmn masked with `valid_kv`; per-page Kscale/Kmn use `p_safe` with downstream `qk=-inf` discard). All-sentinel test now asserts `lse == -inf`.
+
+Codex r3 confirmed sentinel handling compiles on sm_86 and graph issues are cleanly deferred to 8b.
 
 **Process note:** I should have re-read Phase 6 notes (Marlin M=1 finding) AND examined the actual cache view structure before writing r1. Codex caught both gaps. Adding "re-read prior phase findings + examine actual cache/kernel surface before drafting" as personal pre-spec habit.
