@@ -67,6 +67,8 @@ def select_pages_vectorized(
     retention: float | torch.Tensor,
     num_sinks: int,
     window_pages: int,
+    *,
+    k_max_static: int | None = None,
 ) -> torch.Tensor:
     """Vectorized equivalent of select_pages — single batched topk + scatter,
     no Python per-head loop, no `.item()` per head.
@@ -76,6 +78,11 @@ def select_pages_vectorized(
         retention: scalar in [0, 1] or 1-D tensor of shape (H,).
         num_sinks: number of leading pages to always include.
         window_pages: number of trailing pages to always include.
+        k_max_static: optional precomputed upper bound on `k_per_h.max()`.
+            If provided, eliminates the per-step `.item()` sync. The caller
+            must guarantee `k_max_static >= ceil(max(retention) * P_max)`.
+            Clamped to current P at runtime (Phase 8a codex r3 finding #1
+            — early decode has P < P_max).
 
     Returns:
         Boolean mask shaped (B, H, S_q, P).
@@ -97,7 +104,10 @@ def select_pages_vectorized(
 
     mask = torch.zeros_like(scores, dtype=torch.bool)
 
-    k_max = int(k_per_h.max().item())
+    if k_max_static is None:
+        k_max = int(k_per_h.max().item())
+    else:
+        k_max = min(int(k_max_static), P)
 
     if k_max > 0:
         topk_idx = scores.topk(k_max, dim=-1).indices  # (B, H, S_q, k_max)
