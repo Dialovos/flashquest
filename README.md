@@ -347,6 +347,67 @@ python scripts/phase6_run_ruler_4k_int4.py        # quality re-test
 python scripts/phase6_run_headtohead.py           # head-to-head re-test
 ```
 
+## Phase 7 — TurboQuant K3-V3 KV (opt-in via `--kv-bits 3`)
+
+Per-token Walsh-Hadamard rotation along `head_dim` + 8-codepoint
+Lloyd-Max codebook applied to both K and V (3 bits each). Stored as
+bit-split planes (1-bit MSB + 2-bit LSB). Shrinks the cache by 25 %
+vs Phase 6 INT4 (980 → 736 MiB at 32 k full cache). Quest criticality
+unchanged via dual statistics (un-rotated `K_scale_raw, K_mn_raw`
+per-page channel-wise).
+
+Two non-paper adjustments during execution: per-token **RMS** scale
+(paper's max-abs scaling failed RULER on Llama-3.2-3B), and V
+upgraded from 2-bit to 3-bit (paper's K3-V2 multivalue regressed to
+60 %; K3-V3 lands at 85 %).
+
+### Quality — RULER NIAH 4 k @ K3-V3
+
+`benchmarks/phase7_ruler_4k_turbo.json`:
+
+| task | dense | patched (K3-V3) | ratio | gate ≥85 % |
+|---|---|---|---|---|
+| niah_single | 20/20 | 20/20 | 100 % | PASS |
+| niah_multikey | 20/20 | 20/20 | 100 % | PASS |
+| niah_multivalue | 20/20 | 17/20 | 85 % | PASS (right at floor) |
+
+### Decode at 32 k
+
+`benchmarks/phase7_decode_turbo_32k.json`:
+
+| metric | INT4 fused (Phase 6) | K3-V3 (Phase 7) |
+|---|---|---|
+| decode_tok_s | 3.88 | 2.62 |
+| prefill_tok_s | 65.0 | 77.6 |
+| peak_vram_mib | 5478 | 6105 |
+
+Throughput regresses 32 % vs INT4. The kernel's 4 bit-plane tile loads
+(vs INT4's 2 packed loads) + Q-WHT + inverse-WHT on output is
+intrinsic overhead. INT4 stays the v1 default; **TurboQuant is opt-in
+for storage-constrained or quality-sensitive workloads**.
+
+### Throughput re-test — `benchmarks/phase7_headtohead_turbo.json`
+
+| backend | quant + KV | 8 k tok/s | 32 k tok/s | 128 k fits? |
+|---|---|---|---|---|
+| flashquest TurboQuant K3-V3 | AWQ-INT4 + K3-V3 paged | **2.05** | **1.93** | ✗ |
+| flashquest INT4 (Phase 6) | AWQ-INT4 + INT4 paged | 4.94 | 3.88 | ✗ |
+| llama.cpp -ngl 999 | Q4_K_M, FP16 KV | 38.45 | ✗ (timeout) | ✗ |
+| vLLM 0.7.3 | AWQ-INT4, FP16 KV | OOM | ✗ (timeout) | ✗ |
+
+**SPEC §11.4 verdict (post-Phase 7):** capability axis unchanged
+(flashquest still the only backend that decodes at 32 k on 4 GB).
+Throughput at matched ctx: INT4 fused (Phase 6) wins; K3-V3 is the
+storage/quality opt-in.
+
+Re-run via:
+```bash
+python scripts/bench_flashquest.py --ctx-len 32768 --kv-bits 3 \
+    --out benchmarks/phase7_decode_turbo_32k.json
+python scripts/phase7_run_ruler_4k_turbo.py
+KV_BITS=3 python scripts/phase6_run_headtohead.py
+```
+
 ## Non-goals
 
 - Training kernels. Inference only.

@@ -1,0 +1,112 @@
+{
+  "host": {
+    "gpu": "NVIDIA GeForce RTX 3050 Ti Laptop GPU",
+    "vram_mib": 4095,
+    "cuda": "12.5",
+    "wsl2": true
+  },
+  "model": "Llama-3.2-3B-Instruct",
+  "date": "2026-05-07",
+  "headline_metric": "decode tok/s at ctx=32768",
+  "capability_axis": "max ctx that decodes (≥1 tok/s, no OOM)",
+  "note": "vLLM 32k + 128k cells reused from phase 6 (benchmarks/phase6_cells_int4/) — vLLM does not consume --kv-bits 3 and runs its own AWQ-INT4 + FP16 KV path; numbers identical between phases. Bench was stopped manually at vLLM 32k due to host SSD pressure.",
+  "results": [
+    {
+      "backend": "flashquest",
+      "quant": "AWQ-INT4 + TurboQuant K3-V3 paged KV + Quest top-k retention=0.25",
+      "ctx_len": 8192,
+      "decode_tok_s": 2.0498317741463765,
+      "prefill_tok_s": 374.4506898598134,
+      "peak_vram_mib": 3162,
+      "wall_s": 77.79206776700084,
+      "oom": false,
+      "error": null
+    },
+    {
+      "backend": "flashquest",
+      "quant": "AWQ-INT4 + TurboQuant K3-V3 paged KV + Quest top-k retention=0.25",
+      "ctx_len": 32768,
+      "decode_tok_s": 1.9250810477906142,
+      "prefill_tok_s": 73.56316723860715,
+      "peak_vram_mib": 6105,
+      "wall_s": 496.3426956209987,
+      "oom": false,
+      "error": null
+    },
+    {
+      "backend": "flashquest",
+      "quant": "AWQ-INT4 + TurboQuant K3-V3 paged KV + Quest top-k retention=0.25",
+      "ctx_len": 131072,
+      "decode_tok_s": null,
+      "prefill_tok_s": null,
+      "peak_vram_mib": null,
+      "wall_s": 72.05589127700296,
+      "oom": false,
+      "error": "RuntimeError: CUDA error: out of memory (cache allocation)"
+    },
+    {
+      "backend": "llama.cpp",
+      "quant": "Q4_K_M, FP16 KV",
+      "ctx_len": 8192,
+      "decode_tok_s": 38.45,
+      "prefill_tok_s": 702.84,
+      "peak_vram_mib": 0,
+      "wall_s": 60.14227913099967,
+      "oom": false,
+      "error": null
+    },
+    {
+      "backend": "llama.cpp",
+      "quant": "Q4_K_M, FP16 KV",
+      "ctx_len": 32768,
+      "decode_tok_s": null,
+      "peak_vram_mib": null,
+      "wall_s": 1800.287276998999,
+      "oom": false,
+      "error": "timeout (>1800s)"
+    },
+    {
+      "backend": "llama.cpp",
+      "quant": "Q4_K_M, FP16 KV",
+      "ctx_len": 131072,
+      "decode_tok_s": null,
+      "prefill_tok_s": null,
+      "peak_vram_mib": null,
+      "wall_s": 432.25564277999365,
+      "oom": true,
+      "error": "model load failed (4 GB VRAM insufficient)"
+    },
+    {
+      "backend": "vLLM 0.7.3",
+      "quant": "AWQ-INT4, FP16 KV",
+      "ctx_len": 8192,
+      "decode_tok_s": null,
+      "prefill_tok_s": null,
+      "peak_vram_mib": null,
+      "wall_s": 840.6713161000007,
+      "oom": true,
+      "error": "ValueError: max seq len (8192) > KV cache capacity (3904)"
+    },
+    {
+      "backend": "vLLM 0.7.3",
+      "quant": "AWQ-INT4, FP16 KV",
+      "ctx_len": 32768,
+      "decode_tok_s": null,
+      "peak_vram_mib": null,
+      "wall_s": 1809.5772247770074,
+      "oom": false,
+      "error": "timeout (>1800s) — reused from phase 6 INT4 head-to-head"
+    },
+    {
+      "backend": "vLLM 0.7.3",
+      "quant": "AWQ-INT4, FP16 KV",
+      "ctx_len": 131072,
+      "decode_tok_s": null,
+      "prefill_tok_s": null,
+      "peak_vram_mib": null,
+      "wall_s": 398.0013508580014,
+      "oom": true,
+      "error": "ValueError: max seq len (131072) > KV cache capacity (4224) — reused from phase 6 INT4 head-to-head"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+| model                          |       size |     params | backend    | ngl | threads |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ------: | --------------: | -------------------: |
+| llama 3B Q4_K - Medium         |   1.87 GiB |     3.21 B | CUDA       | 999 |       6 |          pp8192 |        702.84 ± 0.00 |
+| llama 3B Q4_K - Medium         |   1.87 GiB |     3.21 B | CUDA       | 999 |       6 |           tg128 |         38.45 ± 0.00 |
+
+build: d775992 (1)
+---
+VRAM at run-tail (nvidia-smi):
+memory.used [MiB], memory.free [MiB]
+0 MiB, 3962 MiB

@@ -1,0 +1,10 @@
+{
+  "backend": "vLLM 0.7.3",
+  "quant": "AWQ-INT4, FP16 KV",
+  "ctx_len": 32768,
+  "decode_tok_s": null,
+  "peak_vram_mib": null,
+  "wall_s": 1809.5772247770074,
+  "oom": false,
+  "error": "timeout (>1800s)"
+}
