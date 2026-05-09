@@ -259,13 +259,20 @@ def patch_llama_for_quest_persistent(
     *,
     cache,
     head_pattern: torch.Tensor,
-    retention: float = 0.25,
+    retention: float = 0.20,
     num_sinks: int = 4,
     window_pages: int = 2,
     page_size: int = 64,
     use_compact_kernel: bool = False,
 ) -> None:
-    """Replace every LlamaAttention.forward with the persistent-cache version."""
+    """Replace every LlamaAttention.forward with the persistent-cache version.
+
+    Phase 10 (2026-05-09): retention default bumped 0.25 → 0.20 after the
+    retention sweep + RULER quality test. retention=0.20 yields ~1.05× decode
+    speedup at 32k vs the prior 0.25 default while holding RULER NIAH single
+    100/100 + multivalue 19/20 (95%) — same quality as the 0.25 baseline.
+    See docs/PHASES/phase-10-notes.md for the full quality/speed curve.
+    """
     if head_pattern.ndim != 2:
         raise ValueError(
             f"head_pattern must be 2D (num_layers, num_kv_heads); got {tuple(head_pattern.shape)}"

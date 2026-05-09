@@ -21,7 +21,7 @@ def quest_duo_eager_sdpa(
     *,
     head_pattern: torch.Tensor,
     page_size: int = 64,
-    retention: float = 0.25,
+    retention: float = 0.20,                 # Phase 10 default (was 0.25)
     num_sinks: int = 4,
     window_pages: int = 2,
     is_causal: bool = True,

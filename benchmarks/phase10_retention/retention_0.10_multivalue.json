@@ -1,0 +1,231 @@
+{
+  "retention": 0.1,
+  "task": "multivalue",
+  "ctx_len": 4096,
+  "hits": 13,
+  "total": 20,
+  "wall_s": 502.27332364700123,
+  "gate_pass": false,
+  "samples": [
+    {
+      "prompt_tokens": 3945,
+      "expected": [
+        "8056020",
+        "1679215",
+        "5343902",
+        "9577766"
+      ],
+      "generated": ":\n\n1. 8056020\n2. 5343902\n3. 1679215\n4. 9577766\n\nThese numbers are not explicitly explained in the text, but they are mentioned as special magic numbers. It is likely that they are used as examples or references in the text, but without further context, it is difficult to determine their significance. \n\nHowever, based on the text, it appears that these numbers are related to the topic of startups and the App Store approval process. The text mentions that the App Store approval process is a \"karma leak\" and that Apple's fundamental problem is that they",
+      "hit": true
+    },
+    {
+      "prompt_tokens": 3954,
+      "expected": [
+        "2058756",
+        "5279348",
+        "2978347",
+        "9312021"
+      ],
+      "generated": ":\n\n1. 2058756\n2. 2978347\n3. 5279348\n4. 9312021\n\nThese numbers are not explicitly stated to be \"magic numbers\" in the text, but they are mentioned as being part of a larger sequence or pattern, and are likely intended to be memorable or significant in some way.",
+      "hit": true
+    },
+    {
+      "prompt_tokens": 3954,
+      "expected": [
+        "1948774",
+        "2536537",
+        "2423915",
+        "7057539"
+      ],
+      "generated": ":\n\n1. 1948774\n2. 705753\n3. 2423915\n4. 2536537\n\nThese numbers are not explicitly stated as \"magic numbers\" in the text, but they are mentioned as part of a larger discussion about the process of technological progress and the special properties of certain numbers. The text does not provide any further explanation of what these numbers represent or why they are special. \n\nHowever, based on the context of the text, it appears that these numbers may be related to the process of technological progress and the way it affects human behavior. The text mentions that the process of technological progress",
+      "hit": false
+    },
+    {
+      "prompt_tokens": 3951,
+      "expected": [
+        "7206817",
+        "8953298",
+        "2099391",
+        "1220922"
+      ],
+      "generated": ":\n1. 2099391\n2. 7206817\n3. 8953298\n4. 1220922\n5. 21636369-8b52-4b4a-97b7-50923ceb3ffd (this is not a number, but a placeholder for the actual magic number)\n6. 8b52-4b4a-97b7-50923ceb3ffd (this is not a number, but a placeholder for the actual magic number)\n7. 4b4a-97b7-50923ceb3ffd (this is not",
+      "hit": true
+    },
+    {
+      "prompt_tokens": 3963,
+      "expected": [
+        "7644754",
+        "9034246",
+        "3600003",
+        "2511631"
+      ],
+      "generated": ":\n\n1. 3600003\n2. 9034246\n3. 2511631\n4. 7644754\n\nThese numbers are mentioned in the following contexts:\n\n1. 3600003 - The number of people who are addicted to things we like too much.\n2. 9034246 - The number of people who are addicted to things we like too much.\n3. 2511631 - The number of people who are default dead.\n4. 7644754 - The number of people who are default alive.",
+      "hit": true
+    },
+    {
+      "prompt_tokens": 3948,
+      "expected": [
+        "9892593",
+        "1486626",
+        "8811851",
+        "5178410"
+      ],
+      "generated": ":\n\n1. 1486626\n2. 8811851\n3. 5178410\n4. 9892593\n\nThese numbers are mentioned in the context of the text, which discusses the process of technological progress and its impact on society. The numbers are likely used to illustrate specific points or statistics mentioned in the text.",
+      "hit": true
+    },
+    {
+      "prompt_tokens": 3948,
+      "expected": [
+        "9137530",
+        "5389280",
+        "1617783",
+        "1007578"
+      ],
+      "generated": ":\n\n1. 9137530\n2. 1007578\n3. 1617783\n4. 5389280\n\nThese numbers are mentioned as \"special magic numbers\" in the text, but their actual significance is not explicitly stated. However, based on the context, it appears that they may be related to the concept of \"default alive\" or \"default dead\" in the context of startup funding and growth. \n\nThe text mentions that a startup is \"default alive\" if it is able to raise more money and grow, and \"default dead\" if it is unable to raise more money and is unable to",
+      "hit": true
+    },
+    {
+      "prompt_tokens": 3954,
+      "expected": [
+        "1810111",
+        "2215279",
+        "9990608",
+        "2579240"
+      ],
+      "generated": ":\n\n1. 2215279\n2. 2579240\n3. 6513270e-269e-4d37-b2a7-4de452e6b438 (this is not a number, but a placeholder for the special magic number)\n4. 1810111\n5. 9990608\n\nNote that the placeholder for the special magic number is not a real number, but rather a placeholder used in the text to indicate where the special magic number should be. \n\nAlso, the text mentions that the special magic numbers are not actually numbers, but rather a way to refer to certain",
+      "hit": true
+    },
+    {
+      "prompt_tokens": 3948,
+      "expected": [
+        "3119480",
+        "4239959",
+        "1734480",
+        "2429171"
+      ],
+      "generated": ":\n\n1. 2429171\n2. 1734480\n3. 3119480\n4. 2429171 (again)\n5. 1734480 (again)\n6. 2429171 (again)\n7. 1734480 (again)\n8. 2429171 (again)\n9. 1734480 (again)\n10. 2429171 (again)\n11. 1734480 (again)\n12. 2429171 (again)\n13. 1734480 (again)\n14. 2429171 (again)\n15. 1734480 (",
+      "hit": false
+    },
+    {
+      "prompt_tokens": 3957,
+      "expected": [
+        "3324305",
+        "4122994",
+        "1107962",
+        "6676160"
+      ],
+      "generated": ":\n\n1. 4122994\n2. 3324305\n3. 1107962\n4. 6676160\n\nThese numbers are not explicitly stated as \"magic numbers\" in the text, but they are mentioned as special numbers that are somehow significant to the author's argument.",
+      "hit": true
+    },
+    {
+      "prompt_tokens": 3957,
+      "expected": [
+        "1248847",
+        "4457754",
+        "8760813",
+        "9242586"
+      ],
+      "generated": ":\n\n1. 4457754\n2. 1248847\n3. 9242586\n4. 8760813\n\nThese numbers are not explicitly explained in the text, but they are mentioned as special magic numbers. You may need to use your knowledge of the context to understand their significance.",
+      "hit": true
+    },
+    {
+      "prompt_tokens": 3957,
+      "expected": [
+        "8812311",
+        "8580488",
+        "9520162",
+        "4186027"
+      ],
+      "generated": ":\n\n1. 8812311\n2. 4186027\n3. 9520162\n4. 8580488\n\nThese numbers are not actually magic numbers in the classical sense, but rather a unique identifier for a specific text. The text is a passage written by Paul Graham, a well-known entrepreneur and writer, and the numbers are likely a reference to a specific version or iteration of the text. \n\nPlease note that the numbers are not actually \"magic\" in the sense that they have a special or mystical property, but rather a unique identifier for a specific text. \n\nIf you have any further questions or need",
+      "hit": true
+    },
+    {
+      "prompt_tokens": 3951,
+      "expected": [
+        "6868424",
+        "3392436",
+        "7402873",
+        "1182207"
+      ],
+      "generated": ":\n\n1. 6868424\n2. 3392436\n3. 3392436\n4. 3392436\n5. 3392436\n6. 3392436\n7. 3392436\n8. 3392436\n9. 3392436\n10. 3392436\n11. 3392436\n12. 3392436\n13. 3392436\n14. 3392436\n15. 3392436\n16. 3392436\n17. 3392436\n18. 3392436\n19",
+      "hit": false
+    },
+    {
+      "prompt_tokens": 3957,
+      "expected": [
+        "4115934",
+        "4868131",
+        "3468933",
+        "4777607"
+      ],
+      "generated": ":\n\n1. 4777607\n2. 3467607\n3. 4115934\n4. 4868131\n\nPlease note that the text does not explicitly state that these numbers are \"magic numbers\" but rather that they are special numbers associated with the e8d79f49-af6d-414c-8a6f-188a424e617b identifier. \n\nAlso, the text does not provide any further information about the significance or context of these numbers. They may be used in a different context or may have a different meaning in a different text. \n\nIf you need more information",
+      "hit": false
+    },
+    {
+      "prompt_tokens": 3951,
+      "expected": [
+        "9843470",
+        "5142886",
+        "5548558",
+        "5291201"
+      ],
+      "generated": ":\n\n1. 5142886\n2. 9843470\n3. 5548558\n\nThese numbers are not explicitly stated to be \"magic numbers\" in the text, but they are mentioned as special numbers that are associated with the concept of \"c15521b1-b3dc-450a-9daa-37e51b591d75\". However, based on the context, it appears that these numbers are actually special numbers that are associated with the concept of \"default dead\" or \"default alive\" in the context of startup funding and hiring. \n\nThe text does not provide any further explanation or",
+      "hit": false
+    },
+    {
+      "prompt_tokens": 3954,
+      "expected": [
+        "1606940",
+        "3651013",
+        "5008915",
+        "1283210"
+      ],
+      "generated": ":\n\n1. 365\n2. 1013\n3. 128\n4. 1283210\n5. 1283210\n6. 1283210\n7. 1283210\n8. 1283210\n9. 1283210\n10. 1283210\n11. 1283210\n12. 1283210\n13. 1283210\n14. 1283210\n15. 1283210\n16. 1283210\n17. 1283210\n18. 1283210\n19. 1283210",
+      "hit": false
+    },
+    {
+      "prompt_tokens": 3960,
+      "expected": [
+        "7995304",
+        "4802466",
+        "8495376",
+        "1098206"
+      ],
+      "generated": ":\n\n1. 7995304\n2. 4802466\n3. 8495376\n4. 1098206\n\nThese numbers are not explicitly stated as \"magic numbers\" in the text, but they are mentioned as special numbers that are associated with the identifier 48f165d5-7b00-47f4-b81e-f86f5c8cc1ab.",
+      "hit": true
+    },
+    {
+      "prompt_tokens": 3945,
+      "expected": [
+        "7134144",
+        "5859107",
+        "3930783",
+        "5668705"
+      ],
+      "generated": ":\n\n1. 5859107\n2. 3930783\n3. 5668705\n4. 7134144\n\nThese numbers are not explicitly stated as \"magic numbers\" in the text, but they are mentioned as part of the text. They are likely to be important numbers in the context of the text, but without further information, it is difficult to determine their significance. \n\nHowever, based on the context of the text, which appears to be about startup funding and the challenges faced by founders, it is possible that these numbers are related to the number of employees, funding rounds, or other metrics that are",
+      "hit": true
+    },
+    {
+      "prompt_tokens": 3951,
+      "expected": [
+        "6612980",
+        "5018080",
+        "4320875",
+        "9212704"
+      ],
+      "generated": ":\n\n1. 4320875\n2. 6612980\n3. 5018080\n4. 9212704\n5. 72e63ac7-a953-4322-9f70-d5dc2e675fc7 (this is not a number, but a hash)\n6. 5018080 (mentioned again)\n7. 6612980 (mentioned again)\n8. 4320875 (mentioned again)\n9. 5018080 (mentioned again)\n10. 72e63ac7-a953-4322-9f70-d5dc2e675",
+      "hit": true
+    },
+    {
+      "prompt_tokens": 3948,
+      "expected": [
+        "9731973",
+        "3024816",
+        "9581406",
+        "4347009"
+      ],
+      "generated": ":\n\n1. 9731973\n2. 9581406\n3. 3024816\n\nThese numbers are mentioned in the text as special magic numbers for e539a78b-c8ef-4346-8b12-ae6ead581e57. However, it's worth noting that the text does not provide any further explanation or context for these numbers, and it's unclear what they represent or how they are related to the topic of the text.",
+      "hit": false
+    }
+  ]
+}

@@ -42,7 +42,12 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--top-p", type=float, default=0.9)
     p.add_argument("--seed", type=int, default=None,
                    help="torch.manual_seed before --sample generations.")
-    p.add_argument("--retention", type=float, default=0.25)
+    p.add_argument(
+        "--retention", type=float, default=0.20,
+        help="Quest top-k page retention. Default 0.20 (Phase 10). "
+        "Use 0.10 for ~24%% faster decode on single-needle retrieval workloads "
+        "(multi-needle quality degrades — RULER multivalue 65%% at 0.10 vs 95%% at 0.20).",
+    )
     p.add_argument("--num-sinks", type=int, default=4)
     p.add_argument("--window-pages", type=int, default=2)
     p.add_argument("--page-size", type=int, default=64)

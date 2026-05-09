@@ -74,7 +74,7 @@ def patch_llama_for_quest_duo(
     model: torch.nn.Module,
     *,
     head_pattern: torch.Tensor,
-    retention: float = 0.25,
+    retention: float = 0.20,                 # Phase 10 default (was 0.25)
     num_sinks: int = 4,
     window_pages: int = 2,
     page_size: int = 64,
