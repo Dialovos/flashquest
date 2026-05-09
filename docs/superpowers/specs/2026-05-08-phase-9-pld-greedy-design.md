@@ -1,7 +1,7 @@
 # Phase 9 — Prompt-Lookup Decoding (Greedy Chain) — Design Spec
 
-**Date:** 2026-05-08 (r1) → 2026-05-09 (r2)
-**Status:** spec r2 (post-codex r1; addresses 4 dealbreakers + 3 correctness bugs + 5 integration risks + 4 nits)
+**Date:** 2026-05-08 (r1) → 2026-05-09 (r2, r2.1)
+**Status:** spec r2.1 (post-codex r2; addresses HIGH-severity UNION-overflow concern + 3 minor residuals from codex r2 review)
 **Phase:** 9 (after Phase 8a foundation, Phase 8b dropped by profile)
 **Target:** ≥15 tok/s @ 32k decode on Llama-3.2-3B-AWQ + Quest sparse INT4, RTX 3050 Ti Laptop sm_86 4GB WSL2
 
@@ -234,11 +234,15 @@ else:
             num_sinks=num_sinks, window_pages=window_pages,
             k_max_static=k_max_static,
         )                                                 # (B, H_q, S_q, P_completed) bool
-        sel_union = sel_per_q.any(dim=2)                  # (B, H_q, P_completed) bool
-        sel_compact = build_compact_selection(
-            sel_union.unsqueeze(2),                       # add S_q=1 axis to reuse helper
-            BUCKET_MAX=bucket_max_union_static,
-        ).squeeze(2)                                      # (B, H_q, BUCKET_MAX_UNION)
+        # Score-prioritized UNION-with-truncation. See §4.4 for the rationale: on
+        # overflow we keep the BUCKET_MAX_UNION highest-priority union pages and
+        # FORCE sinks + window pages to always be retained. No CUDA sync.
+        sel_compact = build_compact_union_selection(
+            sel_per_q, scores,
+            num_sinks=num_sinks, window_pages=window_pages,
+            completed_len=completed_len, page_size=page_size,
+            BUCKET_MAX_UNION=bucket_max_union_static,
+        )                                                 # (B, H_q, BUCKET_MAX_UNION) int32
         O_sparse, lse_sparse = flash_attn_sparse_int4_fwd_compact(
             q, views["K_packed"], views["K_scale"], views["K_mn"],
             views["V_packed"], views["V_scale"], views["V_mn"],
@@ -285,13 +289,70 @@ else:
 
 ### §4.4 Compact INT4 kernel S_q > 1 + UNION selection
 
-#### Selection: UNION
+#### Selection: score-prioritized UNION
 
-Per-Q top-k pages are computed normally (`select_pages_vectorized` is already vectorized over S_q). UNION across the S_q axis is `bool_mask.any(dim=2)`. Quality property: each query's effective page set in the kernel is `UNION ⊇ per-Q top-k`. Attention coverage is at least as high as per-Q. NOT bit-identical to non-spec greedy (different attention values), but ≥ per-Q quality.
+Per-Q top-k pages are computed normally (`select_pages_vectorized` is already vectorized over S_q). The UNION across the S_q axis is `sel_per_q.any(dim=2)`. Quality property: each query's effective page set in the kernel is `UNION ⊇ per-Q top-k`. Attention coverage is at least as high as per-Q. NOT bit-identical to non-spec greedy (different attention values), but ≥ per-Q quality.
 
-`BUCKET_MAX_UNION` is a constexpr static upper bound. The UNION of N_draft per-Q top-ks has expected size between BUCKET_MAX (high overlap) and N_draft × BUCKET_MAX (no overlap). At adjacent decode positions (separated by ≤ N_draft-1 = 4 token positions), the overlap is empirically ≥ 80% (Quest selection is dominated by global retrieval matches, not local positional shifts). Set `BUCKET_MAX_UNION = ⌈1.5 × BUCKET_MAX⌉` initially; **Task 2 of the plan microbenches the actual UNION size distribution** and adjusts the constant.
+`BUCKET_MAX_UNION` is a constexpr static upper bound. The UNION of N_draft per-Q top-ks has expected size between BUCKET_MAX (high overlap) and N_draft × BUCKET_MAX (no overlap). At adjacent decode positions (separated by ≤ N_draft-1 = 4 token positions), the overlap is empirically ≥ 80% (Quest selection is dominated by global retrieval matches, not local positional shifts). Set `BUCKET_MAX_UNION = ⌈1.5 × BUCKET_MAX⌉` initially; **Task 2 of the plan microbenches the actual UNION size distribution** and adjusts the constant if needed.
 
-If runtime UNION exceeds BUCKET_MAX_UNION: pad-truncate via `build_compact_selection` (existing helper). Quality risk: truncated tail may drop a low-priority page from one query. Acceptable if rare; profile in Task 2.
+**Score-prioritized truncation** (addresses codex r2 HIGH residual #1):
+On the rare event that runtime UNION size exceeds `BUCKET_MAX_UNION`, the helper `build_compact_union_selection` keeps the **highest-priority pages by max-score across S_q**, and **force-includes sinks + window** so they cannot be truncated. The Phase 8a helper `build_compact_selection` (which sorts by page index) is **not** suitable here — index-sorted truncation could drop a sink or a high-priority retrieval page in favor of a low-priority page that happens to have a smaller index. The score-prioritized helper preserves Quest's selection priority semantics under overflow.
+
+```python
+# In flashquest/eager/selection.py (NEW helper)
+def build_compact_union_selection(
+    sel_per_q: torch.Tensor,         # bool[B, H_q, S_q, P]
+    scores: torch.Tensor,            # float[B, H_q, S_q, P] — Quest criticality
+    *,
+    num_sinks: int,
+    window_pages: int,
+    completed_len: int,
+    page_size: int,
+    BUCKET_MAX_UNION: int,
+) -> torch.Tensor:                   # int32[B, H_q, BUCKET_MAX_UNION]
+    """Score-prioritized UNION selection with sinks + window force-included.
+
+    On overflow (UNION size > BUCKET_MAX_UNION): keep the BUCKET_MAX_UNION
+    highest-priority pages by max-score across S_q, with sinks + window forced.
+    On underflow (UNION size < BUCKET_MAX_UNION): pad with -1 sentinels (the
+    kernel handles sentinels via load-time masking + qk = -inf).
+    """
+    union_mask = sel_per_q.any(dim=2)                    # (B, H_q, P)
+    max_scores = scores.amax(dim=2)                      # (B, H_q, P) — priority within UNION
+
+    # Force-include sinks (positions [0, num_sinks)) and window (last window_pages completed pages)
+    n_complete_pages = completed_len // page_size
+    P = union_mask.shape[-1]
+    forced_mask = torch.zeros_like(union_mask)
+    forced_mask[..., :num_sinks] = True
+    if n_complete_pages > window_pages:
+        forced_mask[..., n_complete_pages - window_pages : n_complete_pages] = True
+    elif n_complete_pages > 0:
+        forced_mask[..., :n_complete_pages] = True
+
+    # Combined mask: union_mask | forced_mask. Forced pages get +inf priority so they're never dropped.
+    in_selection = union_mask | forced_mask
+    priority = torch.where(in_selection, max_scores, torch.full_like(max_scores, float("-inf")))
+    priority = torch.where(forced_mask, torch.full_like(priority, float("inf")), priority)
+
+    # topk by priority descending; ties broken by lower page index (deterministic)
+    top_pages = priority.topk(BUCKET_MAX_UNION, dim=-1).indices    # (B, H_q, BUCKET_MAX_UNION)
+
+    # Mark selected slot as -1 sentinel if its priority is -inf (i.e., not in selection)
+    top_priority = priority.gather(-1, top_pages)
+    out = torch.where(
+        top_priority == float("-inf"),
+        torch.full_like(top_pages, -1),
+        top_pages,
+    )
+    return out.to(torch.int32)
+```
+
+This helper is GPU-resident, no CUDA sync. The `topk` call returns indices sorted by descending priority (ties broken deterministically); the kernel doesn't care about ordering since it iterates all BUCKET_MAX_UNION slots anyway.
+
+**On overflow vs underflow:**
+- Underflow (UNION + forced size < BUCKET_MAX_UNION): some slots are sentinel `-1`. Kernel skips them via load-time masking. Cheap (skips K-tile + V-tile loads via mask).
+- Overflow (UNION + forced size > BUCKET_MAX_UNION): truncates the *lowest-priority UNION pages*. Sinks + window are always preserved. Quality cost is bounded by "the dropped page would have contributed to softmax; we lose its mass." Empirically the lowest-score UNION pages contribute negligibly to softmax (their scores are low *because* they don't match Q well). Profile in Task 2 to confirm.
 
 #### Kernel ABI
 
@@ -451,9 +512,12 @@ def make_quest_pld_dispatcher(
 ):
     """Wrap `model` (already patched with persistent_int4 attention) with PLD generation."""
     state = {
-        "next_input_token": None,        # (1,) int64; K/V NOT in cache
-        "next_argmax_buffer": None,      # (1,) int64; model's argmax at next_input_token's position (i.e., what comes AFTER it)
-        "committed_history": [],         # all already-committed token IDs (Python list of int)
+        "next_input_token": None,        # (1,) int64 — token to feed at next step. K/V NOT in cache.
+        "next_argmax_buffer": None,      # (1,) int64 — same value as next_input_token in single-decode steady state.
+                                         # Tracked separately because it is set to None after a PLD step
+                                         # (we don't have a model argmax for the held free_token until next step).
+                                         # PLD admissibility checks `draft[0] == next_argmax_buffer` to lossless-verify D_0.
+        "committed_history": [],         # all already-committed token IDs (Python list of int).
     }
 
     def init(prompt_input_ids: torch.Tensor) -> None:
@@ -472,7 +536,14 @@ def make_quest_pld_dispatcher(
         """Generate ≥1 tokens; return all newly-committed token IDs (CPU int64)."""
         next_in = state["next_input_token"]
         prev_argmax = state["next_argmax_buffer"]
-        seen = cache._seen_tokens[0]   # all layers tracked in lockstep on the patched path
+        # Layer-lockstep invariant: every patched LlamaAttention.forward calls
+        # update_quantized(layer_idx) with the same S_new in the same order, so all
+        # 28 _seen_tokens entries advance identically. Assert it explicitly to catch
+        # any future drift from a refactor that breaks lockstep.
+        assert all(s == cache._seen_tokens[0] for s in cache._seen_tokens), (
+            f"layer _seen_tokens out of lockstep: {cache._seen_tokens}"
+        )
+        seen = cache._seen_tokens[0]
         history_tail = (
             torch.tensor(state["committed_history"][-K_match:], dtype=torch.int64)
             if len(state["committed_history"]) >= K_match else None
@@ -545,19 +616,19 @@ def make_quest_pld_dispatcher(
 **`_set_pld_verify_active`** sets `module._pld_verify_active = bool` on every patched LlamaAttention. The forward branch reads this attribute. Wrapped in `try/finally` so an exception during forward never leaves the model in verify mode (codex r1 integration risk #5).
 
 **State invariants (kept consistent across §3, §4.5, §5):**
-- `cache._seen` always = number of K/V slots committed = number of tokens fully realized in history except for `next_input_token`.
-- `next_input_token` holds the most-recent decided-but-not-yet-fed token. Its K/V is NOT in cache.
-- `next_argmax_buffer` holds the model's prediction for what comes AFTER `next_input_token`. Set to a token ID after single-decode; set to `None` after PLD step (we don't have it for free).
-- `committed_history` lists all already-committed tokens (i.e., everything in cache; equivalent to `cache._seen_tokens[0]` length).
+- `cache._seen` always = number of K/V slots committed.
+- `next_input_token` holds the most-recently-decided token whose K/V is **not yet** in cache; it will be input to the next forward pass.
+- `next_argmax_buffer` is the same value as `next_input_token` *in single-decode steady-state* (single-decode produces the next-token argmax which is then used for both purposes). After a PLD step, `next_argmax_buffer = None` — we don't have a fresh model argmax for the held free_token. PLD admissibility checks `draft[0] == next_argmax_buffer`, which lossless-verifies D_0 against what the previous step's logits already decided.
+- `committed_history` lists all already-committed tokens. Length = `cache._seen_tokens[0]`.
 
 ## §5 Data flow trace — one PLD step
 
 ```
-state at entry:
-  cache._seen = N
-  next_input_token = T            (= last single-decode's argmax; K/V NOT in cache)
-  next_argmax_buffer = T          (single-decode steady-state: next_in == prev_argmax)
-  committed_history = [..., emit_{N-3}, emit_{N-2}, emit_{N-1}]   # length N
+state at entry (after a single-decode step that prepared the buffers):
+  cache._seen = N                                  (positions 0..N-1 committed in cache)
+  next_input_token = T                             (= last single-decode's argmax; K/V NOT in cache yet)
+  next_argmax_buffer = T                           (same as next_input_token in single-decode steady-state)
+  committed_history = [..., emit_{N-3}, emit_{N-2}, emit_{N-1}]   # length N, ends with the most recent committed token
 
   ┌────────────────────────────────────────────────────────────────┐
   │ history_tail = committed_history[-K_match:] = [t1, t2, t3]      │
@@ -690,6 +761,7 @@ If entry gate fails: stop. Report findings. Decide whether to re-scope to Lookah
 | `tests/test_persistent_patch_pld_verify.py` | Patched LlamaAttention forward in verify mode (`_pld_verify_active=True`) does NOT call `update_quantized` and DOES call `add_draft`; sandbox cleared after `commit_draft_all_layers`; `try/finally` ensures flag reset on forward exception |
 | `tests/test_dense_offset_causal.py` | `bf16_dense_attn_offset_causal_with_lse(Q, K, V, q_offset)` with `S_q=1, q_offset=k` matches existing `_bf16_dense_attn_with_lse` (regression); `S_q>1, q_offset=0` matches reference SDPA causal; offset-causal mask shape correctness |
 | `tests/test_kernel_tldot_ieee.py` | Triton compile + run smoke for `SQ_MAX=8` and `SQ_MAX=16` to confirm tl.dot dim-min behavior; `input_precision="ieee"` produces bit-identical output to manual fp32 sum-of-product reference within tolerance |
+| `tests/test_compact_union_selection.py` | Score-prioritized UNION: union ⊇ per-Q top-k; sinks + window always preserved (force_mask = +inf priority); on overflow drops lowest-score UNION pages, NOT lowest page index; on underflow pads with -1 sentinels; deterministic tie-break |
 
 ## §9 Quality gate
 
@@ -728,12 +800,12 @@ NEW (Phase 9):
 
 EXTENDED (Phase 9):
 - `src/flashquest/cache/persistent_int4.py` — sandbox tensors + `add_draft` / `get_views_with_sandbox` / `preflight_commit` / `commit_draft` / `commit_draft_all_layers`
-- `src/flashquest/eager/llama_persistent_patch.py` — verify-mode dispatch branch + `_pld_verify_active` plumbing + `_merge_two_attentions_sq` extension + `bf16_dense_attn_offset_causal_with_lse` helper
+- `src/flashquest/eager/llama_persistent_patch.py` — verify-mode dispatch branch + `_pld_verify_active` plumbing + `_merge_two_attentions_sq` extension + `bf16_dense_attn_offset_causal_with_lse` helper + `bucket_max_union_static` precompute
 - `src/flashquest/kernel/sparse_int4_fwd_compact.py` — new `_sparse_attn_fwd_kernel_int4_compact_sq_gt_1` kernel + dispatcher (S_q=1 path unchanged)
+- `src/flashquest/eager/selection.py` — new `build_compact_union_selection` helper (score-prioritized UNION, sinks + window force-included; replaces `build_compact_selection` for verify-mode dispatch only — single-decode path still uses `build_compact_selection`)
 - `docs/PHASES/phase-9-notes.md` — phase journal (created at end)
 
 UNCHANGED:
-- `src/flashquest/eager/selection.py` (already vectorized over S_q; UNION computation in dispatcher)
 - `src/flashquest/quant/awq_layout.py`
 - `src/flashquest/cache/persistent_int8.py` (PLD is INT4-only)
 
@@ -759,9 +831,9 @@ After r2 corrections, items for codex to stress-test:
 
 2. **§4.4 UNION quality**: codex r1 dealbreaker #4 was about per-Q vs shared selection. UNION addresses it by making each query's effective page set ⊇ per-Q. But the resulting attention output for query `i` is `attention(Q_i, UNION)` not `attention(Q_i, top-k(Q_i))`. Quality is provably ≥ per-Q in expected mass coverage but can be != non-spec at the argmax level. Is the §1 quality contract phrased correctly to handle this nuance?
 
-3. **§4.5 dispatcher `cache._seen_tokens[0]` access**: the dispatcher reads `_seen_tokens[0]` for the page-boundary check. This is correct only if all layers track `_seen_tokens` in lockstep (which our `update_quantized` enforces via per-layer S_new). If a future cache change introduced asymmetric layer-level _seen, this assumption breaks. Worth a comment + assertion?
+3. **§4.5 dispatcher `cache._seen_tokens[0]` access**: r2.1 adds an explicit `assert all(s == cache._seen_tokens[0] for s in cache._seen_tokens)` before the page-boundary check (codex r2 LOW residual #4). Catches any future regression that breaks layer-lockstep on `update_quantized`.
 
-4. **§3 page-boundary guard arithmetic**: `(N + N_draft) // page_size > N // page_size` — does this correctly identify page-crossing? Edge case: N = 63 (last position of page 0), N_draft = 1 → would land at position 64, crossing into page 1, so `(63+1)//64 = 1 > 63//64 = 0` → BLOCKED. ✓. Edge case: N = 64 (first position of page 1), N_draft = 5 → would write 64..68, all in page 1 → `(64+5)//64 = 1 = 64//64 = 1` → admissible. ✓.
+4. **§3 page-boundary guard arithmetic**: `(N + N_draft) // page_size > N // page_size` — correctly identifies any verify span that would *cause* a page-completion-and-quantization during commit. Mechanics: at N=63, N_draft=1, the verify writes K at position 63 in BF16 sandbox; on commit, `update_quantized` advances seen 63→64, page 0 is now full and gets quantized into INT4 — but the verify forward already attended to that K in BF16. A non-spec single-decode at the same step would write at position 63 in K_partial (BF16), then `update_quantized` quantizes page 0 BEFORE attention runs (per `eager/llama_persistent_patch.py` line 193: update_quantized → get_views → attend). So non-spec attention reads INT4 K[63]; PLD-verify attention reads BF16 K[63]. Drift. The guard `(63+1)//64=1 > 63//64=0` → BLOCKED. ✓ Edge case at N=64 (first position of page 1), N_draft=5: writes positions 64..68, all in page 1, no boundary crossed → `(64+5)//64=1 = 64//64=1` → admissible. ✓
 
 5. **§4.5 walk-and-accept loop**: `for i in range(N_draft - 1)` — verify range bound. We compare `argmax_seq[i] == draft[i+1]` for `i ∈ [0, N_draft-2]`, i.e. checks `draft[1]` through `draft[N_draft-1]`. Total post-D_0 drafts = N_draft-1. Maximum M = N_draft-1 (all post-D_0 accepted). ✓ Free token = `argmax_seq[M]` for M ∈ [0, N_draft-1]; index always valid since `argmax_seq` has length `N_draft`. ✓
 
@@ -777,4 +849,5 @@ After r2 corrections, items for codex to stress-test:
 - **Phase 8a foundation work**: `docs/PHASES/phase-8a-notes.md`, tag `phase-8a`
 - **Phase 8b kill record**: `docs/PHASES/phase-8b-killed.md`
 - **Profile-first memory**: `~/.claude/projects/-home-hoang-code-personal-active-flashquest/memory/feedback_profile_before_speedup_specs.md`
-- **Codex r1 review (this spec)**: r1 raised 4 dealbreakers, 3 correctness bugs, 5 integration risks, 4 nits. r2 (this revision) addresses all 16.
+- **Codex r1 review (this spec)**: r1 raised 4 dealbreakers, 3 correctness bugs, 5 integration risks, 4 nits. r2 addressed all 16.
+- **Codex r2 review**: confirmed r1 closure on all 12 substantive findings + nits, raised 1 HIGH (UNION-overflow truncation) + 3 minor residuals. r2.1 (this revision) addresses all 4 via surgical edits: score-prioritized UNION helper (`build_compact_union_selection`); cleaner `next_argmax_buffer` wording; tightened §13 page-boundary explanation; explicit layer-lockstep assertion in dispatcher.
