@@ -69,11 +69,12 @@ Before any kernel work — single afternoon's worth of measurement:
 
 1. **Capture**: capture Llama-3.2-3B-AWQ K + V tensors per layer at 8 k prefill on three PG essays (~24 k tokens calibration set; subset of the full calibration run to keep the probe under 30 min wall).
 2. **Transform**: apply per-token RMS scale + WHT.
-3. **Fit**: per-layer Lloyd-Max codebook (k-means with k=8, warm-start from paper).
-4. **Compute two numbers**:
-   - **Codepoint divergence** — `max_{layer, kv, codepoint} |calibrated - paper| / |paper|`. If max relative shift <5 %, the WHT-Gaussianization assumption holds tightly and calibration won't materially shift quality. **Kill the phase.**
-   - **Quality-simulator delta** — run one RULER NIAH multivalue sample (n=1, ctx=4 k) twice via `_flash_attn_sparse_turbo_fwd_reference` (Phase 7's non-fused Python reference): once with the calibrated codebook, once with paper's. If the generated token sequences match exactly, the codebook is not the bottleneck for this sample. Repeat on 3 samples; if all 3 match identically across runs, **kill the phase**.
-5. The probe lives in `scripts/phase11_calibrate_probe.py` and writes a one-page `benchmarks/phase11/probe.md` with the two numbers + a recommendation line + the per-layer codepoint-divergence table.
+3. **Fit (two granularities)**: per-layer Lloyd-Max codebook (k-means with k=8, warm-start from paper) AND per-head Lloyd-Max codebook (k=8, warm-start from paper) on the same data. The per-head fit is for the granularity side-check only — it is not loaded by the kernel at this phase.
+4. **Compute three numbers**:
+   - **Codepoint divergence (per-layer vs paper)** — `max_{layer, kv, codepoint} |calibrated_layer - paper| / |paper|`. If max relative shift <5 %, the WHT-Gaussianization assumption holds tightly and calibration won't materially shift quality. **Kill the phase.**
+   - **Quality-simulator delta** — run one RULER NIAH multivalue sample (n=1, ctx=4 k) twice via `_flash_attn_sparse_turbo_fwd_reference` (Phase 7's non-fused Python reference): once with the calibrated per-layer codebook, once with paper's. If the generated token sequences match exactly, the codebook is not the bottleneck for this sample. Repeat on 3 samples; if all 3 match identically across runs, **kill the phase**.
+   - **Granularity pre-signal** (per-head vs per-layer divergence ratio) — `R = max_{layer, head, kv, codepoint} |calibrated_head[layer,head] - calibrated_layer[layer]| / max(|calibrated_layer - paper|, ε)`. Interpretation: per-head fits show structure beyond what per-layer captures iff R > ~1. If R > 2 across multiple layers, granularity is likely the dominant axis of K/V variation; per-layer calibration may still help but per-head (Phase 11b) is the better target. Reported as advisory, **not a kill condition** — Phase 11 proceeds at per-layer regardless; the number is recorded so Phase 11b can be scoped immediately if the post-implementation RULER gate misses.
+5. The probe lives in `scripts/phase11_calibrate_probe.py` and writes a one-page `benchmarks/phase11/probe.md` with the three numbers + a recommendation line + the per-layer codepoint-divergence table + the per-head/per-layer ratio R summary.
 
 This gate is non-negotiable per the profile-first discipline (4 prior kills documented in `feedback_profile_before_speedup_specs.md`). If both checks pass, proceed to implementation. If either fails, document the kill in `docs/PHASES/phase-11-killed-by-probe.md` and reconsider scope.
 
