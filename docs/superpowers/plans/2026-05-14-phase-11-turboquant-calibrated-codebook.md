@@ -69,22 +69,22 @@ from flashquest.eval.niah import generate_multivalue_samples
 def capture_activations(model, prompts, num_layers):
     """Run prefill on each prompt; collect post-projection K and V per layer.
 
-    Returns dict: layer_idx -> {"K": [(S, H_kv, D), ...], "V": [...]} (cpu).
-    Hooks discard tensors after detaching to cpu to keep RAM bounded.
+    Stores activations as bf16 on CPU (memory bound: 3 essays × 8k × bf16 × 28
+    layers × ~1KB per (token,head) ≈ 1.5 GB; comfortably under WSL2 default).
+    Returns dict: layer_idx -> {"K": [(B,S,H_kv,D) bf16 cpu, ...], "V": [...]}.
     """
     acts = {li: {"K": [], "V": []} for li in range(num_layers)}
     handles = []
+    head_dim = model.config.hidden_size // model.config.num_attention_heads
     for module in model.modules():
         if hasattr(module, "layer_idx") and hasattr(module, "k_proj"):
             li = module.layer_idx
             def make_hook(layer_idx, which):
                 def hook(mod, inp, out):
-                    # out shape: (B, S, H_kv * D); reshape to (S, H_kv, D)
-                    B, S, _ = out.shape
-                    H_kv = mod.out_features // model.config.head_dim
-                    D = model.config.head_dim
+                    B, S, total = out.shape
+                    H_kv = total // head_dim
                     acts[layer_idx][which].append(
-                        out.detach().reshape(B, S, H_kv, D).cpu().float()
+                        out.detach().reshape(B, S, H_kv, head_dim).to(torch.bfloat16).cpu()
                     )
                 return hook
             handles.append(module.k_proj.register_forward_hook(make_hook(li, "K")))
@@ -102,30 +102,29 @@ def capture_activations(model, prompts, num_layers):
 def fit_per_layer_codebook(acts_layer_kv, n_clusters=8, warm_start=None):
     """Apply per-token RMS scale + WHT, flatten, fit k-means.
 
+    acts_layer_kv: list of (B, S, H_kv, D) bf16 cpu tensors. Cast to fp32 here only.
     Returns: codebook (8,) fp32 sorted ascending.
     """
-    # Stack all prompts' tensors: (S_total, H_kv, D)
-    stacked = torch.cat(acts_layer_kv, dim=1).squeeze(0)  # (S_total, H_kv, D)
-    # Per-token RMS scale (across head_dim, per (token, head))
-    rms = stacked.float().pow(2).mean(dim=-1, keepdim=True).sqrt().clamp_min(1e-6)
-    normalized = stacked.float() / rms
-    # WHT along head_dim
+    stacked = torch.cat(acts_layer_kv, dim=1).squeeze(0).float()  # (S_total, H_kv, D)
+    rms = stacked.pow(2).mean(dim=-1, keepdim=True).sqrt().clamp_min(1e-6)
+    normalized = stacked / rms
     rotated = wht_along_head_dim(normalized.unsqueeze(0)).squeeze(0)  # (S, H_kv, D)
-    flat = rotated.reshape(-1).numpy().astype(np.float32)  # (S*H_kv*D,)
+    flat = rotated.reshape(-1).numpy().astype(np.float32)
 
     init = warm_start.reshape(-1, 1) if warm_start is not None else "k-means++"
     km = KMeans(n_clusters=n_clusters, init=init, n_init=1, max_iter=300, random_state=0)
     km.fit(flat.reshape(-1, 1))
     codebook = np.sort(km.cluster_centers_.flatten()).astype(np.float32)
+    del stacked, rms, normalized, rotated, flat
     return codebook
 
 
 def fit_per_head_codebook(acts_layer_kv, n_clusters=8, warm_start=None):
     """Like fit_per_layer_codebook but per-head; returns (H_kv, 8) fp32."""
-    stacked = torch.cat(acts_layer_kv, dim=1).squeeze(0)
+    stacked = torch.cat(acts_layer_kv, dim=1).squeeze(0).float()
     H_kv = stacked.shape[1]
-    rms = stacked.float().pow(2).mean(dim=-1, keepdim=True).sqrt().clamp_min(1e-6)
-    normalized = stacked.float() / rms
+    rms = stacked.pow(2).mean(dim=-1, keepdim=True).sqrt().clamp_min(1e-6)
+    normalized = stacked / rms
     rotated = wht_along_head_dim(normalized.unsqueeze(0)).squeeze(0)
     codebooks = np.zeros((H_kv, n_clusters), dtype=np.float32)
     for h in range(H_kv):
@@ -134,6 +133,7 @@ def fit_per_head_codebook(acts_layer_kv, n_clusters=8, warm_start=None):
         km = KMeans(n_clusters=n_clusters, init=init, n_init=1, max_iter=300, random_state=0)
         km.fit(flat.reshape(-1, 1))
         codebooks[h] = np.sort(km.cluster_centers_.flatten())
+    del stacked, rms, normalized, rotated
     return codebooks
 
 
@@ -532,7 +532,12 @@ _MODEL_ID_TO_FILENAME = {
 
 
 def capture_activations(model, prompts, num_layers, head_dim):
-    """Same hook strategy as the probe; targets >= 50k tokens per layer."""
+    """Hook K + V projections; store as BF16 on CPU to halve memory footprint.
+
+    Memory math: 12 essays × 8 k tokens × 8 H_kv × 64 D × 2 bytes (bf16) × 2 (K+V)
+    × 28 layers ≈ 5.4 GB CPU RAM. Within WSL2 7.6 GB default minus model/driver
+    overhead. (FP32 would be 11 GB → OOM on default WSL2 config.)
+    """
     acts = {li: {"K": [], "V": []} for li in range(num_layers)}
     handles = []
     for module in model.modules():
@@ -542,8 +547,9 @@ def capture_activations(model, prompts, num_layers, head_dim):
                 def hook(mod, inp, out):
                     B, S, total = out.shape
                     H_kv = total // head_dim
+                    # bf16 on cpu; cast to fp32 only inside per-layer fit.
                     acts[layer_idx][which].append(
-                        out.detach().reshape(B, S, H_kv, head_dim).cpu().float()
+                        out.detach().reshape(B, S, H_kv, head_dim).to(torch.bfloat16).cpu()
                     )
                 return hook
             handles.append(module.k_proj.register_forward_hook(make_hook(li, "K")))
@@ -559,10 +565,15 @@ def capture_activations(model, prompts, num_layers, head_dim):
 
 
 def fit_per_layer_codebook_kv(acts_layer_kv, paper_cb, n_clusters=8):
-    """Apply Phase 7 transform (per-token RMS + WHT), then k-means warm-started."""
-    stacked = torch.cat(acts_layer_kv, dim=1).squeeze(0)  # (S_total, H_kv, D)
-    rms = stacked.float().pow(2).mean(dim=-1, keepdim=True).sqrt().clamp_min(1e-6)
-    normalized = stacked.float() / rms
+    """Apply Phase 7 transform (per-token RMS + WHT), then k-means warm-started.
+
+    acts_layer_kv: list of (B, S, H_kv, D) bf16 cpu tensors. Cast to fp32 inside
+    this function only — the captured tensors stay bf16 in CPU memory across the
+    full calibration loop to keep peak RAM bounded.
+    """
+    stacked = torch.cat(acts_layer_kv, dim=1).squeeze(0).float()  # (S_total, H_kv, D)
+    rms = stacked.pow(2).mean(dim=-1, keepdim=True).sqrt().clamp_min(1e-6)
+    normalized = stacked / rms
     rotated = wht_along_head_dim(normalized.unsqueeze(0)).squeeze(0)
     flat = rotated.reshape(-1).numpy().astype(np.float32)
     km = KMeans(n_clusters=n_clusters, init=paper_cb.reshape(-1, 1),
@@ -571,6 +582,8 @@ def fit_per_layer_codebook_kv(acts_layer_kv, paper_cb, n_clusters=8):
     sorted_cb = np.sort(km.cluster_centers_.flatten()).astype(np.float32)
     residual_rms = float(np.sqrt(km.inertia_ / flat.size))
     n_tokens = stacked.shape[0] * stacked.shape[1]
+    # Free the stacked tensor before returning — caller already has the codebook.
+    del stacked, rms, normalized, rotated, flat
     return sorted_cb, residual_rms, n_tokens
 
 
@@ -614,6 +627,9 @@ def main():
         residuals[li, 1] = r_v
         n_tokens_each[li] = (n_k, n_v)
         print(f"  layer {li:2d}: K_residual_rms={r_k:.4f}  V_residual_rms={r_v:.4f}")
+        # Free this layer's captured activations to keep peak CPU RAM bounded.
+        acts[li]["K"].clear()
+        acts[li]["V"].clear()
 
     cb_t = torch.from_numpy(cb).float()
     out_pt = Path(f"src/flashquest/turbo/{stem}.pt")
