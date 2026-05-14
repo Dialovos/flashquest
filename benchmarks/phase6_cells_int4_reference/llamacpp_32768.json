@@ -1,0 +1,10 @@
+{
+  "backend": "llama.cpp",
+  "quant": "Q4_K_M, FP16 KV",
+  "ctx_len": 32768,
+  "decode_tok_s": null,
+  "peak_vram_mib": null,
+  "wall_s": 1800.1353507680033,
+  "oom": false,
+  "error": "timeout (>1800s)"
+}

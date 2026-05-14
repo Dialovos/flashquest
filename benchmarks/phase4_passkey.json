@@ -1,0 +1,29 @@
+{
+  "depths": [
+    0.1,
+    0.5,
+    0.9
+  ],
+  "n_trials": 5,
+  "retention": 0.25,
+  "num_sinks": 4,
+  "window_pages": 2,
+  "retrieval_fraction": 0.7,
+  "phase1": {
+    "accuracy_by_depth": {
+      "0.1": 1.0,
+      "0.5": 1.0,
+      "0.9": 1.0
+    },
+    "elapsed_s": 18.509735858002387
+  },
+  "phase4": {
+    "accuracy_by_depth": {
+      "0.1": 1.0,
+      "0.5": 1.0,
+      "0.9": 1.0
+    },
+    "elapsed_s": 28.488988556997356,
+    "head_pattern_retrieval_fraction": 0.734375
+  }
+}

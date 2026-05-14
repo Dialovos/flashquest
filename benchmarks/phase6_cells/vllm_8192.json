@@ -1,0 +1,11 @@
+{
+  "backend": "vLLM 0.7.3",
+  "quant": "AWQ-INT4, FP16 KV",
+  "ctx_len": 8192,
+  "decode_tok_s": null,
+  "prefill_tok_s": null,
+  "peak_vram_mib": null,
+  "wall_s": 267.8825637560003,
+  "oom": true,
+  "error": "ValueError: The model's max seq len (8192) is larger than the maximum number of tokens that can be stored in KV cache (3904). Try increasing `gpu_memory_utilization` or decreasing `max_model_len` when initializing the engine."
+}

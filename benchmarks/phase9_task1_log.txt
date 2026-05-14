@@ -1,0 +1,36 @@
+`torch_dtype` is deprecated! Use `dtype` instead!
+/home/hoang/code/personal/active/flashquest/.venv/lib/python3.12/site-packages/awq/__init__.py:21: DeprecationWarning: 
+I have left this message as the final dev message to help you transition.
+
+Important Notice:
+- AutoAWQ is officially deprecated and will no longer be maintained.
+- The last tested configuration used Torch 2.6.0 and Transformers 4.51.3.
+- If future versions of Transformers break AutoAWQ compatibility, please report the issue to the Transformers project.
+
+Alternative:
+- AutoAWQ has been adopted by the vLLM Project: https://github.com/vllm-project/llm-compressor
+
+For further inquiries, feel free to reach out:
+- X: https://x.com/casper_hansen_
+- LinkedIn: https://www.linkedin.com/in/casper-hansen-804005170/
+
+  warnings.warn(_FINAL_DEV_MESSAGE, category=DeprecationWarning, stacklevel=1)
+Token indices sequence length is longer than the specified maximum sequence length for this model (150550 > 131072). Running this sequence through the model will result in indexing errors
+Loading model casperhansen/llama-3.2-3b-instruct-awq ...
+Loading 20 PG-summarize prompts (ctx~8192)...
+  loaded 18 PG prompts
+Loading 20 RULER NIAH single 4k prompts...
+  loaded 20 RULER prompts
+Running PG-summarize workload...
+  PG: M_avg=1.67, hit_rate=5.05%, sq1=670.7ms, sq5=384.3ms
+Running RULER workload...
+  RULER: M_avg=1.61, hit_rate=2.69%, sq1=169.6ms, sq5=147.0ms
+
+=== Phase 9 Task 1 Entry Gate ===
+  M_avg (PG + RULER):       1.64     (gate: >= 2.0)
+  hit_rate (PG + RULER):    3.87%    (gate: >= 30%)
+  S_q=5 / S_q=1 wall:       0.63x    (gate: <= 1.3x)
+
+  ENTRY GATE: FAIL
+
+Results: benchmarks/phase9_task1_results.json

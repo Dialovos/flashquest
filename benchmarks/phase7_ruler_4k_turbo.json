@@ -1,0 +1,43 @@
+{
+  "model": "casperhansen/llama-3.2-3b-instruct-awq",
+  "ctx_len": 4096,
+  "n_samples": 20,
+  "retention": 0.25,
+  "num_sinks": 4,
+  "window_pages": 2,
+  "page_size": 64,
+  "seed": 0,
+  "head_pattern": "all-retrieval",
+  "kv_bits": 3,
+  "tasks": {
+    "niah_single": {
+      "dense_hits": 20,
+      "patched_turbo_hits": 20,
+      "total": 20,
+      "ratio": 1.0,
+      "pass": true,
+      "dense_wall_s": 309.967816548,
+      "patched_turbo_wall_s": 445.28524791999735
+    },
+    "niah_multikey": {
+      "dense_hits": 20,
+      "patched_turbo_hits": 20,
+      "total": 20,
+      "ratio": 1.0,
+      "pass": true,
+      "dense_wall_s": 289.6319616459987,
+      "patched_turbo_wall_s": 592.1484930229999
+    },
+    "niah_multivalue": {
+      "dense_hits": 20,
+      "patched_turbo_hits": 17,
+      "total": 20,
+      "ratio": 0.85,
+      "pass": true,
+      "dense_wall_s": 372.3906760650025,
+      "patched_turbo_wall_s": 577.3019443749981
+    }
+  },
+  "gate": "\u226585% vs dense at retention=0.25 + all-retrieval head_pattern + TurboQuant K3-V2",
+  "all_pass": true
+}

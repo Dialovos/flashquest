@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flashquest"
+version = "0.0.0"
+description = "Sparse-retrieval attention Triton kernel for Ampere laptop GPUs (sm_86, 4GB VRAM)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "flashquest contributors" }]
+
+# Resolved against driver CUDA 12.5 via the cu121 wheel index. Triton 3.1
+# ships bundled with torch 2.5+cu121. NumPy capped <2 because several
+# vendored upstream repos still pin <2.
+dependencies = [
+  "torch>=2.5,<2.6",
+  "triton>=3.1,<4",
+  "numpy<2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "pytest-cov",
+  "ruff",
+  "mypy",
+  "hypothesis>=6",
+]
+bench = [
+  "transformers>=4.45,<5",
+  "accelerate",
+  "huggingface_hub[cli]",
+  "datasets>=3",
+  "autoawq>=0.2,<1",
+]
+
+[project.scripts]
+flashquest = "flashquest.runtime.chat:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -q"
+markers = [
+    "slow: end-to-end runs that load a model + generate (skip with -m 'not slow')",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

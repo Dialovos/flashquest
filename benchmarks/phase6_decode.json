@@ -1,0 +1,15 @@
+{
+  "model": "casperhansen/llama-3.2-3b-instruct-awq",
+  "n_prefill": 32768,
+  "n_decode": 32,
+  "n_trials": 1,
+  "trials": [
+    {
+      "prefill_s": 582.3585628639994,
+      "prefill_tok_per_s": 56.26773965312578,
+      "decode_s": 15.768405939998047,
+      "decode_tok_per_s": 2.029374441637692,
+      "peak_vram_mib": 6378.68798828125
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "model": "hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4",
+  "result": "EXPECTED_OOM_NOT_RUN",
+  "weights_size_gib": 4.5,
+  "vram_gib": 4.0,
+  "rationale": "Llama-3.1-8B-AWQ weights alone (~4.5 GB) exceed the 4 GB nominal VRAM cap before any KV cache or activations. To run anyway, download via 'hf download hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4' and execute scripts/phase5_run_8b_control.py — it handles the OOM-at-load case gracefully and records what context fits (likely none on 4 GB). Phase 6 / v2: PowerInfer-style hot/cold layer offload to system RAM, or IQ3-XXS via GGUF interop, are the realistic paths to clear this wall."
+}

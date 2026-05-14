@@ -1,0 +1,11 @@
+{
+  "backend": "vLLM 0.7.3",
+  "quant": "AWQ-INT4, FP16 KV",
+  "ctx_len": 32768,
+  "decode_tok_s": null,
+  "prefill_tok_s": null,
+  "peak_vram_mib": null,
+  "wall_s": 759.0948537889999,
+  "oom": true,
+  "error": "ValueError: No available memory for the cache blocks. Try increasing `gpu_memory_utilization` when initializing the engine."
+}

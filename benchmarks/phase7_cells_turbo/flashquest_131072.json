@@ -1,0 +1,11 @@
+{
+  "backend": "flashquest",
+  "quant": "AWQ-INT4 + TurboQuant K3-V3 paged KV + Quest top-k retention=0.25",
+  "ctx_len": 131072,
+  "decode_tok_s": null,
+  "prefill_tok_s": null,
+  "peak_vram_mib": null,
+  "wall_s": 72.05589127700296,
+  "oom": false,
+  "error": "RuntimeError: CUDA error: out of memory\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.\n"
+}

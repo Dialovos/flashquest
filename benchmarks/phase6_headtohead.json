@@ -1,0 +1,112 @@
+{
+  "host": {
+    "gpu": "NVIDIA GeForce RTX 3050 Ti Laptop GPU",
+    "vram_mib": 4095,
+    "cuda": "12.5",
+    "wsl2": true
+  },
+  "model": "Llama-3.2-3B-Instruct",
+  "date": "2026-05-03",
+  "headline_metric": "decode tok/s at ctx=32768",
+  "capability_axis": "max ctx that decodes (\u22651 tok/s, no OOM)",
+  "results": [
+    {
+      "backend": "flashquest",
+      "quant": "AWQ-INT4 + INT8 paged KV + Quest top-k retention=0.25",
+      "ctx_len": 8192,
+      "decode_tok_s": 2.2882003614703867,
+      "prefill_tok_s": 456.5946513102249,
+      "peak_vram_mib": 4703,
+      "wall_s": 38.608227550001175,
+      "oom": false,
+      "error": null
+    },
+    {
+      "backend": "flashquest",
+      "quant": "AWQ-INT4 + INT8 paged KV + Quest top-k retention=0.25",
+      "ctx_len": 32768,
+      "decode_tok_s": null,
+      "peak_vram_mib": null,
+      "wall_s": 1880.769883011002,
+      "oom": false,
+      "error": "timeout (>1800s)"
+    },
+    {
+      "backend": "flashquest",
+      "quant": "AWQ-INT4 + INT8 paged KV + Quest top-k retention=0.25",
+      "ctx_len": 131072,
+      "decode_tok_s": null,
+      "prefill_tok_s": null,
+      "peak_vram_mib": null,
+      "wall_s": 30.79232204300206,
+      "oom": false,
+      "error": "RuntimeError: CUDA error: unknown error\nCUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect.\nFor debugging consider passing CUDA_LAUNCH_BLOCKING=1\nCompile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.\n"
+    },
+    {
+      "backend": "llama.cpp",
+      "quant": "Q4_K_M, FP16 KV",
+      "ctx_len": 8192,
+      "decode_tok_s": 39.88,
+      "prefill_tok_s": 725.13,
+      "peak_vram_mib": 0,
+      "wall_s": 66.64894138099771,
+      "oom": false,
+      "error": null
+    },
+    {
+      "backend": "llama.cpp",
+      "quant": "Q4_K_M, FP16 KV",
+      "ctx_len": 32768,
+      "decode_tok_s": null,
+      "prefill_tok_s": null,
+      "peak_vram_mib": null,
+      "wall_s": 1284.7937899430035,
+      "oom": false,
+      "error": "rc=134: bc_start_main+0x8b)[0x7ba7cb22a28b]\n/home/hoang/code/personal/active/flashquest/vendor/llama.cpp/build/bin/llama-bench(+0x14365)[0x5f4ac403a365]\n/home/hoang/code/personal/active/flashquest/scripts/bench_llamacpp.sh: line 31: 204724 Aborted                 (core dumped) \"$LLAMA_BIN\" -m \"$MODEL\" -p \"$CTX\" -n 128 -ngl \"$NGL\" -t 6 -r \"${REPS:-1}\" -o md\n     204725 Done                    | tee \"$OUT\"\n"
+    },
+    {
+      "backend": "llama.cpp",
+      "quant": "Q4_K_M, FP16 KV",
+      "ctx_len": 131072,
+      "decode_tok_s": null,
+      "prefill_tok_s": null,
+      "peak_vram_mib": null,
+      "wall_s": 104.11572912200063,
+      "oom": true,
+      "error": "rc=1: ggml_cuda_init: found 1 CUDA devices (Total VRAM: 4095 MiB):\n  Device 0: NVIDIA GeForce RTX 3050 Ti Laptop GPU, compute capability 8.6, VMM: yes, VRAM: 4095 MiB\nmain: error: failed to create context with model '/home/hoang/models/llama-3.2-3b/Llama-3.2-3B-Instruct-Q4_K_M.gguf'\n"
+    },
+    {
+      "backend": "vLLM 0.7.3",
+      "quant": "AWQ-INT4, FP16 KV",
+      "ctx_len": 8192,
+      "decode_tok_s": null,
+      "prefill_tok_s": null,
+      "peak_vram_mib": null,
+      "wall_s": 267.8825637560003,
+      "oom": true,
+      "error": "ValueError: The model's max seq len (8192) is larger than the maximum number of tokens that can be stored in KV cache (3904). Try increasing `gpu_memory_utilization` or decreasing `max_model_len` when initializing the engine."
+    },
+    {
+      "backend": "vLLM 0.7.3",
+      "quant": "AWQ-INT4, FP16 KV",
+      "ctx_len": 32768,
+      "decode_tok_s": null,
+      "prefill_tok_s": null,
+      "peak_vram_mib": null,
+      "wall_s": 759.0948537889999,
+      "oom": true,
+      "error": "ValueError: No available memory for the cache blocks. Try increasing `gpu_memory_utilization` when initializing the engine."
+    },
+    {
+      "backend": "vLLM 0.7.3",
+      "quant": "AWQ-INT4, FP16 KV",
+      "ctx_len": 131072,
+      "decode_tok_s": null,
+      "prefill_tok_s": null,
+      "peak_vram_mib": null,
+      "wall_s": 323.0073710939978,
+      "oom": true,
+      "error": "ValueError: The model's max seq len (131072) is larger than the maximum number of tokens that can be stored in KV cache (4224). Try increasing `gpu_memory_utilization` or decreasing `max_model_len` when initializing the engine."
+    }
+  ]
+}

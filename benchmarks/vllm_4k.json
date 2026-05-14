@@ -1,0 +1,9 @@
+{
+  "model": "casperhansen/llama-3.2-3b-instruct-awq",
+  "input_tokens": 3113,
+  "output_tokens": 128,
+  "elapsed_s": 7.410499057000379,
+  "tok_s_total": 437.3524610246549,
+  "decode_tok_s_approx": 17.272790808749097,
+  "peak_vram_mb": 3410.994140625
+}

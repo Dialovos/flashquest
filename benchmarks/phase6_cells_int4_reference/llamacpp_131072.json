@@ -1,0 +1,11 @@
+{
+  "backend": "llama.cpp",
+  "quant": "Q4_K_M, FP16 KV",
+  "ctx_len": 131072,
+  "decode_tok_s": null,
+  "prefill_tok_s": null,
+  "peak_vram_mib": null,
+  "wall_s": 138.01357375300722,
+  "oom": true,
+  "error": "rc=1: ggml_cuda_init: found 1 CUDA devices (Total VRAM: 4095 MiB):\n  Device 0: NVIDIA GeForce RTX 3050 Ti Laptop GPU, compute capability 8.6, VMM: yes, VRAM: 4095 MiB\nmain: error: failed to create context with model '/home/hoang/models/llama-3.2-3b/Llama-3.2-3B-Instruct-Q4_K_M.gguf'\n"
+}

@@ -1,0 +1,55 @@
+{
+  "host": {
+    "gpu": "NVIDIA GeForce RTX 3050 Ti Laptop GPU",
+    "compute_capability": "8.6",
+    "total_vram_mib": 4095,
+    "driver": "555.97",
+    "cuda_runtime": "12.5",
+    "cpu": "Intel i9-12900H",
+    "wsl2_ram_gib": 7.6
+  },
+  "date": "2026-04-30",
+  "model": "Llama-3.2-3B-Instruct",
+  "results": {
+    "llama_cpp": {
+      "context": 8192,
+      "build": "d775992",
+      "config": "CUDA, -ngl 999, -t 6, -r 3",
+      "quant": "Q4_K_M",
+      "model_size_gib": 1.87,
+      "params_b": 3.21,
+      "prefill_pp8192_tok_s": 736.55,
+      "prefill_stddev": 55.81,
+      "decode_tg128_tok_s": 39.60,
+      "decode_stddev": 0.11,
+      "peak_vram_mib": 3543,
+      "raw_log": "benchmarks/llamacpp_8k.txt"
+    },
+    "vllm": {
+      "version": "0.7.3",
+      "model_id": "casperhansen/llama-3.2-3b-instruct-awq",
+      "quant": "AWQ-INT4",
+      "context": 4096,
+      "context_target": 8192,
+      "context_deviation_reason": "vLLM cannot fit 8k context on 4 GB even at gpu_memory_utilization=0.95 (max KV cache tops at ~3904 tokens). Dropped max_model_len to 4096.",
+      "config": "gpu_memory_utilization=0.95, dtype=float16, enforce_eager=False",
+      "input_tokens": 3113,
+      "output_tokens": 128,
+      "elapsed_s": 7.41,
+      "tok_s_total": 437.35,
+      "decode_tok_s_approx": 17.27,
+      "vllm_internal_decode_tok_s": 17.30,
+      "peak_vram_mib": 3411,
+      "raw_log": "benchmarks/vllm_4k.json"
+    },
+    "fa2_reference": {
+      "purpose": "synthetic forward-only reference for Phase 2 comparison; not an end-to-end model number",
+      "flash_attn_version": "2.7.4.post1",
+      "shape": "B=1 S=8192 H_q=24 H_kv=8 D=64 BF16 causal",
+      "first_run_avg_ms": 28.390,
+      "warm_run_avg_ms": 22.760,
+      "peak_vram_mib": 125,
+      "raw_log": "benchmarks/fa2_profile.json"
+    }
+  }
+}

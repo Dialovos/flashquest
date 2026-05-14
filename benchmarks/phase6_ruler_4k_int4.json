@@ -1,0 +1,43 @@
+{
+  "model": "casperhansen/llama-3.2-3b-instruct-awq",
+  "ctx_len": 4096,
+  "n_samples": 20,
+  "retention": 0.25,
+  "num_sinks": 4,
+  "window_pages": 2,
+  "page_size": 64,
+  "seed": 0,
+  "head_pattern": "all-retrieval",
+  "kv_bits": 4,
+  "tasks": {
+    "niah_single": {
+      "dense_hits": 20,
+      "patched_int4_hits": 20,
+      "total": 20,
+      "ratio": 1.0,
+      "pass": true,
+      "dense_wall_s": 315.38800336400163,
+      "patched_int4_wall_s": 431.72259720500733
+    },
+    "niah_multikey": {
+      "dense_hits": 20,
+      "patched_int4_hits": 20,
+      "total": 20,
+      "ratio": 1.0,
+      "pass": true,
+      "dense_wall_s": 292.1954043680016,
+      "patched_int4_wall_s": 645.9628063470009
+    },
+    "niah_multivalue": {
+      "dense_hits": 20,
+      "patched_int4_hits": 20,
+      "total": 20,
+      "ratio": 1.0,
+      "pass": true,
+      "dense_wall_s": 337.5473826339876,
+      "patched_int4_wall_s": 764.464878882005
+    }
+  },
+  "gate": "\u226585% vs dense at retention=0.25 + all-retrieval head_pattern + INT4 KV",
+  "all_pass": true
+}
