@@ -37,9 +37,14 @@ flashquest --model casperhansen/llama-3.2-3b-instruct-awq \
 
 # TurboQuant K3-V3 (smaller cache, slower decode)
 flashquest --kv-bits 3 --context 32768 -i
+
+# Tighten retention for single-needle workloads (faster, lossier multi-needle)
+flashquest --retention 0.10 --context 32768 -i
 ```
 
-`--kv-bits 4` is the default (KIVI-INT4, RULER 100/100/100, faster decode). `--kv-bits 3` enables TurboQuant K3-V3 (25 % smaller cache, RULER 100/100/85, slower decode); pick it when storage is the bottleneck.
+`--kv-bits 4` is the default (KIVI-INT4, RULER 100/100/95 at default `--retention 0.20`, faster decode). `--kv-bits 3` enables TurboQuant K3-V3 (25 % smaller cache, RULER 100/100/85, slower decode); pick it when storage is the bottleneck.
+
+`--retention 0.20` is the default page budget; opt into `--retention 0.10` for ~1.24× decode on single-needle retrieval workloads (RULER NIAH multivalue regresses to 65 %, so don't ship it as a default for multi-needle tasks).
 
 ## Quick start — library
 
@@ -63,12 +68,12 @@ cache = PersistentInt4KVCache(
     page_size=64,
     device="cuda",
 )
-# All-retrieval head_pattern; ships with RULER 100/100/100. Replace with a
+# All-retrieval head_pattern; ships with RULER 100/100/95. Replace with a
 # learned 70/30 DuoAttention pattern to free up retrieval budget.
 pattern = torch.ones(cfg.num_hidden_layers, cfg.num_key_value_heads, dtype=torch.bool)
 patch_llama_for_quest_persistent(
     model, cache=cache, head_pattern=pattern,
-    retention=0.25, num_sinks=4, window_pages=2, page_size=64,
+    retention=0.20, num_sinks=4, window_pages=2, page_size=64,
 )
 
 ids = tokenizer("...", return_tensors="pt").input_ids.cuda()
@@ -80,7 +85,7 @@ For TurboQuant K3-V3, swap `PersistentInt4KVCache` for `PersistentTurboKVCache` 
 
 ## Architecture
 
-- **Quest top-k page selection.** Per-page channel-wise (`K_scale`, `K_mn`) lets us bound the per-page max QK score algebraically: `Σ_d max(Q[d]·K_min[p,d], Q[d]·K_max[p,d])`. We rewrite that bound as `Q·K_mn + 255·relu(Q)·K_scale` (INT8) or `15·relu(Q)·K_scale` (INT4) — two matmuls per layer, no dequant, no per-token criticality. retention=0.25 reads ~one page in four.
+- **Quest top-k page selection.** Per-page channel-wise (`K_scale`, `K_mn`) lets us bound the per-page max QK score algebraically: `Σ_d max(Q[d]·K_min[p,d], Q[d]·K_max[p,d])`. We rewrite that bound as `Q·K_mn + 255·relu(Q)·K_scale` (INT8) or `15·relu(Q)·K_scale` (INT4) — two matmuls per layer, no dequant, no per-token criticality. `retention=0.20` (default) reads ~one page in five.
 - **Paged INT8/INT4 KV cache.** KIVI-style asymmetric quantization: per-page channel-wise K, per-token V. INT8 packs 1 byte/value, INT4 packs 2 nibbles/byte. Persistent across decode steps; partial pages live in BF16 staging until they fill.
 - **TurboQuant K3-V3 (opt-in).** Per-token Walsh-Hadamard rotation along `head_dim`, fixed 8-codepoint Lloyd-Max codebook, bit-split storage (1-bit MSB plane @ 8/byte + 2-bit LSB plane @ 4/byte). 25 % smaller cache than INT4. Two non-paper adjustments were needed on Llama-3.2-3B: per-token RMS scale (paper uses max-abs) and V at 3-bit (paper's K3-V2 multivalue regressed too far).
 - **Fused Triton sparse decode kernel.** One CTA per `(batch, query head)`, decode-only `S_q=1`. Reads packed K/V tiles directly — no BF16 dequant intermediate, no GMEM codebook gather (the TurboQuant codebook is inlined as a `tl.where` chain over compile-time constants). Online-softmax accumulation, same numerics as FlashAttention.
@@ -90,19 +95,23 @@ For TurboQuant K3-V3, swap `PersistentInt4KVCache` for `PersistentTurboKVCache` 
 
 ### Quality — RULER NIAH 4 k subset
 
-Llama-3.2-3B-Instruct-AWQ, retention=0.25, all-retrieval head_pattern, n=20 vs vanilla SDPA dense.
+Llama-3.2-3B-Instruct-AWQ, all-retrieval head_pattern, n=20 vs vanilla SDPA dense.
 
-| Cache mode | niah_single | niah_multikey | niah_multivalue |
-|---|---|---|---|
-| `--kv-bits 4` (KIVI-INT4) | 20/20 (100 %) | 20/20 (100 %) | 20/20 (100 %) |
-| `--kv-bits 3` (TurboQuant K3-V3) | 20/20 (100 %) | 20/20 (100 %) | 17/20 (85 %) |
+| Cache mode | retention | niah_single | niah_multikey | niah_multivalue |
+|---|---|---|---|---|
+| `--kv-bits 4` (KIVI-INT4) | 0.20 (default) | 20/20 (100 %) | 20/20 (100 %)¹ | 19/20 (95 %) |
+| `--kv-bits 4` (KIVI-INT4) | 0.10 (opt-in) | 20/20 (100 %) | — | 13/20 (65 %) |
+| `--kv-bits 3` (TurboQuant K3-V3) | 0.25 | 20/20 (100 %) | 20/20 (100 %) | 17/20 (85 %) |
+
+¹ `niah_multikey` at the v1.0 default carried over from Phase 6 measurements (INT4 fused, retention=0.25); single + multivalue re-measured at retention=0.20 (Phase 10 sweep).
 
 ### Throughput — single-cell decode at 32 k
 
-| Cache mode | decode tok/s | prefill tok/s | peak VRAM (MiB) |
-|---|---|---|---|
-| `--kv-bits 4` fused | 3.88 | 65.0 | 5478 |
-| `--kv-bits 3` TurboQuant | 2.62 | 77.6 | 6105 |
+| Cache mode | retention | decode tok/s | prefill tok/s | peak VRAM (MiB) |
+|---|---|---|---|---|
+| `--kv-bits 4` fused | 0.20 (default) | **8.41** | 65.0 | 5478 |
+| `--kv-bits 4` fused | 0.10 (opt-in) | 9.91 | 65.0 | 5478 |
+| `--kv-bits 3` TurboQuant | 0.25 | 2.62 | 77.6 | 6105 |
 
 (VRAM exceeds nominal 4095 because PyTorch's allocator overcommits via WSL2 swap. The actual GPU residency stays under the limit; the rest is paged.)
 
@@ -112,10 +121,12 @@ Decode tok/s (32 k checked first):
 
 | Backend | Quant | 8 k | 32 k | 128 k fits? |
 |---|---|---|---|---|
-| flashquest INT4 fused | AWQ-INT4 + INT4 paged | 4.94 | 3.88 | ✗ |
+| flashquest INT4 fused | AWQ-INT4 + INT4 paged | 4.94² | **8.41** | ✗ |
 | flashquest TurboQuant K3-V3 | AWQ-INT4 + K3-V3 paged | 2.05 | 1.93 | ✗ |
 | llama.cpp `-ngl 999` | Q4_K_M, FP16 KV | 38.45 | timeout | ✗ |
 | vLLM 0.7.3 | AWQ-INT4, FP16 KV | OOM | timeout | OOM |
+
+² flashquest 8 k carried over from Phase 6 head-to-head matrix; flashquest 32 k re-measured at v1.0 (Phase 10 default `--retention 0.20`). llama.cpp + vLLM cells unchanged — those backends have not been re-baselined.
 
 flashquest is the only backend that decodes at 32 k on this hardware. At 8 k, llama.cpp wins on raw throughput (its CUDA graph + persistent kernel infrastructure is well-tuned); flashquest is the capability play, not the throughput play.
 

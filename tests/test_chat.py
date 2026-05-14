@@ -26,7 +26,7 @@ def test_parse_args_defaults():
     assert args.temperature == 0.7
     assert args.top_p == 0.9
     assert args.seed is None
-    assert args.retention == 0.25
+    assert args.retention == 0.20
     assert args.num_sinks == 4
     assert args.window_pages == 2
     assert args.page_size == 64
