@@ -1,0 +1,52 @@
+{
+  "results": {
+    "paper": {
+      "diff_count": 0,
+      "sample_diffs": [
+        false,
+        false,
+        false
+      ]
+    },
+    "mean": {
+      "diff_count": 1,
+      "sample_diffs": [
+        true,
+        false,
+        false
+      ]
+    },
+    "layer-0": {
+      "diff_count": 3,
+      "sample_diffs": [
+        true,
+        true,
+        true
+      ]
+    },
+    "layer-14": {
+      "diff_count": 3,
+      "sample_diffs": [
+        true,
+        true,
+        true
+      ]
+    },
+    "layer-27": {
+      "diff_count": 2,
+      "sample_diffs": [
+        true,
+        false,
+        true
+      ]
+    },
+    "per-layer-proper": {
+      "diff_count": 3,
+      "sample_diffs": [
+        true,
+        true,
+        true
+      ]
+    }
+  }
+}
