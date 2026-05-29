@@ -20,6 +20,14 @@ from flashquest.kernel.kv_quant import (
     K_TURBO_CODEBOOK, V_TURBO_CODEBOOK,
     dequantize_k_turbo, dequantize_v_turbo,
 )
+
+
+def _resolve_codebook(cb: Optional[torch.Tensor], default: torch.Tensor) -> torch.Tensor:
+    """Phase 11: pick codebook or fall back to paper. Validates shape."""
+    out = default if cb is None else cb
+    if out.shape != (8,):
+        raise ValueError(f"codebook must be (8,); got {tuple(out.shape)}")
+    return out
 from flashquest.kernel.wht import wht_along_head_dim
 
 
@@ -36,12 +44,15 @@ def _flash_attn_sparse_turbo_fwd_reference(
     page_size: int = 64,
     sm_scale: Optional[float] = None,
     return_lse: bool = True,
+    codebook_k: Optional[torch.Tensor] = None,
+    codebook_v: Optional[torch.Tensor] = None,
 ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
     """Reference path — Python, used for kernel equivalence testing (K3-V3).
 
     Algorithm: dequant the entire K, V cache to BF16 (raw basis), build a
     per-token attention mask from the page selection, run dense attention.
-    Output O is in raw basis.
+    Output O is in raw basis. Phase 11: codebook_k / codebook_v optional;
+    defaults to paper Lloyd-Max.
     """
     if Q.dim() != 4:
         raise ValueError(f"Q must be 4D (B, H_q, 1, D); got {Q.shape}")
@@ -57,8 +68,8 @@ def _flash_attn_sparse_turbo_fwd_reference(
     Bk, H_kv, S_kv, _ = K_msb.shape
     n_rep = H_q // H_kv
 
-    K_full = dequantize_k_turbo(K_msb, K_lsb, K_scale_turbo, head_dim=D)
-    V_full = dequantize_v_turbo(V_msb, V_lsb, V_scale_turbo, head_dim=D)
+    K_full = dequantize_k_turbo(K_msb, K_lsb, K_scale_turbo, head_dim=D, codebook=codebook_k)
+    V_full = dequantize_v_turbo(V_msb, V_lsb, V_scale_turbo, head_dim=D, codebook=codebook_v)
 
     if sm_scale is None:
         sm_scale = 1.0 / math.sqrt(D)
@@ -90,21 +101,23 @@ _SUPPORTED_HEAD_DIMS = (64, 128)
 
 
 @triton.jit
-def _codebook_lookup_3bit(idx):
-    """Map uint8 idx ∈ {0..7} → fp32 codebook value via SELP chain.
+def _codebook_lookup_param(idx, CP0: tl.constexpr, CP1: tl.constexpr, CP2: tl.constexpr,
+                           CP3: tl.constexpr, CP4: tl.constexpr, CP5: tl.constexpr,
+                           CP6: tl.constexpr, CP7: tl.constexpr):
+    """Map uint8 idx ∈ {0..7} → fp32 codepoint. Codepoints as constexpr (Phase 11).
 
-    Codebook: 8 Lloyd-Max levels for unit-variance Gaussian, identical for K and V
-    in the K3-V3 design. Inlining as tl.where avoids the GMEM scatter-gather
-    pattern that dominated the kernel time.
+    Phase 11 generalizes Phase 7's hardcoded chain: 8 codepoints arrive as
+    per-launch `tl.constexpr` values so per-layer calibrated codebooks compile
+    into separate kernel variants without sacrificing the constexpr inline.
     """
-    return tl.where(idx == 0, -2.1519,
-           tl.where(idx == 1, -1.3439,
-           tl.where(idx == 2, -0.7560,
-           tl.where(idx == 3, -0.2451,
-           tl.where(idx == 4, 0.2451,
-           tl.where(idx == 5, 0.7560,
-           tl.where(idx == 6, 1.3439,
-                              2.1519)))))))
+    return tl.where(idx == 0, CP0,
+           tl.where(idx == 1, CP1,
+           tl.where(idx == 2, CP2,
+           tl.where(idx == 3, CP3,
+           tl.where(idx == 4, CP4,
+           tl.where(idx == 5, CP5,
+           tl.where(idx == 6, CP6,
+                              CP7)))))))
 
 
 @triton.jit
@@ -131,8 +144,13 @@ def _sparse_attn_fwd_kernel_turbo(
     HEAD_DIM_LSB: tl.constexpr,
     PAGE_SIZE: tl.constexpr,
     WRITE_LSE: tl.constexpr,
+    K_CP0: tl.constexpr, K_CP1: tl.constexpr, K_CP2: tl.constexpr, K_CP3: tl.constexpr,
+    K_CP4: tl.constexpr, K_CP5: tl.constexpr, K_CP6: tl.constexpr, K_CP7: tl.constexpr,
+    V_CP0: tl.constexpr, V_CP1: tl.constexpr, V_CP2: tl.constexpr, V_CP3: tl.constexpr,
+    V_CP4: tl.constexpr, V_CP5: tl.constexpr, V_CP6: tl.constexpr, V_CP7: tl.constexpr,
 ):
-    """Decode-only sparse forward, TurboQuant K3-V3. One CTA per (batch, query head)."""
+    """Decode-only sparse forward, TurboQuant K3-V3 with parameterized codebooks (Phase 11).
+    One CTA per (batch, query head)."""
     pid_bh = tl.program_id(0)
     b = pid_bh // H_q
     h_q = pid_bh % H_q
@@ -187,7 +205,9 @@ def _sparse_attn_fwd_kernel_turbo(
 
             # Combine: idx = (msb << 2) | lsb  ∈  0..7
             k_idx = (k_msb_full.to(tl.int32) << 2) | k_lsb_full.to(tl.int32)
-            k_rot = _codebook_lookup_3bit(k_idx)
+            k_rot = _codebook_lookup_param(
+                k_idx, K_CP0, K_CP1, K_CP2, K_CP3, K_CP4, K_CP5, K_CP6, K_CP7,
+            )
 
             k_scale_t = tl.load(
                 K_scale_t_ptr + b * stride_kstb + h_kv * stride_ksth + n_idx * stride_ksts,
@@ -227,7 +247,9 @@ def _sparse_attn_fwd_kernel_turbo(
             v_lsb_expanded = (v_lsb_byte[:, :, None] >> lsb_offsets[None, None, :]) & 0x3
             v_lsb_full = tl.reshape(v_lsb_expanded, (PAGE_SIZE, HEAD_DIM))
             v_idx = (v_msb_full.to(tl.int32) << 2) | v_lsb_full.to(tl.int32)
-            v_rot = _codebook_lookup_3bit(v_idx)
+            v_rot = _codebook_lookup_param(
+                v_idx, V_CP0, V_CP1, V_CP2, V_CP3, V_CP4, V_CP5, V_CP6, V_CP7,
+            )
 
             v_scale_t = tl.load(
                 V_scale_t_ptr + b * stride_vstb + h_kv * stride_vsth + n_idx * stride_vsts,
@@ -264,12 +286,14 @@ def flash_attn_sparse_turbo_fwd(
     page_size: int = 64,
     sm_scale: Optional[float] = None,
     return_lse: bool = True,
+    codebook_k: Optional[torch.Tensor] = None,
+    codebook_v: Optional[torch.Tensor] = None,
 ) -> tuple[torch.Tensor, Optional[torch.Tensor]]:
-    """Decode-only fused TurboQuant sparse forward (K3-V3).
+    """Decode-only fused TurboQuant sparse forward (K3-V3) with optional per-layer codebooks.
 
     Wrapper applies WHT to Q (single vector per head) and inverse-WHT to the
     output (V was stored rotated). Kernel handles tile loads, bit-plane unpack,
-    codebook gather, online softmax.
+    codebook gather (constexpr-inlined per-launch), online softmax.
 
     Args:
         Q: (B, H_q, 1, D) bf16 cuda. RAW basis (wrapper rotates).
@@ -278,6 +302,8 @@ def flash_attn_sparse_turbo_fwd(
         V_msb / V_lsb: (B, H_kv, S_kv, D/8) / (B, H_kv, S_kv, D/4) uint8.
         V_scale_turbo: (B, H_kv, S_kv, 1) bf16.
         selection_mask: (B, H_q, 1, num_pages) bool.
+        codebook_k / codebook_v: (8,) fp32. Phase 11 per-layer optional override;
+            defaults to paper Lloyd-Max.
 
     Returns:
         (O (B, H_q, 1, D) bf16, lse (B, H_q, 1) fp32 or None). Both in raw basis.
@@ -301,6 +327,11 @@ def flash_attn_sparse_turbo_fwd(
 
     if sm_scale is None:
         sm_scale = 1.0 / math.sqrt(D)
+
+    cb_k = _resolve_codebook(codebook_k, K_TURBO_CODEBOOK)
+    cb_v = _resolve_codebook(codebook_v, V_TURBO_CODEBOOK)
+    cb_k_list = cb_k.detach().cpu().float().tolist()
+    cb_v_list = cb_v.detach().cpu().float().tolist()
 
     Q_rot = wht_along_head_dim(Q)
     Q_2d = Q_rot.squeeze(2).contiguous()
@@ -336,6 +367,10 @@ def flash_attn_sparse_turbo_fwd(
         HEAD_DIM_LSB=D // 4,
         PAGE_SIZE=page_size,
         WRITE_LSE=bool(return_lse),
+        K_CP0=cb_k_list[0], K_CP1=cb_k_list[1], K_CP2=cb_k_list[2], K_CP3=cb_k_list[3],
+        K_CP4=cb_k_list[4], K_CP5=cb_k_list[5], K_CP6=cb_k_list[6], K_CP7=cb_k_list[7],
+        V_CP0=cb_v_list[0], V_CP1=cb_v_list[1], V_CP2=cb_v_list[2], V_CP3=cb_v_list[3],
+        V_CP4=cb_v_list[4], V_CP5=cb_v_list[5], V_CP6=cb_v_list[6], V_CP7=cb_v_list[7],
         num_warps=4,
         num_stages=2,
     )
