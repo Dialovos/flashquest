@@ -324,11 +324,16 @@ def _unpack_int2(packed: torch.Tensor, head_dim: int) -> torch.Tensor:
     return bits.reshape(*prefix, head_dim).to(torch.uint8)
 
 
-def quantize_k_turbo(K: torch.Tensor, page_size: int):
+def quantize_k_turbo(K: torch.Tensor, page_size: int, codebook: torch.Tensor | None = None):
     """TurboQuant K: WHT → per-token scale → 3-bit Lloyd-Max → bit-split pack.
 
     Also computes un-rotated per-page channel-wise (K_scale_raw, K_mn_raw) for
     `page_scores_int4_fast` in the dispatcher.
+
+    Args:
+        K: (B, H, S, D) bf16 cuda.
+        page_size: pages for criticality raw-stats.
+        codebook: (8,) fp32. Defaults to K_TURBO_CODEBOOK (paper Lloyd-Max).
 
     Returns:
         K_msb         (B, H, S, D/8)        uint8
@@ -338,6 +343,10 @@ def quantize_k_turbo(K: torch.Tensor, page_size: int):
         K_mn_raw      (B, H, num_pages, D)  bf16
     """
     from flashquest.kernel.wht import wht_along_head_dim
+
+    cb = K_TURBO_CODEBOOK if codebook is None else codebook
+    if cb.shape != (8,):
+        raise ValueError(f"quantize_k_turbo codebook must be (8,); got {tuple(cb.shape)}")
 
     B, H, S, D = K.shape
     if D % 8 != 0:
@@ -349,7 +358,7 @@ def quantize_k_turbo(K: torch.Tensor, page_size: int):
     K_scale_turbo = K_rms.clamp_min(_EPS)
 
     K_normalized = K_rot.float() / K_scale_turbo
-    K_idx = _quantize_to_codebook(K_normalized, K_TURBO_CODEBOOK)
+    K_idx = _quantize_to_codebook(K_normalized, cb)
 
     K_msb, K_lsb = _pack_bit_split(K_idx)
 
@@ -368,22 +377,31 @@ def dequantize_k_turbo(
     K_lsb: torch.Tensor,
     K_scale_turbo: torch.Tensor,
     head_dim: int,
+    codebook: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    """Inverse: bit-split unpack → codebook lookup → multiply scale → inverse WHT → BF16."""
+    """Inverse: bit-split unpack → codebook lookup → multiply scale → inverse WHT → BF16.
+
+    Args:
+        codebook: (8,) fp32. Defaults to K_TURBO_CODEBOOK (paper Lloyd-Max).
+    """
     from flashquest.kernel.wht import wht_along_head_dim
 
+    cb = K_TURBO_CODEBOOK if codebook is None else codebook
     K_idx = _unpack_bit_split(K_msb, K_lsb, head_dim=head_dim)
-    K_rot = K_TURBO_CODEBOOK[K_idx.long()] * K_scale_turbo.float()
+    K_rot = cb[K_idx.long()] * K_scale_turbo.float()
     K = wht_along_head_dim(K_rot)
     return K.to(torch.bfloat16)
 
 
-def quantize_v_turbo(V: torch.Tensor):
+def quantize_v_turbo(V: torch.Tensor, codebook: torch.Tensor | None = None):
     """TurboQuant V: WHT → per-token RMS → 3-bit Lloyd-Max → bit-split pack.
 
     K3-V3 (Phase 7 task 11b): bumped V from 2-bit to 3-bit because the
     2-bit V codebook couldn't pass RULER multivalue. V now uses the same
     8-codepoint codebook + bit-split layout as K.
+
+    Args:
+        codebook: (8,) fp32. Defaults to V_TURBO_CODEBOOK (paper Lloyd-Max).
 
     Returns:
         V_msb          (B, H, S, D/8) uint8
@@ -391,6 +409,10 @@ def quantize_v_turbo(V: torch.Tensor):
         V_scale_turbo  (B, H, S, 1)   bf16
     """
     from flashquest.kernel.wht import wht_along_head_dim
+
+    cb = V_TURBO_CODEBOOK if codebook is None else codebook
+    if cb.shape != (8,):
+        raise ValueError(f"quantize_v_turbo codebook must be (8,); got {tuple(cb.shape)}")
 
     B, H, S, D = V.shape
     if D % 8 != 0:
@@ -400,7 +422,7 @@ def quantize_v_turbo(V: torch.Tensor):
     V_rms = V_rot.float().pow(2).mean(dim=-1, keepdim=True).sqrt()
     V_scale_turbo = V_rms.clamp_min(_EPS)
     V_normalized = V_rot.float() / V_scale_turbo
-    V_idx = _quantize_to_codebook(V_normalized, V_TURBO_CODEBOOK)
+    V_idx = _quantize_to_codebook(V_normalized, cb)
     V_msb, V_lsb = _pack_bit_split(V_idx)
     return V_msb, V_lsb, V_scale_turbo.to(torch.bfloat16)
 
@@ -410,11 +432,13 @@ def dequantize_v_turbo(
     V_lsb: torch.Tensor,
     V_scale_turbo: torch.Tensor,
     head_dim: int,
+    codebook: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    """Inverse of quantize_v_turbo (K3-V3)."""
+    """Inverse of quantize_v_turbo (K3-V3) with optional codebook override."""
     from flashquest.kernel.wht import wht_along_head_dim
 
+    cb = V_TURBO_CODEBOOK if codebook is None else codebook
     V_idx = _unpack_bit_split(V_msb, V_lsb, head_dim=head_dim)
-    V_rot = V_TURBO_CODEBOOK[V_idx.long()] * V_scale_turbo.float()
+    V_rot = cb[V_idx.long()] * V_scale_turbo.float()
     V = wht_along_head_dim(V_rot)
     return V.to(torch.bfloat16)
