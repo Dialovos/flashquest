@@ -51,6 +51,13 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--num-sinks", type=int, default=4)
     p.add_argument("--window-pages", type=int, default=2)
     p.add_argument("--page-size", type=int, default=64)
+    p.add_argument(
+        "--codebook", choices=("calibrated", "paper"), default="calibrated",
+        help="TurboQuant codebook for --kv-bits 3. 'calibrated' = per-layer fit "
+             "to the model's activations (Phase 11); 'paper' = data-oblivious "
+             "Lloyd-Max (Phase 7). Falls back to paper with a warning if no "
+             "calibration artifact ships for the model. Default 'calibrated'.",
+    )
     p.add_argument("--kv-bits", type=int, choices=[4, 8, 3], default=4,
                    help="KV cache bit width. 4 = KIVI-INT4 (default, RULER 100/100/100). "
                         "3 = TurboQuant K3-V3 (Phase 7). 8 = KIVI-INT8.")
@@ -218,7 +225,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         pattern = torch.ones(
             cfg.num_hidden_layers, cfg.num_key_value_heads, dtype=torch.bool,
         )
-        cache = CacheCls(
+        cache_kwargs = dict(
             batch_size=1,
             num_layers=cfg.num_hidden_layers,
             num_kv_heads=cfg.num_key_value_heads,
@@ -227,6 +234,9 @@ def main(argv: Sequence[str] | None = None) -> None:
             page_size=args.page_size,
             device="cuda",
         )
+        if args.kv_bits == 3 and args.codebook == "calibrated":
+            cache_kwargs["model_id"] = args.model
+        cache = CacheCls(**cache_kwargs)
         patch_llama_for_quest_persistent(
             model, cache=cache, head_pattern=pattern,
             retention=args.retention, num_sinks=args.num_sinks,

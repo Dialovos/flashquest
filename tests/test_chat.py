@@ -241,3 +241,26 @@ def test_smoke_single_shot_llama_3_2_1b_sdpa(capsys, monkeypatch):
     assert elapsed < 90, f"smoke too slow: {elapsed:.1f}s"
     out = capsys.readouterr().out
     assert len(out.strip()) > 0
+
+
+def test_parse_args_codebook_default_calibrated():
+    """Default `--codebook` is `calibrated` (Phase 11)."""
+    args = _parse_args([
+        "--model", "casperhansen/llama-3.2-3b-instruct-awq",
+        "--context", "1024", "-i",
+    ])
+    assert args.codebook == "calibrated"
+
+
+def test_parse_args_codebook_paper_opt_in():
+    """`--codebook paper` keeps Phase 7 behavior."""
+    args = _parse_args([
+        "--model", "x", "--context", "1024", "-i", "--codebook", "paper",
+    ])
+    assert args.codebook == "paper"
+
+
+def test_parse_args_codebook_invalid_rejected():
+    """Anything other than calibrated/paper exits with non-zero."""
+    with pytest.raises(SystemExit):
+        _parse_args(["--model", "x", "--context", "1024", "-i", "--codebook", "junk"])
