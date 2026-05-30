@@ -19,6 +19,8 @@ dist/
 *.bin
 *.pt
 *.pth
+# ...but ship the small (~3 KB) calibrated TurboQuant codebook artifacts (Phase 11)
+!src/flashquest/turbo/codebook_*.pt
 weights/
 models/
 datasets/
