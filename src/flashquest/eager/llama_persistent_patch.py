@@ -69,6 +69,7 @@ def make_quest_persistent_forward(
     num_sinks: int,
     window_pages: int,
     page_size: int,
+    layer_idx: int = 0,
     use_compact_kernel: bool = False,
 ):
     kv_bits = getattr(cache, "kv_bits", 8)
@@ -91,16 +92,27 @@ def make_quest_persistent_forward(
         )
 
     if kv_bits == 3:
+        # Phase 11: thread per-layer codebook into all three sites
+        # (prefill dequant via _dequant_k/v_from_views + decode-time
+        # flash_attn_sparse_turbo_fwd). Falls back silently to paper-shape if
+        # the cache predates Phase 11 (no codebook_* attrs).
+        codebook_k_layer = (
+            cache.codebook_k[layer_idx] if hasattr(cache, "codebook_k") else None
+        )
+        codebook_v_layer = (
+            cache.codebook_v[layer_idx] if hasattr(cache, "codebook_v") else None
+        )
+
         def _dequant_k_from_views(views):
             return dequantize_k_turbo(
                 views["K_msb"], views["K_lsb"], views["K_scale_turbo"],
-                head_dim=head_dim,
+                head_dim=head_dim, codebook=codebook_k_layer,
             )
 
         def _dequant_v_from_views(views):
             return dequantize_v_turbo(
                 views["V_msb"], views["V_lsb"], views["V_scale_turbo"],
-                head_dim=head_dim,
+                head_dim=head_dim, codebook=codebook_v_layer,
             )
 
         def _criticality_scores(q, views):
@@ -112,6 +124,7 @@ def make_quest_persistent_forward(
                 views["K_msb"], views["K_lsb"], views["K_scale_turbo"],
                 views["V_msb"], views["V_lsb"], views["V_scale_turbo"],
                 selection_mask=sel, page_size=page_size, return_lse=True,
+                codebook_k=codebook_k_layer, codebook_v=codebook_v_layer,
             )
     elif kv_bits == 4:
         def _dequant_k_from_views(views):
@@ -293,6 +306,7 @@ def patch_llama_for_quest_persistent(
                 num_sinks=num_sinks,
                 window_pages=window_pages,
                 page_size=page_size,
+                layer_idx=li,
                 use_compact_kernel=use_compact_kernel,
             )
             module.forward = fwd.__get__(module, type(module))

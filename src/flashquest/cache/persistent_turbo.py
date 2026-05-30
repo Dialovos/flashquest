@@ -29,7 +29,17 @@ class PersistentTurboKVCache(Cache):
         max_seq_len: int,
         page_size: int = 64,
         device: str | torch.device = "cuda",
+        model_id: str | None = None,
+        codebook: torch.Tensor | None = None,
     ):
+        """PersistentTurboKVCache with optional per-layer calibrated codebook (Phase 11).
+
+        Codebook resolution (in priority):
+          1. explicit `codebook` arg, shape (num_layers, 2, 8) fp32
+          2. `load_codebook(model_id)` if `model_id` is set
+          3. paper codebook broadcast to (num_layers, 2, 8), with a one-time warn
+             if model_id was set but lookup failed.
+        """
         if head_dim % 8 != 0:
             raise ValueError(
                 f"PersistentTurboKVCache requires head_dim multiple of 8 "
@@ -73,6 +83,38 @@ class PersistentTurboKVCache(Cache):
         self.V_partial = torch.zeros(shape_partial, dtype=torch.bfloat16, device=dev)
 
         self._seen_tokens = [0] * num_layers
+
+        # Phase 11: resolve per-layer codebook(s).
+        import warnings
+        from flashquest.turbo.codebook import PAPER_CODEBOOK, load_codebook
+
+        if codebook is not None:
+            cb = codebook.to(dev).float()
+            assert cb.shape == (num_layers, 2, 8), \
+                f"codebook must be (num_layers={num_layers}, 2, 8); got {tuple(cb.shape)}"
+        elif model_id is not None:
+            try:
+                loaded = load_codebook(model_id).to(dev).float()
+                if loaded.shape[0] != num_layers:
+                    raise ValueError(
+                        f"calibrated codebook has {loaded.shape[0]} layers; "
+                        f"cache configured for {num_layers}"
+                    )
+                cb = loaded
+            except KeyError as e:
+                warnings.warn(
+                    f"No calibrated codebook for {model_id!r}; "
+                    f"falling back to paper. ({e})",
+                    UserWarning,
+                )
+                paper = PAPER_CODEBOOK.to(dev)
+                cb = paper.expand(num_layers, 2, 8).clone()
+        else:
+            paper = PAPER_CODEBOOK.to(dev)
+            cb = paper.expand(num_layers, 2, 8).clone()
+
+        self.codebook_k = cb[:, 0, :].contiguous()
+        self.codebook_v = cb[:, 1, :].contiguous()
 
     def get_seq_length(self, layer_idx: int = 0) -> int:
         return self._seen_tokens[layer_idx]
@@ -122,8 +164,11 @@ class PersistentTurboKVCache(Cache):
             V_complete = V_full[:, :, :complete_len, :]
             K_msb, K_lsb, K_scale_t, K_scale_r, K_mn_r = quantize_k_turbo(
                 K_complete, page_size=page_size,
+                codebook=self.codebook_k[layer_idx],
             )
-            V_msb, V_lsb, V_scale_t = quantize_v_turbo(V_complete)
+            V_msb, V_lsb, V_scale_t = quantize_v_turbo(
+                V_complete, codebook=self.codebook_v[layer_idx],
+            )
 
             tok_start = seen - partial_len
             tok_end = tok_start + complete_len
