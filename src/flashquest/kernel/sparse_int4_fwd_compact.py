@@ -296,7 +296,7 @@ def _sparse_attn_fwd_kernel_int4_compact_sq_gt_1(
         k_scale = tl.load(K_scale_ptr + b*stride_ksb + h_kv*stride_ksh + p_safe*stride_ksp + offs_d*stride_ksd).to(tl.float32)
         k_mn = tl.load(K_mn_ptr + b*stride_kmb + h_kv*stride_kmh + p_safe*stride_kmp + offs_d*stride_kmd).to(tl.float32)
         k = k_int.to(tl.float32) * k_scale[None, :] + k_mn[None, :]    # (PAGE_SIZE, HEAD_DIM)
-        qk = tl.dot(q.to(tl.float32), tl.trans(k), input_precision="ieee")  # (SQ_MAX, PAGE_SIZE)
+        qk = tl.dot(q, tl.trans(k.to(tl.bfloat16)))  # bf16 tensor-core dot, fp32 accum -> (SQ_MAX, PAGE_SIZE)
         qk = tl.where(sq_mask[:, None] & valid_kv[None, :], qk, NEG_INF)
         qk_max = tl.max(qk * qk_scale, axis=1)
         m_ij = tl.maximum(m_i, qk_max)
@@ -314,7 +314,7 @@ def _sparse_attn_fwd_kernel_int4_compact_sq_gt_1(
         v_scale = tl.load(V_scale_ptr + b*stride_vsb + h_kv*stride_vsh + n_idx*stride_vss, mask=valid_kv, other=0.0).to(tl.float32)
         v_mn = tl.load(V_mn_ptr + b*stride_vmb + h_kv*stride_vmh + n_idx*stride_vms, mask=valid_kv, other=0.0).to(tl.float32)
         v = v_int.to(tl.float32) * v_scale[:, None] + v_mn[:, None]
-        acc += tl.dot(p_sm.to(tl.float32), v, input_precision="ieee")  # (SQ_MAX, HEAD_DIM)
+        acc += tl.dot(p_sm.to(tl.bfloat16), v.to(tl.bfloat16))  # bf16 tensor-core dot, fp32 accum
         m_i = m_ij
     safe_l = tl.where(l_i == 0.0, 1.0, l_i)
     acc = acc / safe_l[:, None]
@@ -367,10 +367,9 @@ def flash_attn_sparse_int4_fwd_compact_sq(
         H_q, H_kv, S_kv, S_q,
         HEAD_DIM=D, HEAD_DIM_PACKED=D // 2, PAGE_SIZE=page_size,
         BUCKET_MAX=BUCKET_MAX, SQ_MAX=_SQ_MAX_COMPACT, WRITE_LSE=bool(return_lse),
-        # SQ_MAX=16 fp32 tl.dot tiles + fp32 acc push register pressure to the
-        # sm_86 ceiling (n_regs=255). num_warps=8/num_stages=1 spreads the live
-        # set across two schedulers, cutting register spills 392B -> ~30B and
-        # shared mem to 44KB. SQ_MAX/precision are deliberately left untouched.
+        # Kernel uses bf16 tensor-core tl.dot with fp32 accumulation (resolves
+        # the prior fp32-emulation slowness that made verify ~7x too slow on
+        # sm_86). num_warps=8, num_stages=1.
         num_warps=8, num_stages=1,
     )
     return O, L
