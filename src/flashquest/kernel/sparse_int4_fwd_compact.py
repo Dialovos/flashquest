@@ -17,6 +17,7 @@ import triton
 import triton.language as tl
 
 _SUPPORTED_HEAD_DIMS = (64, 128)
+_SQ_MAX_COMPACT = 16
 
 
 @triton.jit
@@ -242,3 +243,134 @@ def flash_attn_sparse_int4_fwd_compact(
     O = O_2d.unsqueeze(2)
     L_out = L.unsqueeze(2) if L is not None else None
     return O, L_out
+
+
+# === Phase 12 task 1: S_q>1 verify variant (non-causal over completed pages) ===
+
+
+@triton.jit
+def _sparse_attn_fwd_kernel_int4_compact_sq_gt_1(
+    Q_ptr, K_packed_ptr, V_packed_ptr, O_ptr, L_ptr,
+    K_scale_ptr, K_mn_ptr, V_scale_ptr, V_mn_ptr,
+    selected_page_ids_ptr, sm_scale,
+    stride_qb, stride_qh, stride_qs, stride_qd,
+    stride_kb, stride_kh, stride_ks, stride_kdp,
+    stride_vb, stride_vh, stride_vs, stride_vdp,
+    stride_ob, stride_oh, stride_os, stride_od,
+    stride_lb, stride_lh, stride_ls,
+    stride_ksb, stride_ksh, stride_ksp, stride_ksd,
+    stride_kmb, stride_kmh, stride_kmp, stride_kmd,
+    stride_vsb, stride_vsh, stride_vss,
+    stride_vmb, stride_vmh, stride_vms,
+    stride_selb, stride_selh, stride_seli,
+    H_q, H_kv, S_kv, S_q,
+    HEAD_DIM: tl.constexpr, HEAD_DIM_PACKED: tl.constexpr, PAGE_SIZE: tl.constexpr,
+    BUCKET_MAX: tl.constexpr, SQ_MAX: tl.constexpr, WRITE_LSE: tl.constexpr,
+):
+    """One CTA per (batch, query head). S_q>1 non-causal verify variant; iterates BUCKET_MAX compact slots, sq_mask gates padding rows."""
+    pid_bh = tl.program_id(0)
+    b = pid_bh // H_q; h_q = pid_bh % H_q
+    n_rep = H_q // H_kv; h_kv = h_q // n_rep
+    offs_n = tl.arange(0, PAGE_SIZE); offs_d = tl.arange(0, HEAD_DIM)
+    offs_dp = tl.arange(0, HEAD_DIM_PACKED); offs_sq = tl.arange(0, SQ_MAX)
+    sq_mask = offs_sq < S_q
+    NEG_INF: tl.constexpr = float("-inf")
+    q_ptrs = (Q_ptr + b*stride_qb + h_q*stride_qh
+              + offs_sq[:, None]*stride_qs + offs_d[None, :]*stride_qd)
+    q = tl.load(q_ptrs, mask=sq_mask[:, None], other=0.0)              # (SQ_MAX, HEAD_DIM)
+    m_i = tl.full((SQ_MAX,), NEG_INF, dtype=tl.float32)
+    l_i = tl.zeros((SQ_MAX,), dtype=tl.float32)
+    acc = tl.zeros((SQ_MAX, HEAD_DIM), dtype=tl.float32)
+    qk_scale = sm_scale * 1.44269504
+    for i in range(0, BUCKET_MAX):
+        sel_off = b*stride_selb + h_q*stride_selh + i*stride_seli
+        p = tl.load(selected_page_ids_ptr + sel_off)
+        page_valid = p >= 0; p_safe = tl.where(page_valid, p, 0)
+        n_idx = p_safe*PAGE_SIZE + offs_n
+        valid_kv = (n_idx < S_kv) & page_valid
+        k_byte = tl.load(K_packed_ptr + b*stride_kb + h_kv*stride_kh
+                         + n_idx[:, None]*stride_ks + offs_dp[None, :]*stride_kdp,
+                         mask=valid_kv[:, None], other=0)
+        k_int = tl.reshape(tl.join((k_byte & 0xF).to(tl.uint8), ((k_byte >> 4) & 0xF).to(tl.uint8)),
+                           (PAGE_SIZE, HEAD_DIM))
+        k_scale = tl.load(K_scale_ptr + b*stride_ksb + h_kv*stride_ksh + p_safe*stride_ksp + offs_d*stride_ksd).to(tl.float32)
+        k_mn = tl.load(K_mn_ptr + b*stride_kmb + h_kv*stride_kmh + p_safe*stride_kmp + offs_d*stride_kmd).to(tl.float32)
+        k = k_int.to(tl.float32) * k_scale[None, :] + k_mn[None, :]    # (PAGE_SIZE, HEAD_DIM)
+        qk = tl.dot(q.to(tl.float32), tl.trans(k), input_precision="ieee")  # (SQ_MAX, PAGE_SIZE)
+        qk = tl.where(sq_mask[:, None] & valid_kv[None, :], qk, NEG_INF)
+        qk_max = tl.max(qk * qk_scale, axis=1)
+        m_ij = tl.maximum(m_i, qk_max)
+        m_ij_safe = tl.where(m_ij == NEG_INF, 0.0, m_ij)
+        p_sm = tl.math.exp2(qk * qk_scale - m_ij_safe[:, None])
+        p_sm = tl.where(qk == NEG_INF, 0.0, p_sm)
+        alpha = tl.where(m_i == NEG_INF, 0.0, tl.math.exp2(m_i - m_ij_safe))
+        l_i = l_i * alpha + tl.sum(p_sm, axis=1)
+        acc = acc * alpha[:, None]
+        v_byte = tl.load(V_packed_ptr + b*stride_vb + h_kv*stride_vh
+                         + n_idx[:, None]*stride_vs + offs_dp[None, :]*stride_vdp,
+                         mask=valid_kv[:, None], other=0)
+        v_int = tl.reshape(tl.join((v_byte & 0xF).to(tl.uint8), ((v_byte >> 4) & 0xF).to(tl.uint8)),
+                           (PAGE_SIZE, HEAD_DIM))
+        v_scale = tl.load(V_scale_ptr + b*stride_vsb + h_kv*stride_vsh + n_idx*stride_vss, mask=valid_kv, other=0.0).to(tl.float32)
+        v_mn = tl.load(V_mn_ptr + b*stride_vmb + h_kv*stride_vmh + n_idx*stride_vms, mask=valid_kv, other=0.0).to(tl.float32)
+        v = v_int.to(tl.float32) * v_scale[:, None] + v_mn[:, None]
+        acc += tl.dot(p_sm.to(tl.float32), v, input_precision="ieee")  # (SQ_MAX, HEAD_DIM)
+        m_i = m_ij
+    safe_l = tl.where(l_i == 0.0, 1.0, l_i)
+    acc = acc / safe_l[:, None]
+    o_ptrs = O_ptr + b*stride_ob + h_q*stride_oh + offs_sq[:, None]*stride_os + offs_d[None, :]*stride_od
+    tl.store(o_ptrs, acc.to(O_ptr.dtype.element_ty), mask=sq_mask[:, None])
+    if WRITE_LSE:
+        lse_val = tl.where(l_i == 0.0, NEG_INF, (m_i + tl.math.log2(safe_l)) * 0.69314718)
+        tl.store(L_ptr + b*stride_lb + h_q*stride_lh + offs_sq*stride_ls, lse_val, mask=sq_mask)
+
+
+def flash_attn_sparse_int4_fwd_compact_sq(
+    Q, K_packed, K_scale, K_mn, V_packed, V_scale, V_mn,
+    *, selected_page_ids, page_size=64, sm_scale=None, return_lse=True,
+):
+    """S_q>1 verify variant of flash_attn_sparse_int4_fwd_compact. Non-causal
+    over selected completed pages. selected_page_ids: (B, H_q, BUCKET_MAX) int32."""
+    assert Q.is_cuda and Q.dtype == torch.bfloat16
+    assert K_packed.dtype == torch.uint8 and V_packed.dtype == torch.uint8
+    assert selected_page_ids.dtype == torch.int32 and selected_page_ids.dim() == 3
+    B, H_q, S_q, D = Q.shape
+    if D not in _SUPPORTED_HEAD_DIMS:
+        raise NotImplementedError(f"head_dim={D} not in {_SUPPORTED_HEAD_DIMS}")
+    if S_q > _SQ_MAX_COMPACT:
+        raise NotImplementedError(f"S_q={S_q} > SQ_MAX={_SQ_MAX_COMPACT}")
+    Bk, H_kv, S_kv, Dp = K_packed.shape
+    assert B == Bk, f"batch mismatch: Q {B} vs K_packed {Bk}"
+    assert Dp == D // 2, f"K_packed last axis {Dp} != D/2={D // 2}"
+    assert H_q % H_kv == 0, f"H_q={H_q} not divisible by H_kv={H_kv}"
+    _, _, BUCKET_MAX = selected_page_ids.shape
+    if sm_scale is None:
+        sm_scale = 1.0 / math.sqrt(D)
+    O = torch.zeros_like(Q)
+    L = torch.empty(B, H_q, S_q, dtype=torch.float32, device=Q.device) if return_lse else None
+    L_ptr = L if L is not None else torch.empty(0, device=Q.device, dtype=torch.float32)
+    sl_b, sl_h, sl_s = (L.stride() if L is not None else (0, 0, 0))
+    sel = selected_page_ids.contiguous()
+    grid = (B * H_q,)
+    _sparse_attn_fwd_kernel_int4_compact_sq_gt_1[grid](
+        Q, K_packed, V_packed, O, L_ptr, K_scale, K_mn, V_scale, V_mn, sel, sm_scale,
+        Q.stride(0), Q.stride(1), Q.stride(2), Q.stride(3),
+        K_packed.stride(0), K_packed.stride(1), K_packed.stride(2), K_packed.stride(3),
+        V_packed.stride(0), V_packed.stride(1), V_packed.stride(2), V_packed.stride(3),
+        O.stride(0), O.stride(1), O.stride(2), O.stride(3),
+        sl_b, sl_h, sl_s,
+        K_scale.stride(0), K_scale.stride(1), K_scale.stride(2), K_scale.stride(3),
+        K_mn.stride(0), K_mn.stride(1), K_mn.stride(2), K_mn.stride(3),
+        V_scale.stride(0), V_scale.stride(1), V_scale.stride(2),
+        V_mn.stride(0), V_mn.stride(1), V_mn.stride(2),
+        sel.stride(0), sel.stride(1), sel.stride(2),
+        H_q, H_kv, S_kv, S_q,
+        HEAD_DIM=D, HEAD_DIM_PACKED=D // 2, PAGE_SIZE=page_size,
+        BUCKET_MAX=BUCKET_MAX, SQ_MAX=_SQ_MAX_COMPACT, WRITE_LSE=bool(return_lse),
+        # SQ_MAX=16 fp32 tl.dot tiles + fp32 acc push register pressure to the
+        # sm_86 ceiling (n_regs=255). num_warps=8/num_stages=1 spreads the live
+        # set across two schedulers, cutting register spills 392B -> ~30B and
+        # shared mem to 44KB. SQ_MAX/precision are deliberately left untouched.
+        num_warps=8, num_stages=1,
+    )
+    return O, L
