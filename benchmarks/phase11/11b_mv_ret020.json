@@ -1,0 +1,22 @@
+{
+  "model": "casperhansen/llama-3.2-3b-instruct-awq",
+  "ctx_len": 4096,
+  "n_samples": 20,
+  "retention": 0.2,
+  "kv_bits": 3,
+  "codebook": "calibrated",
+  "seed": 0,
+  "tasks": [
+    "multivalue"
+  ],
+  "results": {
+    "multivalue": {
+      "hits": 17,
+      "total": 20,
+      "rate": 0.85,
+      "wall_s": 947.6
+    }
+  },
+  "gate_all_ge_95": null,
+  "subset_all_ge_95": false
+}
