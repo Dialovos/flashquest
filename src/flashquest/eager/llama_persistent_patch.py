@@ -16,14 +16,18 @@ from transformers.models.llama.modeling_llama import LlamaAttention, apply_rotar
 
 from ..cache.persistent_int8 import PersistentInt8KVCache
 from ..eager.criticality import page_scores_int4_fast, page_scores_int8_fast
-from ..eager.selection import build_compact_selection, select_pages_vectorized
+from ..eager.selection import (
+    build_compact_selection, build_compact_union_selection, select_pages_vectorized,
+)
 from ..kernel import flash_attn_sparse_fwd
 from ..kernel.kv_quant import (
     dequantize_k, dequantize_k_int4, dequantize_k_turbo,
     dequantize_v, dequantize_v_int4, dequantize_v_turbo,
 )
 from ..kernel.sparse_int4_fwd import flash_attn_sparse_int4_fwd
-from ..kernel.sparse_int4_fwd_compact import flash_attn_sparse_int4_fwd_compact
+from ..kernel.sparse_int4_fwd_compact import (
+    flash_attn_sparse_int4_fwd_compact, flash_attn_sparse_int4_fwd_compact_sq,
+)
 from ..kernel.sparse_turbo_fwd import flash_attn_sparse_turbo_fwd
 
 
@@ -47,6 +51,30 @@ def _bf16_dense_attn_with_lse(
     return O.to(torch.bfloat16), lse
 
 
+def _bf16_dense_attn_offset_causal_with_lse(Q, K, V, q_offset):
+    """Dense BF16 attention for the (partial-tail || sandbox) region, offset-causal.
+    Q: (B,H_q,S_q,D); K,V: (B,H_kv,S_kv,D) with S_kv = q_offset + S_q.
+    Query row i (its absolute tail position is q_offset+i) attends to tail[0 .. q_offset+i].
+    Returns (O bf16 (B,H_q,S_q,D), lse fp32 (B,H_q,S_q) in nats)."""
+    B, H_q, S_q, D = Q.shape
+    H_kv = K.shape[1]; n_rep = H_q // H_kv
+    Kf = K.repeat_interleave(n_rep, dim=1).float()
+    Vf = V.repeat_interleave(n_rep, dim=1).float()
+    S_kv = Kf.shape[2]
+    sm = 1.0 / math.sqrt(D)
+    qk = (Q.float() @ Kf.transpose(-1, -2)) * sm                      # (B,H_q,S_q,S_kv)
+    i = torch.arange(S_q, device=Q.device).view(S_q, 1)
+    j = torch.arange(S_kv, device=Q.device).view(1, S_kv)
+    allow = j <= (q_offset + i)                                       # (S_q,S_kv) bool
+    qk = qk.masked_fill(~allow, float("-inf"))
+    m = qk.max(dim=-1, keepdim=True).values
+    p = torch.exp(qk - m)
+    l = p.sum(dim=-1, keepdim=True)
+    O = (p @ Vf) / l
+    lse = (m + torch.log(l)).squeeze(-1)                              # (B,H_q,S_q)
+    return O.to(torch.bfloat16), lse
+
+
 def _merge_two_attentions(
     O_a: torch.Tensor, lse_a: torch.Tensor,
     O_b: torch.Tensor, lse_b: torch.Tensor,
@@ -59,6 +87,16 @@ def _merge_two_attentions(
     wa = torch.exp(lse_a - m).unsqueeze(-1)  # (B, H_q, 1, 1)
     wb = torch.exp(lse_b - m).unsqueeze(-1)
     return ((wa * O_a.float() + wb * O_b.float()) / (wa + wb)).to(O_a.dtype)
+
+
+def set_verify_active(model, flag):
+    """Toggle the verify-mode forward arm on every patched LlamaAttention."""
+    from transformers.models.llama.modeling_llama import LlamaAttention
+    n = 0
+    for m in model.modules():
+        if isinstance(m, LlamaAttention):
+            m._verify_active = bool(flag); n += 1
+    return n
 
 
 def make_quest_persistent_forward(
@@ -202,60 +240,93 @@ def make_quest_persistent_forward(
             v = v.to(torch.bfloat16)
 
         S_q = q.shape[2]
-
-        cache.update_quantized(k, v, layer_idx=self.layer_idx)
-        views = cache.get_views(self.layer_idx)
-
-        if S_q > 1:
-            K_full = torch.cat([_dequant_k_from_views(views), views["K_partial"]], dim=2)
-            V_full = torch.cat([_dequant_v_from_views(views), views["V_partial"]], dim=2)
-            attn_output = torch.nn.functional.scaled_dot_product_attention(
-                q, K_full, V_full, is_causal=True, enable_gqa=True,
-            )
-        else:
-            partial_len = views["partial_len"]
-            completed_len = views["completed_len"]
-
-            if completed_len == 0:
-                attn_output, _ = _bf16_dense_attn_with_lse(
-                    q, views["K_partial"], views["V_partial"],
-                )
-            else:
-                B, H_q, _, _ = q.shape
-                H_kv = cache.num_kv_heads
-                n_rep = H_q // H_kv
+        verify = getattr(self, "_verify_active", False)
+        if verify:
+            cache.add_draft(k, v, layer_idx=self.layer_idx)
+            views = cache.get_views_with_sandbox(self.layer_idx)
+            completed_len = views["completed_len"]; partial_len = views["partial_len"]
+            B, H_q, _, _ = q.shape; H_kv = cache.num_kv_heads; n_rep = H_q // H_kv
+            # sparse over completed pages (UNION across the S_q rows)
+            if completed_len > 0:
                 pattern_per_q = head_pattern_layer.to(q.device).repeat_interleave(n_rep)
                 retention_per_q = torch.where(
-                    pattern_per_q,
-                    torch.full((H_q,), retention, device=q.device),
-                    torch.zeros(H_q, device=q.device),
-                )
-                scores = _criticality_scores(q, views)
+                    pattern_per_q, torch.full((H_q,), retention, device=q.device),
+                    torch.zeros(H_q, device=q.device))
+                scores = _criticality_scores(q, views)                 # (B,H_q,S_q,P)
                 sel = select_pages_vectorized(
-                    scores, retention=retention_per_q,
-                    num_sinks=num_sinks, window_pages=window_pages,
-                    k_max_static=k_max_static,
-                )
-                if use_compact_kernel:
-                    sel_compact = build_compact_selection(
-                        sel, BUCKET_MAX=bucket_max_static,
-                    )
-                    O_sparse, lse_sparse = _sparse_fwd_call_compact(
-                        q, views, sel_compact,
-                    )
-                else:
-                    O_sparse, lse_sparse = _sparse_fwd_call(q, views, sel)
+                    scores, retention=retention_per_q, num_sinks=num_sinks,
+                    window_pages=window_pages, k_max_static=k_max_static)
+                sel_union = build_compact_union_selection(
+                    sel, scores, num_sinks=num_sinks, window_pages=window_pages,
+                    completed_len=completed_len, page_size=page_size,
+                    BUCKET_MAX_UNION=bucket_max_static)
+                O_sparse, lse_sparse = flash_attn_sparse_int4_fwd_compact_sq(
+                    q, views["K_packed"], views["K_scale"], views["K_mn"],
+                    views["V_packed"], views["V_scale"], views["V_mn"],
+                    selected_page_ids=sel_union, page_size=page_size, return_lse=True)
+            # dense over (committed partial tail || sandbox), offset-causal
+            K_tail = torch.cat([views["K_partial"], views["K_sandbox"]], dim=2)
+            V_tail = torch.cat([views["V_partial"], views["V_sandbox"]], dim=2)
+            O_tail, lse_tail = _bf16_dense_attn_offset_causal_with_lse(
+                q, K_tail, V_tail, q_offset=partial_len)
+            if completed_len > 0:
+                attn_output = _merge_two_attentions(O_sparse, lse_sparse, O_tail, lse_tail)
+            else:
+                attn_output = O_tail
+        else:
+            cache.update_quantized(k, v, layer_idx=self.layer_idx)
+            views = cache.get_views(self.layer_idx)
 
-                if partial_len == 0:
-                    attn_output = O_sparse
-                else:
-                    O_partial, lse_partial = _bf16_dense_attn_with_lse(
+            if S_q > 1:
+                K_full = torch.cat([_dequant_k_from_views(views), views["K_partial"]], dim=2)
+                V_full = torch.cat([_dequant_v_from_views(views), views["V_partial"]], dim=2)
+                attn_output = torch.nn.functional.scaled_dot_product_attention(
+                    q, K_full, V_full, is_causal=True, enable_gqa=True,
+                )
+            else:
+                partial_len = views["partial_len"]
+                completed_len = views["completed_len"]
+
+                if completed_len == 0:
+                    attn_output, _ = _bf16_dense_attn_with_lse(
                         q, views["K_partial"], views["V_partial"],
                     )
-                    attn_output = _merge_two_attentions(
-                        O_sparse, lse_sparse,
-                        O_partial, lse_partial,
+                else:
+                    B, H_q, _, _ = q.shape
+                    H_kv = cache.num_kv_heads
+                    n_rep = H_q // H_kv
+                    pattern_per_q = head_pattern_layer.to(q.device).repeat_interleave(n_rep)
+                    retention_per_q = torch.where(
+                        pattern_per_q,
+                        torch.full((H_q,), retention, device=q.device),
+                        torch.zeros(H_q, device=q.device),
                     )
+                    scores = _criticality_scores(q, views)
+                    sel = select_pages_vectorized(
+                        scores, retention=retention_per_q,
+                        num_sinks=num_sinks, window_pages=window_pages,
+                        k_max_static=k_max_static,
+                    )
+                    if use_compact_kernel:
+                        sel_compact = build_compact_selection(
+                            sel, BUCKET_MAX=bucket_max_static,
+                        )
+                        O_sparse, lse_sparse = _sparse_fwd_call_compact(
+                            q, views, sel_compact,
+                        )
+                    else:
+                        O_sparse, lse_sparse = _sparse_fwd_call(q, views, sel)
+
+                    if partial_len == 0:
+                        attn_output = O_sparse
+                    else:
+                        O_partial, lse_partial = _bf16_dense_attn_with_lse(
+                            q, views["K_partial"], views["V_partial"],
+                        )
+                        attn_output = _merge_two_attentions(
+                            O_sparse, lse_sparse,
+                            O_partial, lse_partial,
+                        )
 
         attn_output = attn_output.transpose(1, 2).contiguous()
         attn_output = attn_output.reshape(*input_shape, -1)
