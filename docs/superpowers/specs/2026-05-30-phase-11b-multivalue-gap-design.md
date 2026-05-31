@@ -11,26 +11,32 @@ Close the RULER NIAH **multivalue** gap at K3-V3 (TurboQuant 3-bit KV) from
 the default. single (19/20) and multikey (20/20) already clear; multivalue is the
 sole blocker.
 
-## Why Phase 11 failed, and the central question
+## Why Phase 11 fell short, and the central question
 
-Per-**layer** calibration improved the codepoint fit (codepoint divergence vs
-paper: K 5.75%, V 13.37%) yet moved multivalue by **exactly zero** (17/20 →
-17/20, identical to the paper codebook). That is strong evidence that
-**codebook fidelity is not the binding constraint for multivalue.**
+> **Correction (2026-05-30, after the matched-retention paper rerun).** An
+> earlier version of this spec — and of the kill doc — claimed per-layer
+> calibration "moved multivalue by exactly zero (17/20 → 17/20)." That was wrong:
+> the "17/20 paper" was Phase 7's number at retention **0.25**, mis-cited. The
+> matched paper baseline at retention 0.20 is **14/20 (70%)**; calibrated is
+> **17/20 (85%)**. So calibration **does** help multivalue (+3 samples,
+> 70 → 85%) — it just plateaus below the 95% gate (and INT4 already does 95%).
+> The codex review below predates this correction; its *direction* (test
+> selection before building per-head) still holds, but its premise that fidelity
+> "didn't move the metric at all" is now weaker — fidelity moved it part-way.
 
-The proposed Phase 11b (per-**head** codebooks) is motivated only by the Task 1
-granularity signal R=5.70 (per-head codepoint divergence ≈ 5.7× per-layer). But
-"divergence exists at head level" ≠ "that divergence causes the multivalue
-miss." Before building anything, we must disambiguate two hypotheses:
+So the honest picture: per-layer calibration is a **partial** lever on multivalue
+(70 → 85%), not a null one. Two non-exclusive hypotheses explain the residual gap
+to 95%, and Phase 11b must disambiguate them before committing to a build:
 
-- **H-quant:** multivalue fails because 3-bit quantization loses information that
-  matters per-head. → per-head codebooks could help.
-- **H-select:** multivalue fails because Quest top-k page selection at
-  retention=0.20 drops pages holding *some* of the multiple needle values (a
-  recall problem, not a fidelity problem). Supporting evidence: Phase 10 showed
-  multivalue **collapses to 65% at retention=0.10** — multivalue is acutely
-  selection-sensitive — while single stays 100%. And per-layer fidelity gains
-  did nothing, which is exactly what H-select predicts.
+- **H-quant:** the residual gap is 3-bit quantization still losing information —
+  and since per-*layer* already bought +15pp, finer (per-*head*) fidelity might
+  buy the rest. → per-head codebooks could help.
+- **H-select:** the residual gap is Quest top-k at retention=0.20 dropping pages
+  holding *some* of the multiple needle values (a recall problem fidelity can't
+  fix). Supporting evidence: Phase 10 showed multivalue **collapses to 65% at
+  retention=0.10** while single stays 100% — multivalue is acutely
+  selection-sensitive — and fidelity gains *plateaued* at 85% rather than
+  reaching INT4's 95%, consistent with a selection ceiling.
 
 Per the project's load-bearing **profile-first discipline** (4 prior
 profile-kills; `feedback_profile_before_speedup_specs`), Phase 11b's first task
