@@ -164,3 +164,75 @@ class PersistentInt4KVCache(Cache):
             "PersistentInt4KVCache.update is not used; the patched forward "
             "calls update_quantized directly."
         )
+
+    # ------------------------------------------------------------------
+    # Phase 12 — speculative-decoding sandbox + two-phase commit API
+    # ------------------------------------------------------------------
+
+    MAX_DRAFT = 8
+
+    def _ensure_sandbox(self):
+        if hasattr(self, "K_sandbox"):
+            return
+        shp = (self.num_layers, self.batch_size, self.num_kv_heads, self.MAX_DRAFT, self.head_dim)
+        dev = self.K_partial.device
+        self.K_sandbox = torch.zeros(shp, dtype=torch.bfloat16, device=dev)
+        self.V_sandbox = torch.zeros(shp, dtype=torch.bfloat16, device=dev)
+        self._sandbox_count = [0] * self.num_layers
+
+    def add_draft(self, K_new: torch.Tensor, V_new: torch.Tensor, layer_idx: int) -> None:
+        """Stage draft K/V (B, H_kv, S_new, D) in the sandbox WITHOUT advancing _seen_tokens."""
+        self._ensure_sandbox()
+        S = K_new.shape[2]
+        if S > self.MAX_DRAFT:
+            raise ValueError(f"S_new={S} > MAX_DRAFT={self.MAX_DRAFT}")
+        self.K_sandbox[layer_idx, :, :, :S, :] = K_new
+        self.V_sandbox[layer_idx, :, :, :S, :] = V_new
+        self._sandbox_count[layer_idx] = S
+
+    def get_views_with_sandbox(self, layer_idx: int) -> dict:
+        """Return get_views() augmented with sandbox tensors and count."""
+        self._ensure_sandbox()
+        v = self.get_views(layer_idx)
+        s = self._sandbox_count[layer_idx]
+        v["K_sandbox"] = self.K_sandbox[layer_idx, :, :, :s, :]
+        v["V_sandbox"] = self.V_sandbox[layer_idx, :, :, :s, :]
+        v["sandbox_count"] = s
+        return v
+
+    def preflight_commit(self, accept_count: int, layer_idx: int) -> None:
+        """Validate without mutating. Raises on bad input or a page-crossing commit."""
+        self._ensure_sandbox()
+        if accept_count < 0:
+            raise ValueError(f"accept_count={accept_count} negative")
+        if accept_count > self._sandbox_count[layer_idx]:
+            raise ValueError(
+                f"accept_count={accept_count} > sandbox_count={self._sandbox_count[layer_idx]}"
+            )
+        seen = self._seen_tokens[layer_idx]
+        if accept_count > 0 and (seen + accept_count) // self.page_size != seen // self.page_size:
+            raise RuntimeError(
+                f"commit_draft({accept_count}) on layer {layer_idx} crosses page boundary "
+                f"(seen={seen}, page_size={self.page_size})"
+            )
+
+    def commit_draft(self, accept_count: int, layer_idx: int) -> None:
+        """Commit the first accept_count sandbox slots via update_quantized. Caller must
+        preflight ALL layers first (commit_draft_all_layers does)."""
+        if accept_count == 0:
+            self._sandbox_count[layer_idx] = 0
+            return
+        self.update_quantized(
+            self.K_sandbox[layer_idx, :, :, :accept_count, :],
+            self.V_sandbox[layer_idx, :, :, :accept_count, :],
+            layer_idx,
+        )
+        self._sandbox_count[layer_idx] = 0
+
+    def commit_draft_all_layers(self, accept_count: int) -> None:
+        """Two-phase atomic commit: preflight all layers, then commit all (raises
+        before any mutation if any layer's preflight fails)."""
+        for li in range(self.num_layers):
+            self.preflight_commit(accept_count, li)
+        for li in range(self.num_layers):
+            self.commit_draft(accept_count, li)
