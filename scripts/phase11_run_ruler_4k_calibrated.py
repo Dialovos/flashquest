@@ -33,7 +33,7 @@ def _free():
 
 
 def run_codebook(codebook, model_name, ctx_len, n_samples, seed, max_new,
-                 retention, num_sinks, window_pages, page_size):
+                 retention, num_sinks, window_pages, page_size, tasks=TASKS):
     from flashquest.cache.persistent_turbo import PersistentTurboKVCache
     from flashquest.eager.llama_persistent_patch import patch_llama_for_quest_persistent
     from flashquest.runtime.awq_load import load_awq_model
@@ -63,7 +63,7 @@ def run_codebook(codebook, model_name, ctx_len, n_samples, seed, max_new,
         cache._seen_tokens = [0] * cache.num_layers
 
     out = {}
-    for ti, task in enumerate(TASKS):
+    for ti, task in enumerate(tasks):
         t0 = time.perf_counter()
         r = run_niah(model, tok, task=task, n_samples=n_samples, ctx_len=ctx_len,
                      seed=seed, max_new_tokens=max_new, pre_sample=reset_cache)
@@ -91,25 +91,37 @@ def main():
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--max-new-tokens", type=int, default=128)
     p.add_argument("--codebook", choices=("calibrated", "paper"), default="calibrated")
+    p.add_argument("--tasks", default="single,multikey,multivalue",
+                   help="comma-separated subset of single,multikey,multivalue "
+                        "(Phase 11b Task 1a uses 'multivalue' only to isolate the gap).")
     p.add_argument("--out", default="benchmarks/phase11/ruler_4k_calibrated.json")
     args = p.parse_args()
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
 
+    tasks = [t.strip() for t in args.tasks.split(",") if t.strip()]
+    bad = [t for t in tasks if t not in TASKS]
+    if bad:
+        raise SystemExit(f"unknown task(s) {bad}; choose from {TASKS}")
+
     res = run_codebook(args.codebook, args.model, args.ctx_len, args.n_samples,
                        args.seed, args.max_new_tokens, args.retention,
-                       args.num_sinks, args.window_pages, args.page_size)
-    gate = all(res[t]["rate"] >= 0.95 for t in TASKS)
+                       args.num_sinks, args.window_pages, args.page_size, tasks=tasks)
+    # Gate is only meaningful over the full task set; a subset run reports the
+    # subset's own pass/fail for convenience but flags that it's partial.
+    full = set(tasks) == set(TASKS)
+    gate = all(res[t]["rate"] >= 0.95 for t in tasks)
     result = {
         "model": args.model, "ctx_len": args.ctx_len, "n_samples": args.n_samples,
         "retention": args.retention, "kv_bits": 3, "codebook": args.codebook,
-        "seed": args.seed, "results": res,
-        "gate_all_ge_95": gate if args.codebook == "calibrated" else None,
+        "seed": args.seed, "tasks": tasks, "results": res,
+        "gate_all_ge_95": (gate if args.codebook == "calibrated" else None) if full else None,
+        "subset_all_ge_95": None if full else gate,
     }
     Path(args.out).write_text(json.dumps(result, indent=2))
     print(f"\nWrote {args.out}", flush=True)
-    line = "  ".join(f"{t}={res[t]['hits']}/{res[t]['total']}" for t in TASKS)
-    print(f"[{args.codebook}] {line}", flush=True)
-    if args.codebook == "calibrated":
+    line = "  ".join(f"{t}={res[t]['hits']}/{res[t]['total']}" for t in tasks)
+    print(f"[{args.codebook} ret={args.retention}] {line}", flush=True)
+    if full and args.codebook == "calibrated":
         print(f"GATE (calibrated all >=95%): {'PASS' if gate else 'FAIL'}", flush=True)
     return 0 if gate else 1
 
