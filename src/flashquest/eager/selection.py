@@ -126,6 +126,77 @@ def select_pages_vectorized(
     return mask
 
 
+def build_compact_union_selection(
+    sel_per_q: torch.Tensor,
+    scores: torch.Tensor,
+    *,
+    num_sinks: int,
+    window_pages: int,
+    completed_len: int,
+    page_size: int,
+    BUCKET_MAX_UNION: int,
+) -> torch.Tensor:
+    """Score-prioritized UNION over the S_q axis, sinks+window force-included.
+
+    Takes the per-query boolean page masks (one per speculative query row) and
+    collapses them into a single compact int32 page list per (B, H) pair. Sinks
+    and the recency window are always included; on overflow the highest-scoring
+    pages win.
+
+    Args:
+        sel_per_q: bool (B, H_q, S_q, P) — per-query selection masks.
+        scores: float (B, H_q, S_q, P) — per-query per-page criticality scores.
+        num_sinks: number of leading pages to force-include.
+        window_pages: number of trailing pages (recency window) to force-include.
+        completed_len: total number of completed KV tokens (determines n_pages).
+        page_size: tokens per page.
+        BUCKET_MAX_UNION: fixed output width (last axis); overflow drops
+            lowest-score pages, underflow pads with -1 sentinels.
+
+    Returns:
+        int32 tensor shaped (B, H_q, BUCKET_MAX_UNION) with -1 sentinels.
+        GPU-resident, no .item() calls.
+    """
+    if sel_per_q.dtype != torch.bool:
+        raise ValueError(f"sel_per_q must be bool, got {sel_per_q.dtype}")
+
+    union = sel_per_q.any(dim=2)                        # (B, H_q, P)
+    max_scores = scores.amax(dim=2).float()             # (B, H_q, P)
+
+    P = union.shape[-1]
+    n_pages = completed_len // page_size
+
+    forced = torch.zeros_like(union)
+    ns = min(num_sinks, P)
+    if ns > 0:
+        forced[..., :ns] = True
+    nw = min(window_pages, n_pages)
+    if nw > 0:
+        start = max(0, min(n_pages - nw, P - 1))
+        end = min(n_pages, P)
+        if start < end:
+            forced[..., start:end] = True
+
+    NEG = torch.finfo(torch.float32).min
+    POS = torch.finfo(torch.float32).max
+
+    priority = torch.where(union | forced, max_scores, torch.full_like(max_scores, NEG))
+    priority = torch.where(forced, torch.full_like(priority, POS), priority)
+
+    k = min(BUCKET_MAX_UNION, P)
+    top = priority.topk(k, dim=-1).indices              # (B, H_q, k)
+    top_pri = priority.gather(-1, top)
+    out_k = torch.where(top_pri <= NEG, torch.full_like(top, -1), top).to(torch.int32)
+
+    if k == BUCKET_MAX_UNION:
+        return out_k.contiguous()
+
+    out = torch.full((*out_k.shape[:-1], BUCKET_MAX_UNION), -1,
+                     dtype=torch.int32, device=sel_per_q.device)
+    out[..., :k] = out_k
+    return out.contiguous()
+
+
 def build_compact_selection(
     mask: torch.Tensor,
     BUCKET_MAX: int,
