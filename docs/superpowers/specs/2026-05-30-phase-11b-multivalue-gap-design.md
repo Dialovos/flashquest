@@ -1,8 +1,42 @@
 # Phase 11b — Closing the RULER multivalue gap (profile-first design)
 
-**Status:** spec / design (not yet planned or executed)
+**Status:** RESOLVED 2026-05-31 — H-select confirmed; shipped as the 11c config fix (calibrated K3-V3 defaults to retention 0.25). Per-head build NOT taken. See the Outcome banner below; the Task sections are retained as the investigation record.
 **Author:** autopilot continuation of Phase 11
 **Predecessor:** Phase 11 (per-layer calibrated codebook) — **KILLED at quality gate**, see `docs/PHASES/phase-11-quality-gate-fail.md`
+
+## Outcome (RESOLVED — read this first)
+
+The Task-1 disambiguator below was executed and **confirmed H-select**: the
+multivalue gap is page selection, not quantization. Calibrated 3-bit multivalue
+vs retention (n=20, ctx=4096, fixed 3-bit):
+
+| retention | multivalue | | retention | multivalue |
+|---|---|---|---|---|
+| 0.20 | 85% | | 0.35 | 95% |
+| 0.25 | **95%** | | 0.50 | 100% |
+| 0.30 | 95% | | 1.00 | 100% |
+
+Sharp knee at **0.25**, where the full 3-task gate passes (single 100% / multikey
+100% / multivalue 95%). **Resolution = 11c config fix**, no kernel work:
+`--kv-bits 3 --codebook calibrated` now defaults retention to 0.25 when
+`--retention` is unset (INT4/INT8 stay 0.20; explicit always wins) —
+`_resolve_retention()` in `chat.py`, `tests/test_chat_retention.py`. Commits
+`d7eee8c` (knee sweep) + `6c1d6c4` (config fix) + `e08c5d7` (docs). Evidence:
+`benchmarks/phase11/11b_mv_ret{020,050,100}.json` + `11c_mv_ret{025,030,035}.json`
++ `11c_gate_ret025_single_multikey.json`.
+
+**Per-head codebooks (Task 2+ below): NOT BUILT — ruled out.** Per-head fidelity
+cannot fix a problem that ≥0.25 page retention already fixes. **Deferred (not
+needed for the gate):** codex's top-r-mean criticality scorer
+(`mean(top_4(q·k))` instead of `max`) could recover multivalue at the original
+0.20 to reclaim the small decode delta, but is **architecturally blocked** — the
+decode scorer `page_scores_int4_fast`/`_int8_fast`
+(`src/flashquest/eager/criticality.py`) is an algebraic upper-bound estimator
+(`Q·K_mn + c·relu(Q)·K_scale`, two matmuls from per-page quant summaries); it
+never materializes per-token `q·k`, so top-r needs per-token score
+materialization (the slow path Phase 6 deleted) or a new per-page summary stat.
+
+_The original design follows, retained as the investigation record._
 
 ## Goal
 
@@ -94,7 +128,7 @@ per-head probe justified, from "3B/RULER model ceiling" (bf16 also ≈ 85%) →
 Total cost: ~3 runs for 1a (~30–60 min); 1b/1c are conditional. **Stop after 1a
 unless it says selection is exonerated.**
 
-## Task 2+ (only if H-quant confirmed) — per-head codebooks
+## Task 2+ (NOT TAKEN — H-quant was disproved) — per-head codebooks
 
 Design notes (deferred until Task 1 justifies them):
 
