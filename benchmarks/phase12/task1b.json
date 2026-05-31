@@ -1,0 +1,56 @@
+{
+  "mean_accepted": 1.794392523364486,
+  "accept_histogram": {
+    "0": 129,
+    "1": 34,
+    "2": 29,
+    "3": 10,
+    "4": 12
+  },
+  "draft_step_ratio": 0.04718562748940278,
+  "draft_step_ms": 5.60588812828064,
+  "target_decode_ms": 118.80499267578125,
+  "top1_agreement": 0.39906103286384975,
+  "ctx": 1024,
+  "n_steps": 214,
+  "peak_mib": 3716.92626953125,
+  "n_draft": 4,
+  "workloads": [
+    {
+      "name": "paulgraham_summary",
+      "prompt_tokens": 1002,
+      "iters": 85,
+      "mean_accepted_drafts": 1.259,
+      "mean_emitted": 2.259,
+      "top1_agreement": 0.583
+    },
+    {
+      "name": "ruler_niah",
+      "prompt_tokens": 937,
+      "iters": 129,
+      "mean_accepted_drafts": 0.488,
+      "mean_emitted": 1.488,
+      "top1_agreement": 0.279
+    }
+  ],
+  "fusion_layers": [2, 14, 25],
+  "target": "casperhansen/llama-3.2-3b-instruct-awq",
+  "head": "thoughtworks/Llama-3.2-3B-Instruct-Eagle3",
+  "secondary_4k": {
+    "comment": "Stretch run at ctx=4096, max_new=160. Reported peak_mib 4264 EXCEEDS the card's physical 4096 MiB, i.e. it relied on WSL2 host-memory fallback (oversubscription); timing is degraded by spilling (draft_step_ms 17.0 vs 5.6, target_decode_ms 149 vs 119), so the 1k run above is the clean primary. Acceptance and ratio still clear the gate bar comfortably here too.",
+    "mean_accepted": 1.461187214611872,
+    "accept_histogram": {"0": 156, "1": 39, "2": 15, "3": 4, "4": 5},
+    "draft_step_ratio": 0.11369365594139652,
+    "draft_step_ms": 16.995327949523926,
+    "target_decode_ms": 149.4835205078125,
+    "top1_agreement": 0.2876712328767123,
+    "ctx": 4096,
+    "n_steps": 219,
+    "peak_mib": 4264.0771484375,
+    "workloads": [
+      {"name": "paulgraham_summary", "prompt_tokens": 4074, "iters": 89, "mean_emitted": 1.798, "top1_agreement": 0.438},
+      {"name": "ruler_niah", "prompt_tokens": 3881, "iters": 130, "mean_emitted": 1.231, "top1_agreement": 0.185}
+    ]
+  },
+  "note": "Greedy chain depth n_draft=4 against dense AWQ Llama-3.2-3B; sparse-path + long-ctx acceptance is a Part-B equivalence concern, not this gate. mean_accepted = mean tokens emitted per iter (1 free/bonus token + accepted drafts). draft_step_ratio = one isolated EAGLE draft step / one isolated target decode step (AWQ bs=1 decode is ~119 ms on this RTX 3050 Ti, so the bf16 draft step is ~21x cheaper). top1_agreement is the sanity check: PaulGraham summary 58.3% at 1k matches the head card's published acc_0=60.6%; the RULER-NIAH workload is highly repetitive filler so its agreement is lower and drags the pooled figure down. Controller computes net = mean_accepted/(0.87+draft_step_ratio) and the verdict."
+}
