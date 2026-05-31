@@ -2,6 +2,15 @@
 
 All notable changes are recorded here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version numbers are simple semver. Per-release benchmark numbers reference the **Llama-3.2-3B-Instruct-AWQ** + **RTX 3050 Ti Laptop (4 GB VRAM, sm_86, WSL2 + CUDA 12.5)** target.
 
+## [Unreleased]
+
+### Phase 11 / 11c — TurboQuant calibrated codebook (opt-in)
+
+- Added per-layer calibrated TurboQuant codebooks for `--kv-bits 3`, selectable via `--codebook calibrated` (default when on `--kv-bits 3`); loader, offline calibration script, calibrated artifact for Llama-3.2-3B-AWQ, and per-layer-parameterized fused kernel/cache.
+- Calibrated K3-V3 clears the RULER NIAH 4k gate (single/multikey/multivalue = 100/100/95, n=20) at **retention 0.25**, which `--kv-bits 3 --codebook calibrated` now uses by default when `--retention` is unset (INT4/INT8 stay 0.20; explicit `--retention` always wins). Makes calibrated K3-V3 a ~25%-smaller-cache opt-in at quality parity with the INT4 default.
+- `--kv-bits 4` (KIVI-INT4) remains the default cache mode.
+- Investigation record: the multivalue gap was shown to be page selection, not quantization (retention sweep 85%@0.20 → 95%@0.25 → 100%@0.50); the per-head-codebook escalation was ruled out. See `docs/PHASES/phase-11-quality-gate-fail.md`.
+
 ## [v1.0] — 2026-05-13
 
 First tagged release. flashquest decodes Llama-3.2-3B at 32 k context on a 4 GB consumer GPU — a capability gap with both **vLLM 0.7.3** (OOMs above ~4 k) and **llama.cpp `-ngl 999`** (aborts at 32 k). Quality holds at RULER NIAH 4 k 100/100/95 (single/multikey/multivalue) at the default settings.
