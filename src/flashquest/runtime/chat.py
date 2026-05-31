@@ -43,10 +43,12 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--seed", type=int, default=None,
                    help="torch.manual_seed before --sample generations.")
     p.add_argument(
-        "--retention", type=float, default=0.20,
-        help="Quest top-k page retention. Default 0.20 (Phase 10). "
-        "Use 0.10 for ~24%% faster decode on single-needle retrieval workloads "
-        "(multi-needle quality degrades — RULER multivalue 65%% at 0.10 vs 95%% at 0.20).",
+        "--retention", type=float, default=None,
+        help="Quest top-k page retention. Default 0.20 for INT4/INT8; 0.25 for "
+        "--kv-bits 3 --codebook calibrated (Phase 11c: 0.25 clears the RULER "
+        "multivalue gate at 100/100/95, vs 85%% at 0.20). Explicit value overrides. "
+        "Use 0.10 for ~24%% faster decode on single-needle workloads "
+        "(multi-needle quality degrades — RULER multivalue 65%% at 0.10).",
     )
     p.add_argument("--num-sinks", type=int, default=4)
     p.add_argument("--window-pages", type=int, default=2)
@@ -65,6 +67,21 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
                    help="Skip Quest+INT8 patch; run vanilla SDPA (debugging).")
     p.add_argument("--system-prompt", default=_DEFAULT_SYSTEM_PROMPT)
     return p.parse_args(argv)
+
+
+def _resolve_retention(args) -> float:
+    """Resolve effective retention from --retention + mode.
+
+    Phase 11c: calibrated K3-V3 (`--kv-bits 3 --codebook calibrated`) needs
+    retention 0.25 to clear the RULER NIAH gate (single/multikey/multivalue =
+    100/100/95 at 0.25, vs multivalue 85% at 0.20). INT4/INT8 stay at 0.20
+    (already 100/100/95 there). An explicit --retention always wins.
+    """
+    if args.retention is not None:
+        return args.retention
+    if args.kv_bits == 3 and args.codebook == "calibrated":
+        return 0.25
+    return 0.20
 
 
 def _read_context_file(path: str) -> str:
@@ -201,6 +218,7 @@ def _run_repl(model, tokenizer, cache, history: list[dict], args) -> None:
 
 def main(argv: Sequence[str] | None = None) -> None:
     args = _parse_args(argv)
+    args.retention = _resolve_retention(args)
 
     from flashquest.runtime.awq_load import load_awq_model
 
