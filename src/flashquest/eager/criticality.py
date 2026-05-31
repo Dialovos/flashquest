@@ -109,10 +109,15 @@ def page_scores_int8_fast(
         raise ValueError(f"H_q={H_q} must be divisible by H_kv={H_kv}")
     n_rep = H_q // H_kv
 
-    # Group GQA in the matmul instead of materializing repeated K — view as
-    # (B, H_kv, n_rep * S_q, D) and let bmm broadcast.
+    # Group GQA in the matmul instead of materializing repeated K — reshape to
+    # (B, H_kv, n_rep * S_q, D) and let bmm broadcast. H_q is group-major
+    # (head h_q belongs to kv-group h_q // n_rep), so collapsing (H_q, S_q) into
+    # (H_kv, n_rep*S_q) keeps each group's rep-heads together. Use reshape (not
+    # view): the verify arm calls this with S_q>1 and a post-RoPE/cast Q whose
+    # stride spans non-contiguous subspaces, which .view() rejects. reshape is
+    # numerically identical (a copy only when needed); S_q=1 decode is unaffected.
     Q_f = Q.float()
-    Q_g = Q_f.view(B, H_kv, n_rep * S_q, D)
+    Q_g = Q_f.reshape(B, H_kv, n_rep * S_q, D)
     Q_pos_g = Q_g.clamp(min=0)
 
     Kmn_f = K_mn.float()
@@ -122,7 +127,7 @@ def page_scores_int8_fast(
     term1 = torch.matmul(Q_g, Kmn_f.transpose(-1, -2))
     term2 = torch.matmul(Q_pos_g, Kscale_f.transpose(-1, -2)) * 255.0
     scores_g = term1 + term2  # (B, H_kv, n_rep * S_q, P)
-    return scores_g.view(B, H_q, S_q, P)
+    return scores_g.reshape(B, H_q, S_q, P)
 
 
 def page_scores_int4_fast(
@@ -151,8 +156,12 @@ def page_scores_int4_fast(
         raise ValueError(f"H_q={H_q} must be divisible by H_kv={H_kv}")
     n_rep = H_q // H_kv
 
+    # reshape (not view): the verify arm calls this with S_q>1 and a post-RoPE/
+    # cast Q whose stride spans non-contiguous subspaces (view() rejects that).
+    # Numerically identical to view; S_q=1 decode is unaffected. See the
+    # page_scores_int8_fast note for the group-major collapse rationale.
     Q_f = Q.float()
-    Q_g = Q_f.view(B, H_kv, n_rep * S_q, D)
+    Q_g = Q_f.reshape(B, H_kv, n_rep * S_q, D)
     Q_pos_g = Q_g.clamp(min=0)
     Kmn_f = K_mn.float()
     Kscale_f = K_scale.float()
@@ -160,4 +169,4 @@ def page_scores_int4_fast(
     term1 = torch.matmul(Q_g, Kmn_f.transpose(-1, -2))
     term2 = torch.matmul(Q_pos_g, Kscale_f.transpose(-1, -2)) * 15.0
     scores_g = term1 + term2
-    return scores_g.view(B, H_q, S_q, P)
+    return scores_g.reshape(B, H_q, S_q, P)
