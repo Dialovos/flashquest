@@ -411,6 +411,7 @@ def load_eagle3_draft(
     device: str = "cuda",
     dtype: torch.dtype = torch.bfloat16,
     embed_weight: torch.Tensor | None = None,
+    quantize: str | None = None,
 ) -> EagleDraft:
     """Load the EAGLE-3 draft head into the vendored inference ``Model``.
 
@@ -424,6 +425,12 @@ def load_eagle3_draft(
       download and guarantees the embedding matches the running target.
     * Otherwise the embedding is pulled from the target checkpoint named in the
       head config (gated for meta-llama; override via ``FLASHQUEST_EAGLE_TARGET``).
+
+    ``quantize="int8"`` (opt-in, Phase 12 task 12) replaces the head's
+    ``nn.Linear`` weights with weight-only INT8 (bitsandbytes ``Linear8bitLt``),
+    halving the head's ~463 MiB of Linear weights to ~232 MiB so 16k/32k context
+    fits on a 4 GB card without a host-memory spill. The bf16 default
+    (``quantize=None``) is unchanged.
     """
     Model, EConfig = _import_vendored_model()
 
@@ -485,4 +492,16 @@ def load_eagle3_draft(
     model = model.to(dtype).to(device)
     model.eval()
     model.init_tree()  # sets tree_mask_init / position_ids buffers on device
-    return EagleDraft(model=model, device=device, dtype=dtype)
+    draft = EagleDraft(model=model, device=device, dtype=dtype)
+
+    if quantize is not None:
+        # quantize ∈ {"int8", "int8:perchannel", "int8:bnb"}.
+        parts = quantize.split(":", 1)
+        if parts[0] != "int8":
+            raise ValueError(
+                f"load_eagle3_draft: unknown quantize={quantize!r} (supported: "
+                f"None, 'int8', 'int8:perchannel', 'int8:bnb')")
+        backend = parts[1] if len(parts) == 2 else "perchannel"
+        from .eagle_quant import quantize_eagle_head
+        quantize_eagle_head(draft, backend=backend)
+    return draft

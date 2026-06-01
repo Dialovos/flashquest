@@ -1,0 +1,65 @@
+{
+  "ctx": 937,
+  "max_new": 64,
+  "n_draft": 4,
+  "target": "casperhansen/llama-3.2-3b-instruct-awq",
+  "head": "thoughtworks/Llama-3.2-3B-Instruct-Eagle3",
+  "chain_agreement_vs_bf16": {
+    "int8_perchannel": {
+      "token": 0.9868,
+      "pos0": 1.0
+    },
+    "int8_bnb": {
+      "token": 0.9539,
+      "pos0": 0.9737
+    }
+  },
+  "heads": {
+    "bf16": {
+      "head_resident_delta_mib": 1216.4,
+      "head_linear_mib": 463.5,
+      "mean_accepted_per_iter": 1.6842,
+      "n_iters": 38,
+      "accept_hist": {
+        "0": 23,
+        "1": 8,
+        "2": 3,
+        "3": 4
+      },
+      "propose4_ms": 22.5572,
+      "peak_alloc_during_propose_mib": 3487.1
+    },
+    "int8_perchannel": {
+      "head_resident_delta_mib": 984.8,
+      "head_linear_mib": 231.8,
+      "mean_accepted_per_iter": 1.6842,
+      "n_iters": 38,
+      "accept_hist": {
+        "0": 23,
+        "1": 8,
+        "2": 3,
+        "3": 4
+      },
+      "propose4_ms": 97.2513,
+      "peak_alloc_during_propose_mib": 3569.0
+    },
+    "int8_bnb": {
+      "head_resident_delta_mib": 984.9,
+      "head_linear_mib": 231.8,
+      "mean_accepted_per_iter": 1.6842,
+      "n_iters": 38,
+      "accept_hist": {
+        "0": 23,
+        "1": 8,
+        "2": 3,
+        "3": 4
+      },
+      "propose4_ms": 115.7944,
+      "peak_alloc_during_propose_mib": 3278.3
+    }
+  },
+  "vram_saved_mib": {
+    "int8_perchannel": 231.6,
+    "int8_bnb": 231.5
+  }
+}

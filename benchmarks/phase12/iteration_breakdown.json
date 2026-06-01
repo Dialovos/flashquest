@@ -1,0 +1,30 @@
+{
+  "target": "casperhansen/llama-3.2-3b-instruct-awq",
+  "head": "thoughtworks/Llama-3.2-3B-Instruct-Eagle3",
+  "n_prefill": 4096,
+  "n_draft": 4,
+  "retention": 0.2,
+  "kv_bits": 4,
+  "page_size": 64,
+  "n_warmup": 10,
+  "n_measure": 30,
+  "timing": {
+    "T_decode_q1_ms": 198.8214,
+    "T_verify_q4_ms": 233.4761,
+    "T_draft4_ms": 89.0153,
+    "T_advance_ms": 20.329
+  },
+  "ratio_verify": 1.1743,
+  "modeled_iteration_ms": 342.8204,
+  "modeled_iteration_decodes": 1.7243,
+  "mean_accepted_per_iter_assumed": 2.1,
+  "modeled_speedup": 1.2179,
+  "cost_pct": {
+    "verify": 68.1,
+    "draft": 25.97,
+    "advance": 5.93
+  },
+  "peak_vram_mib": 4104.2,
+  "smi_mib": 3951.0,
+  "notes": "T_decode_q1: S_q=1 non-verify forward, cache grows +1/iter (~40 toks over 40 iters on 4k base, negligible). T_verify_q4: S_q=4 verify arm, add_draft re-stages sandbox without committing \u2014 repeated at same cache state. T_draft4: propose_from is non-mutating, same state reused. T_advance: re-seeded state each iter to keep m+1=4 advance at a fixed base. modeled_speedup uses mean_accepted=2.1 from Phase 12 task A 4k measurement."
+}

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import gc
 import json
+import os
 import statistics
 import subprocess
 import time
@@ -53,6 +54,10 @@ N_DRAFT = 4
 RETENTION = 0.20
 PAGE_SIZE = 64
 PREFILL_CHUNK = 256
+# Optional weight-only INT8 draft head (Phase 12 task 12): set
+# FLASHQUEST_DRAFT_QUANT=int8 | int8:perchannel | int8:bnb to quantize. Frees
+# ~232 MiB so 16k/32k fit on a 4 GB card without a WSL2 host-memory spill.
+DRAFT_QUANT = os.environ.get("FLASHQUEST_DRAFT_QUANT") or None
 
 
 def _nvidia_smi_used_mib() -> float | None:
@@ -171,7 +176,9 @@ def main():
     draft = load_eagle3_draft(
         HEAD, device="cuda", dtype=torch.bfloat16,
         embed_weight=model.model.embed_tokens.weight,
+        quantize=DRAFT_QUANT,
     )
+    print(f"draft quant: {DRAFT_QUANT}")
 
     ids = synthetic_prompt_ids(tok, N_PREFILL)
     print(f"prompt tokens: {ids.shape[1]}")
@@ -206,7 +213,7 @@ def main():
     print(f"peak VRAM (max of arms, draft resident) = {peak_overall:.0f} MiB")
 
     result = {
-        "target": TARGET, "head": HEAD,
+        "target": TARGET, "head": HEAD, "draft_quant": DRAFT_QUANT,
         "n_prefill": int(ids.shape[1]), "n_decode_target": N_DECODE,
         "n_draft": N_DRAFT, "retention": RETENTION, "kv_bits": 4,
         "page_size": PAGE_SIZE,
@@ -227,7 +234,9 @@ def main():
             "1.2-1.5x opt-in, <1.2x off."
         ),
     }
-    out = Path("benchmarks/phase12/decode_32k.json")
+    qsuffix = ("" if not DRAFT_QUANT
+               else "_" + DRAFT_QUANT.replace(":", "_"))
+    out = Path(f"benchmarks/phase12/decode_{int(ids.shape[1])//1024}k{qsuffix}.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2))
     print(f"\nWrote {out}")

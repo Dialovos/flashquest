@@ -6,5 +6,11 @@ layer itself is the vendored EAGLE-3 inference ``Model`` class
 (``vendor/eagle/eagle/model/cnets.py``); we reuse it rather than reimplement.
 """
 from .eagle_draft import EAGLE3_FUSION_LAYERS, EagleDraft, load_eagle3_draft
+from .eagle_quant import quantize_eagle_head
 
-__all__ = ["EagleDraft", "load_eagle3_draft", "EAGLE3_FUSION_LAYERS"]
+__all__ = [
+    "EagleDraft",
+    "load_eagle3_draft",
+    "EAGLE3_FUSION_LAYERS",
+    "quantize_eagle_head",
+]
