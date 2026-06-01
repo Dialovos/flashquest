@@ -1,0 +1,37 @@
+{
+  "target": "casperhansen/llama-3.2-3b-instruct-awq",
+  "head": "thoughtworks/Llama-3.2-3B-Instruct-Eagle3",
+  "n_prefill": 2048,
+  "n_decode_target": 96,
+  "n_draft": 4,
+  "retention": 0.2,
+  "kv_bits": 4,
+  "page_size": 64,
+  "baseline": {
+    "prefill_s": 10.311382357002003,
+    "decode_s": 14.263190244993893,
+    "tok_per_s": 6.730612040577259,
+    "n_decode": 96,
+    "peak_vram_mib": 3621.83837890625,
+    "nvidia_smi_used_mib": 3875.0
+  },
+  "spec": {
+    "prefill_s": 5.590432807017351,
+    "decode_s": 15.743559837981593,
+    "tok_per_s": 6.097731452603143,
+    "n_emitted": 96,
+    "n_iters": 46,
+    "mean_accepted_per_iter": 2.0869565217391304,
+    "accept_histogram": {
+      "1": 18,
+      "2": 17,
+      "4": 11
+    },
+    "peak_vram_mib": 3775.95654296875,
+    "nvidia_smi_used_mib": 3929.0
+  },
+  "speedup": 0.9059698309516833,
+  "peak_vram_mib_overall": 3775.95654296875,
+  "spec_band": "off",
+  "notes": "Spec arm uses the incremental-draft-KV dispatcher (use_incremental default) over the real Quest sparse INT4 cache at 32k \u2014 this is the shipped --speculative path. mean_accepted_per_iter is the long-ctx sparse-path acceptance (1 bonus + accepted drafts), distinct from the gate-1b dense 1k probe. Peak VRAM is the allocator max with the EAGLE-3 head resident; on a 4 GB card peak may exceed 4095 MiB via WSL2 overcommit (host-memory spill) \u2014 see nvidia_smi_used_mib for the concurrent on-GPU snapshot. spec_band per SPEC \u00a77: >=1.5x default, 1.2-1.5x opt-in, <1.2x off."
+}

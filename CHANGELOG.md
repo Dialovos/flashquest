@@ -4,6 +4,16 @@ All notable changes are recorded here. Format loosely follows [Keep a Changelog]
 
 ## [Unreleased]
 
+### Phase 12 — EAGLE-3 speculative decoding (opt-in, no speedup on this hardware)
+
+- Added `flashquest chat --speculative [--n-draft 4] [--draft-model …]` — EAGLE-3 chain spec-decode over the Quest sparse INT4 cache, kept as an opt-in validated reference. Not the default; no end-to-end speedup at bs=1 on the 4 GB card.
+- Spec path is **lossless**: spec output is bit-identical to non-spec sparse greedy decode (100% token agreement at n_draft=1 and n_draft=4, Task 9 equivalence test).
+- End-to-end benchmark (Llama-3.2-3B-AWQ, kv_bits=4, retention=0.20, n_draft=4): 2k ctx 0.91× (6.73→6.10 tok/s); 8k ctx 0.99× (4.27→4.24 tok/s); 32k OOMs (486 MB bf16 head does not fit alongside 32k on 4 GB via WSL2). spec_band = "off" (<1.2×) at all measured contexts.
+- Root cause: gate-1a verify-kernel ratio (0.87×) was optimistic vs the full verify-forward (~2.3×); at bs=1 AWQ-INT4 the step is weight-bound (~150 ms) and the q=4 verify forward + 4 draft-head steps + orchestration exceed the ~2.1-token acceptance gain.
+- Two correctness fixes landed during integration: bf16 tensor-core `tl.dot` in the verify kernel (6.8×→0.87× kernel ratio; fp32 emulation on sm_86 has no tensor cores); `page_scores .view→.reshape` for non-contiguous Q when S_q>1.
+- New APIs: `flashquest.specdec.{load_eagle3_draft, EagleDraft, dispatcher.make_quest_specdec}`; `PersistentInt4KVCache` sandbox API (`add_draft`, `commit_draft_all_layers`); `set_verify_active(model, bool)`; `S_q>1` sparse INT4 verify kernel (`flash_attn_sparse_int4_fwd_compact_sq`); score-prioritized UNION page selection.
+- No `phase-12` tag (matches the Phase 9 kill precedent). See `docs/PHASES/phase-12-notes.md`.
+
 ### Phase 11 / 11c — TurboQuant calibrated codebook (opt-in)
 
 - Added per-layer calibrated TurboQuant codebooks for `--kv-bits 3`, selectable via `--codebook calibrated` (default when on `--kv-bits 3`); loader, offline calibration script, calibrated artifact for Llama-3.2-3B-AWQ, and per-layer-parameterized fused kernel/cache.
