@@ -24,8 +24,14 @@ Calling convention (verified against transformers 4.57 + ``PersistentInt4KVCache
   accepted drafts and resets ``_sandbox_count`` (the remaining ``n-1-m`` staged
   drafts are dropped).
 
-Incremental draft-KV reuse is a later optimization (task 7); here ``propose_chain``
-re-prefills the head from scratch each step — correct, slower.
+Task 7 adds *incremental* draft-KV maintenance (``use_incremental=True``, the
+default): the head's KV is grown only by newly-committed tokens via
+``draft.seed`` / ``propose_from`` / ``advance`` instead of re-prefilling the whole
+verified prefix every step (the old O(T)-per-step ``propose_chain`` path, kept as
+``use_incremental=False`` for A/B). ``propose_from`` is lossless w.r.t.
+``propose_chain`` — it reproduces the from-scratch prefill exactly (unit-tested) —
+so the dispatcher's accept/commit logic and the §5 losslessness contract are
+unchanged; this is purely a speed + long-context-OOM enabler.
 """
 from __future__ import annotations
 
@@ -75,7 +81,8 @@ def _walk_accept(verify_input_ids, target_argmax, n_draft):
 
 
 def make_quest_specdec(model, cache, draft, *, n_draft=4, page_size=64,
-                       fusion_layers=EAGLE3_FUSION_LAYERS, prefill_chunk=256):
+                       fusion_layers=EAGLE3_FUSION_LAYERS, prefill_chunk=256,
+                       use_incremental=True):
     """Wrap a Quest-patched target + INT4 cache + EAGLE-3 head for greedy chain
     speculative decoding.
 
@@ -83,12 +90,19 @@ def make_quest_specdec(model, cache, draft, *, n_draft=4, page_size=64,
         model: the target ``LlamaForCausalLM`` already patched with
             ``patch_llama_for_quest_persistent`` (verify arm present).
         cache: the ``PersistentInt4KVCache`` shared by the patch.
-        draft: an ``EagleDraft`` (its ``propose_chain`` / ``fuse_target_hidden``).
+        draft: an ``EagleDraft`` (its ``seed`` / ``propose_from`` / ``advance`` for
+            the incremental path; ``propose_chain`` for the fallback).
         n_draft: chain depth (verify ``S_q``). Must be ``<= cache.MAX_DRAFT``.
         page_size: cache page size (for the admissibility / page-boundary guard).
         fusion_layers: HF hidden-state indices EAGLE-3 fuses (low/mid/high).
         prefill_chunk: chunk size for the chunked base-model prefill in ``init``
             (bounds peak activation memory on the 4 GB GPU).
+        use_incremental: if True (default, task 7) the draft head maintains its KV
+            incrementally — ``init`` seeds it once and each ``step`` grows it by
+            only the newly-committed tokens (O(committed) per step, no O(T^2)
+            chunked re-prefill, the long-context speed/OOM enabler). If False, fall
+            back to the task-8 from-scratch ``propose_chain`` each step (slower but
+            identical output; kept for A/B).
 
     Returns:
         ``(init, step)``. ``init(prompt_ids)`` runs the dense prefill (populates
@@ -104,6 +118,7 @@ def make_quest_specdec(model, cache, draft, *, n_draft=4, page_size=64,
         "bonus": None,         # (1,) int64 on device — target's last greedy token; KV NOT in cache.
         "fused_seq": None,     # (1, N, 3H) fused target hidden over every verified position.
         "context_ids": None,   # (1, N) int64 on device — all verified token ids.
+        "draft": None,         # incremental EagleDraft state (use_incremental); else None.
     }
 
     @torch.no_grad()
@@ -115,6 +130,10 @@ def make_quest_specdec(model, cache, draft, *, n_draft=4, page_size=64,
         positions 29-layer hidden states held at once). The patched non-verify
         ``S_q>1`` arm quantises each chunk into the INT4 cache exactly as a single
         full prefill would. The bonus = argmax of the last-token logits.
+
+        With ``use_incremental`` we additionally ``draft.seed(...)`` once over the
+        prompt so the head's persistent KV is primed; ``step`` then only advances
+        it by committed tokens.
         """
         set_verify_active(model, False)
         dev = model.device
@@ -138,6 +157,12 @@ def make_quest_specdec(model, cache, draft, *, n_draft=4, page_size=64,
         state["bonus"] = bonus
         state["fused_seq"] = torch.cat(fused_chunks, dim=1)        # (1, P, 3H)
         state["context_ids"] = ids                                # (1, P)
+        if use_incremental:
+            # Prime the head's persistent KV over the prompt (positions 0..P-2,
+            # bonus deferred). step() advances it by committed tokens only.
+            state["draft"] = draft.seed(
+                state["fused_seq"], bonus, ids, chunk=prefill_chunk,
+            )
 
     @torch.no_grad()
     def _single_decode() -> torch.Tensor:
@@ -152,6 +177,14 @@ def make_quest_specdec(model, cache, draft, *, n_draft=4, page_size=64,
         emitted = bonus.detach().to("cpu", torch.int64).reshape(1)
         state["context_ids"] = torch.cat([state["context_ids"], bonus.view(1, 1)], dim=1)
         state["fused_seq"] = torch.cat([state["fused_seq"], fused_new], dim=1)
+        if use_incremental:
+            # Commit exactly the 1 bonus token into the head's persistent KV
+            # (m=0: accepted span is [bonus] with its fused hidden), then set the
+            # next held bonus — keeps the incremental state in lockstep with the
+            # cache across the page-boundary fallback.
+            state["draft"] = draft.advance(state["draft"], bonus.view(1),
+                                           fused_new, chunk=prefill_chunk)
+            state["draft"]["bonus"] = new_bonus
         state["bonus"] = new_bonus
         return emitted
 
@@ -175,11 +208,18 @@ def make_quest_specdec(model, cache, draft, *, n_draft=4, page_size=64,
             return _single_decode()
 
         bonus = state["bonus"]                                    # (1,) device int64
-        # Draft: EAGLE-3 greedy chain over the verified prefix (from scratch).
-        chain = draft.propose_chain(
-            state["fused_seq"][:, :N], bonus, n_draft=n_draft,
-            context_ids=state["context_ids"][:, :N], chunk=prefill_chunk,
-        )                                                         # (n_draft,) full vocab, device
+        # Draft: EAGLE-3 greedy chain over the verified prefix.
+        if use_incremental:
+            # Incremental: propose from the maintained head state WITHOUT mutating
+            # it (functional KV — propose_from clones nothing, corrupts nothing).
+            # Reproduces the from-scratch chain exactly (unit-tested).
+            chain = draft.propose_from(state["draft"], n_draft=n_draft)
+        else:
+            # Fallback (task 8): re-prefill the head over the whole prefix.
+            chain = draft.propose_chain(
+                state["fused_seq"][:, :N], bonus, n_draft=n_draft,
+                context_ids=state["context_ids"][:, :N], chunk=prefill_chunk,
+            )                                                     # (n_draft,) full vocab, device
         chain = chain.to(bonus.device).long()
 
         # Verify input = [bonus, d_1, ..., d_{n-1}] (length n_draft).
@@ -209,7 +249,17 @@ def make_quest_specdec(model, cache, draft, *, n_draft=4, page_size=64,
                                   device=state["context_ids"].device).view(1, m + 1)
         state["context_ids"] = torch.cat([state["context_ids"], accepted_t], dim=1)
         state["fused_seq"] = torch.cat([state["fused_seq"], fused_new[:, : m + 1]], dim=1)
-        state["bonus"] = tgt[m: m + 1]                            # held; not emitted
+        new_bonus = tgt[m: m + 1]                                 # held; not emitted
+        if use_incremental:
+            # Commit the accepted span [bonus, d_1..d_m] into the head's persistent
+            # KV (mini-prefill of m+1 tokens from the maintained state), then set
+            # the new held bonus so the next propose_from has its deferred input.
+            state["draft"] = draft.advance(
+                state["draft"], accepted_t.view(m + 1), fused_new[:, : m + 1],
+                chunk=prefill_chunk,
+            )
+            state["draft"]["bonus"] = new_bonus
+        state["bonus"] = new_bonus
 
         return torch.tensor(accepted_ids, dtype=torch.int64)      # (m+1,) CPU
 

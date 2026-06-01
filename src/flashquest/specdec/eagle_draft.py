@@ -152,6 +152,193 @@ class EagleDraft:
         return out_hidden[:, -1:, :], past
 
     @torch.no_grad()
+    def _run_span(self, hidden_span, token_span, past, chunk: int):
+        """Thread a span of ``(fused_hidden, input_token)`` pairs through the
+        1-layer head in append-only chunks, returning ``(last_out_hidden, past)``.
+
+        ``hidden_span`` is ``[1, S, 3*hidden]`` and ``token_span`` ``[1, S]`` (the
+        SAME alignment the chunked ``prefill`` uses: position ``p`` of the span is
+        fed ``(hidden_span[p], token_span[p])`` and lands at the cached length +
+        ``p``). ``position_ids=None`` so absolute RoPE positions are derived from
+        ``past_key_values[0][0].shape[2]`` — bit-identical to a single full pass
+        for regular RoPE (the shared invariant ``prefill`` already documents).
+        """
+        S = token_span.shape[1]
+        if S == 0:
+            raise ValueError("_run_span called with an empty span")
+        out_hidden = None
+        for s in range(0, S, chunk):
+            e = min(s + chunk, S)
+            out_hidden, past = self.model(
+                hidden_span[:, s:e, :], input_ids=token_span[:, s:e],
+                past_key_values=past, use_cache=True,  # position_ids=None
+            )
+        return out_hidden[:, -1:, :], past
+
+    @torch.no_grad()
+    def seed(self, context_fused, bonus_token, context_ids, chunk: int = 256) -> dict:
+        """One-time prefill over the prompt; returns an incremental-KV ``state``.
+
+        Builds the head's persistent KV over verified positions ``0..P-2`` only
+        (one position *behind* the verified tip), deferring the tip position
+        ``P-1`` — whose draft input is the ``bonus`` token — into the returned
+        ``state`` as a pending ``(next_fused, bonus)`` pair. ``propose_from`` /
+        ``advance`` feed that pair to reach the proposal tip.
+
+        Why one-behind: the EAGLE shift makes the draft KV at verified position
+        ``p`` depend on ``(target_fused[p], verified_token[p+1])``. The token at
+        ``P`` (``=bonus``) is not part of the committed prefix yet, so its KV is
+        deferred. This makes ``propose_from`` reproduce a from-scratch
+        ``prefill(context_fused[:P], bonus, context_ids[:P])`` *exactly* while only
+        ever growing the persistent KV by newly *committed* tokens.
+
+        Args:
+            context_fused: ``[1, P, 3*hidden]`` fused target hidden over the
+                verified prefix (positions ``0..P-1``).
+            bonus_token: the target's freshly-decoded greedy token (held; its KV
+                is NOT yet committed — it is the pending proposal input).
+            context_ids: ``[1, P]`` target token ids aligned with ``context_fused``.
+            chunk: prefill chunk size (bounds the O(P^2) draft attention).
+
+        Returns:
+            ``state`` dict: ``{past, last_hidden, next_fused, bonus, seen}`` where
+            ``past`` covers ``0..P-2``, ``last_hidden`` is the head tip at ``P-2``
+            (``None`` if ``P==1``, i.e. nothing committed behind the bonus yet),
+            ``next_fused`` is ``context_fused[:, P-1]`` (the deferred tip hidden),
+            ``bonus`` is ``bonus_token`` (the deferred tip input), ``seen == P``.
+        """
+        m = self.model
+        dev = context_fused.device
+        fused = context_fused.to(self.dtype)
+        context_ids = context_ids.to(dev).long()
+        if not torch.is_tensor(bonus_token):
+            bonus_token = torch.tensor([bonus_token], device=dev)
+        bonus_token = bonus_token.reshape(1, 1).to(dev).long()
+
+        P = context_ids.shape[1]
+        if fused.shape[1] != P:
+            raise ValueError(
+                f"seed: context_fused length {fused.shape[1]} != context_ids "
+                f"length {P}; they must be aligned over the verified prefix."
+            )
+
+        m.reset_kv()
+        m.reset()  # clear any tree_mask
+
+        past = None
+        last_hidden = None
+        if P > 1:
+            # Positions 0..P-2: feed (fused[p], context_ids[p+1]) — the EAGLE shift
+            # over the committed prefix, identical to prefill's positions 0..P-2.
+            last_hidden, past = self._run_span(
+                fused[:, : P - 1, :], context_ids[:, 1:P], past, chunk
+            )
+        return {
+            "past": past,
+            "last_hidden": last_hidden,
+            "next_fused": fused[:, P - 1 : P, :].contiguous(),  # [1,1,3H]
+            "bonus": bonus_token,                                # [1,1]
+            "seen": P,
+        }
+
+    @torch.no_grad()
+    def propose_from(self, state: dict, n_draft: int = 4) -> torch.Tensor:
+        """Greedy depth-``n_draft`` chain of full-vocab ids from ``state`` WITHOUT
+        mutating it (the same ``state`` can be reused, e.g. for an A/B re-run).
+
+        Feeds the deferred ``(next_fused, bonus)`` pair to build the proposal tip
+        (verified position ``seen-1``), then runs ``n_draft`` head steps. The
+        vendored KV is *functional* (``LlamaAttention.forward`` does
+        ``torch.cat`` and returns a fresh tuple — verified non-mutating), so
+        chaining off ``state["past"]`` allocates new storage and leaves the
+        persistent ``state["past"]`` untouched. No clone / no crop needed.
+
+        Returns ``LongTensor[n_draft]`` of full-vocab ids on the model device.
+        """
+        if state.get("bonus") is None:
+            raise RuntimeError(
+                "propose_from: state['bonus'] is None — the caller must set the "
+                "held bonus token before proposing (seed sets it; after advance "
+                "the dispatcher sets state['bonus'] = new_bonus)."
+            )
+        self.model.reset()  # ensure no stale tree_mask biases the causal mask
+        # Build the tip at verified position seen-1 from the deferred pair. We pass
+        # the chain's own `past` (a fresh tuple from cat); state["past"] is read but
+        # never reassigned, so the persistent KV is preserved.
+        last_hidden, past = self._run_span(
+            state["next_fused"], state["bonus"].reshape(1, 1),
+            state["past"], chunk=1,
+        )
+        out_tokens = []
+        for _ in range(n_draft):
+            full_id, last_hidden, past = self.step(last_hidden, past)
+            out_tokens.append(full_id)
+        return torch.cat(out_tokens, dim=0)  # [n_draft]
+
+    @torch.no_grad()
+    def advance(self, state: dict, accepted_tokens, accepted_fused_hidden,
+                chunk: int = 256) -> dict:
+        """Extend the *persistent* verified KV by the accepted span and return the
+        new ``state`` (a mini-``prefill`` of the committed tokens).
+
+        Given accepted tokens ``[bonus, d_1, ..., d_m]`` at verified positions
+        ``N..N+m`` (``N == state["seen"]``) and their target fused hidden
+        ``accepted_fused_hidden = fused[:, N..N+m]`` (``[1, m+1, 3*hidden]``), this
+        permanently commits the head KV up to position ``N+m-1`` and leaves
+        position ``N+m`` (whose draft input is the NEXT bonus) deferred:
+
+        1. Feed the deferred ``(state["next_fused"]=fused[N-1], state["bonus"]
+           =bonus=accepted_tokens[0])`` to commit position ``N-1`` — the bonus is
+           always accepted, so this KV is now permanent.
+        2. Feed positions ``N..N+m-1``: ``(accepted_fused_hidden[:, j],
+           accepted_tokens[j+1])`` for ``j=0..m-1`` (the shift: position ``N+j``
+           pairs with the following committed token).
+        3. Defer position ``N+m``: ``next_fused = accepted_fused_hidden[:, m]``.
+           ``bonus`` is reset to ``None`` — the caller MUST set the new bonus
+           (``state["bonus"] = tgt[m]``) before the next ``propose_from``.
+
+        After this, ``state["seen"] == N+m+1`` and the persistent KV covers
+        ``0..N+m-1``, so the next ``propose_from`` reproduces a from-scratch
+        ``prefill(fused[:N+m+1], new_bonus, ...)`` exactly.
+        """
+        if state.get("bonus") is None:
+            raise RuntimeError(
+                "advance: state['bonus'] is None — advance consumes the held bonus "
+                "as accepted_tokens[0]; set it (seed/dispatcher) before advancing."
+            )
+        dev = state["next_fused"].device
+        fused_new = accepted_fused_hidden.to(self.dtype)
+        if not torch.is_tensor(accepted_tokens):
+            accepted_tokens = torch.tensor(accepted_tokens, device=dev)
+        accepted_tokens = accepted_tokens.reshape(-1).to(dev).long()  # [m+1]
+        m_plus_1 = accepted_tokens.shape[0]
+        if fused_new.shape[1] != m_plus_1:
+            raise ValueError(
+                f"advance: accepted_fused_hidden length {fused_new.shape[1]} != "
+                f"accepted_tokens length {m_plus_1}; both span positions N..N+m."
+            )
+        m = m_plus_1 - 1  # number of accepted post-bonus drafts (>=0)
+
+        self.model.reset()  # no stale tree_mask
+        # Span of positions N-1 .. N+m-1 (m+1 positions): the deferred pair
+        # (fused[N-1], bonus) followed by (fused[N+j], accepted_tokens[j+1]) for
+        # j=0..m-1. accepted_tokens[1:] == [d_1..d_m] are exactly those shift tokens.
+        hidden_span = torch.cat(
+            [state["next_fused"], fused_new[:, :m, :]], dim=1
+        )  # [1, m+1, 3H] : fused[N-1], fused[N..N+m-1]
+        token_span = accepted_tokens.view(1, m_plus_1)  # [bonus, d_1..d_m]
+        last_hidden, past = self._run_span(
+            hidden_span, token_span, state["past"], chunk
+        )
+        return {
+            "past": past,                                  # covers 0..N+m-1
+            "last_hidden": last_hidden,                    # tip at N+m-1
+            "next_fused": fused_new[:, m : m + 1, :].contiguous(),  # fused[N+m]
+            "bonus": None,                                 # caller sets new bonus
+            "seen": state["seen"] + m_plus_1,              # N + (m+1)
+        }
+
+    @torch.no_grad()
     def step(self, last_hidden: torch.Tensor, past):
         """One draft step: emit the next full-vocab token from ``last_hidden``,
         then advance the head by feeding (that token, its own hidden) with the

@@ -187,14 +187,16 @@ def _nonspec_greedy(model, cache, prompt_ids, n_new, fusion_layers):
 
 
 @torch.no_grad()
-def _spec_stream(model, cache, draft, prompt_ids, n_draft, n_new, fusion_layers):
+def _spec_stream(model, cache, draft, prompt_ids, n_draft, n_new, fusion_layers,
+                 use_incremental=True):
     """Run make_quest_specdec until >=n_new tokens committed; return the first
-    n_new committed token ids (ints)."""
+    n_new committed token ids (ints). ``use_incremental`` selects the task-7
+    incremental draft-KV path (default) or the task-8 from-scratch fallback."""
     from flashquest.specdec.dispatcher import make_quest_specdec
 
     init, step = make_quest_specdec(
         model, cache, draft, n_draft=n_draft, page_size=PAGE_SIZE,
-        fusion_layers=fusion_layers,
+        fusion_layers=fusion_layers, use_incremental=use_incremental,
     )
     init(prompt_ids)
     out_ids: list[int] = []
@@ -466,4 +468,93 @@ def test_specdec_lossless_equivalence():
         f"[equiv] SUMMARY: n_draft=1 agreement {frac1:.1%} "
         f"(events={ev1}), first_div={div1}; n_draft=4 agreement {frac4:.1%} "
         f"(events={ev4}), first_div={div4}"
+    )
+
+
+# Fast incremental-draft-KV smoke (task 7): smaller scale than the full gate above.
+SMOKE_CTX_TOKENS = 256
+SMOKE_N_NEW = 40
+SMOKE_N_DRAFT = 4
+SMOKE_MIN_AGREEMENT = 0.99      # losslessness preserved by the optimization (§5 target)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
+@pytest.mark.skipif(not _have_target(), reason="AWQ target not available offline")
+def test_specdec_incremental_smoke():
+    """Task 7 equivalence smoke: the INCREMENTAL dispatcher (use_incremental=True)
+    is lossless vs non-spec greedy AND vs the from-scratch fallback.
+
+    Two assertions, both small/fast (ctx=256, 40 new tokens, n_draft=4):
+      1. incremental vs from-scratch (use_incremental=False) — must be IDENTICAL
+         token streams. propose_from reproduces propose_chain exactly, so wiring it
+         into the dispatcher cannot change the committed output. A divergence here
+         is a wiring bug in seed/advance, isolated from the UNION approximation.
+      2. incremental vs non-spec sparse greedy — >=99% per-step agreement (the §5
+         losslessness target; the only residual gap is the UNION page selection in
+         the verify arm, which the optimization does NOT touch).
+    """
+    from flashquest.runtime.awq_load import load_awq_model
+    from flashquest.specdec import load_eagle3_draft
+
+    torch.manual_seed(0)
+
+    model, tok = load_awq_model(TARGET)
+    cfg = model.config
+    head_dim = getattr(cfg, "head_dim", None) or (
+        cfg.hidden_size // cfg.num_attention_heads
+    )
+    L = cfg.num_hidden_layers
+    fusion_layers = (2, L // 2, L - 3)
+    pattern = torch.ones(L, cfg.num_key_value_heads, dtype=torch.bool)
+
+    draft = load_eagle3_draft(
+        HEAD, device="cuda", dtype=torch.bfloat16,
+        embed_weight=model.model.embed_tokens.weight,
+    )
+
+    # Use the module's prompt builder at the smoke context size.
+    global CTX_TOKENS
+    saved_ctx = CTX_TOKENS
+    CTX_TOKENS = SMOKE_CTX_TOKENS
+    try:
+        prompt_ids = _build_prompt(tok).to("cuda")
+    finally:
+        CTX_TOKENS = saved_ctx
+    print(f"\n[smoke] prompt_tokens={prompt_ids.shape[1]} n_new={SMOKE_N_NEW} "
+          f"n_draft={SMOKE_N_DRAFT} fusion_layers={fusion_layers}")
+
+    def _spec(use_incremental):
+        cache = _fresh_cache(cfg, head_dim)
+        _patch(model, cache, pattern)
+        out = _spec_stream(model, cache, draft, prompt_ids, SMOKE_N_DRAFT,
+                           SMOKE_N_NEW, fusion_layers, use_incremental=use_incremental)
+        del cache
+        torch.cuda.empty_cache()
+        return out
+
+    S_inc = _spec(True)
+    S_scratch = _spec(False)
+
+    # Non-spec sparse greedy reference.
+    cache_r = _fresh_cache(cfg, head_dim)
+    _patch(model, cache_r, pattern)
+    R = _nonspec_greedy(model, cache_r, prompt_ids, SMOKE_N_NEW, fusion_layers)
+    del cache_r
+    torch.cuda.empty_cache()
+
+    # 1) incremental == from-scratch (the optimization is exact).
+    assert S_inc == S_scratch, (
+        "incremental draft-KV diverged from the from-scratch path — a seed/advance "
+        f"wiring bug.\n  incremental={S_inc}\n  from_scratch={S_scratch}"
+    )
+
+    # 2) incremental vs non-spec greedy (losslessness preserved).
+    div, frac, n, ev = _agreement(R, S_inc)
+    print(f"[smoke] incremental==from_scratch: True; incremental vs non-spec "
+          f"greedy: agreement {frac:.1%}, divergence_events={ev}, first_div={div} "
+          f"over n={n}")
+    assert frac >= SMOKE_MIN_AGREEMENT, (
+        f"incremental dispatcher agreement {frac:.1%} < {SMOKE_MIN_AGREEMENT:.0%} "
+        f"vs non-spec greedy (first_div={div}, events={ev}); the optimization must "
+        f"not erode the §5 losslessness contract"
     )
