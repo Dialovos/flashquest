@@ -43,7 +43,7 @@ Load the EAGLE-3 head against the **AWQ** target (out-of-distribution vs the bf1
 
 AWQ INT4 decode at batch=1 is ~119 ms/token on this RTX 3050 Ti (no fast INT4-GEMM path), while the bf16 draft step is ~5.6 ms → the draft is ~21× cheaper than one target decode, so the controller's `net = mean_accepted / (0.87 + draft_step_ratio)` is dominated by `mean_accepted / 0.87`. The 4k stretch run peaked 4264 MiB (> the card's 4095 MiB → WSL2 host-memory spill; timing degraded), so the 1k run is the trustworthy gate number.
 
-**Why Gate 1a PASS was optimistic.** Gate 1a measured the verify *kernel* in isolation at 0.87×. The end-to-end benchmark shows the full verify-*forward* costs ~2.3 decodes, not 0.87 of one. The gap is the non-attention work: the weight-bound projections and MLP for q=4 queries (Q/K/V projections, output projection, FFN — all running at batch=4 instead of batch=1), plus the verify arm's extra per-layer ops. At bs=1 AWQ-INT4, each decode is already ~150 ms and weight-bound (not attention-bound), so the non-attention work does not amortize with more query rows. The attention kernel is a small fraction of the iteration; gating only on the kernel ratio was insufficient.
+**Why Gate 1a PASS was optimistic.** Gate 1a measured the verify *kernel* in isolation at 0.87×. A subsequent cost-breakdown probe (`benchmarks/phase12/iteration_breakdown.json`, 4k context) showed the verify *forward* itself amortizes well — `T_verify(q=4)/T_decode(q=1) = 1.17×` (q=4 costs only marginally more than q=1, because the model is weight-bound and AWQ quantization means weight traffic dominates). However the **full iteration** is verify (68%, 233 ms) + draft steps (26%, 89 ms) + advance (6%, 20 ms) ≈ 342 ms ≈ 1.7 decode steps. At 4k context this models a **1.22× speedup** — a genuine win in isolation. The gate-1a "0.87× kernel" claim was not the error; the error was projecting from kernel ratio to iteration ratio without counting the draft-head steps and orchestration overhead. The attention kernel is a small fraction of the iteration; gating only on the kernel ratio was insufficient.
 
 ## What was built (Tasks 1–10)
 
@@ -70,6 +70,25 @@ This is **not** bit-identical to non-spec single-step decode by design, and the 
 
 **Task 9 measured the real thing** (`tests/test_specdec_equivalence.py`, 469 lines): the spec-decode output is **bit-identical to the non-spec sparse greedy decode** — 100% token agreement at both `n_draft=1` and `n_draft=4`. The UNION-vs-per-query softmax difference did not flip a single argmax on the tested prompts. This is the strongest possible form of the §5 contract (the spec only required ≥99% argmax match) and means the spec path's quality must equal the non-spec sparse path's.
 
+## Cost-breakdown probe (Task 11 follow-up)
+
+`benchmarks/phase12/iteration_breakdown.json` (4k context, bf16 head resident): a timed decomposition of a single spec-decode iteration into its three phases.
+
+| Phase | Time (ms) | Share |
+|---|---|---|
+| verify forward (q=4) | 233 | 68% |
+| draft steps (×4) | 89 | 26% |
+| advance + orchestration | 20 | 6% |
+| **total iteration** | **342** | — |
+| single baseline decode | ~200 | — |
+| **`T_verify(q=4) / T_decode(q=1)`** | **1.17×** | — |
+
+**Key finding:** the verify forward *amortizes* — q=4 costs only 1.17× a single decode (weight-bound AWQ: the same weights are read once regardless of q). The old "~2.3× verify" claim was wrong; that figure was the **full iteration** (~1.7 decodes) relative to a cheap 2k-context baseline, not the verify forward alone. The corrected picture:
+
+- At 4k context the spec path **models 1.22×** — a genuine win.
+- The win is **context-dependent**: 2k baselines are cheaper (decode too fast to amortize verify+draft overhead → 0.91×); at 4k the model hits 1.22×; at 8k mild head-swap drag → 0.99×.
+- The win is **VRAM-capped and cannot be extended to longer contexts**: the 16k OOM is on the spec path's *own* state (full-sequence `fused_seq` accumulation + growing draft KV + verify sandbox), not just the draft head — so freeing head VRAM does not unblock long-context.
+
 ## End-to-end speed result (Task A) — the kill
 
 `scripts/phase12_bench_decode_32k.py` drives the dispatcher directly for clean timing on the v1.0 default config (`--kv-bits 4 --retention 0.20`, all-retrieval head_pattern): build AWQ target + `PersistentInt4KVCache` + patch + `load_eagle3_draft`; prefill to context; then **spec** = `make_quest_specdec(..., n_draft=4).init` then time `step()` to ~96 emitted tokens; **baseline** = fresh cache, non-spec greedy S_q=1 loop over 96 tokens.
@@ -79,22 +98,46 @@ This is **not** bit-identical to non-spec single-step decode by design, and the 
 | Context | Baseline (tok/s) | Spec (tok/s) | Speedup | mean accepted/iter | Peak VRAM (PyTorch / nvidia-smi) |
 |---|---|---|---|---|---|
 | **2k ctx** | 6.73 | 6.10 | **0.91×** | 2.09 | 3776 / 3929 MiB |
+| **4k ctx** | (models 1.22×) | — | — | — | bf16 head resident |
 | **8k ctx** | 4.27 | 4.24 | **0.99×** | 2.13 | 4759 MiB (head-resident, WSL overcommit) |
+| **≥16k ctx** | — | OOM | — | — | spec-path state (fused_seq + draft KV + sandbox) |
 | **32k ctx** | (prefill swap-thrashed, >7 min) | — | — | — | head does not fit at 32k |
 
-Raw results: `benchmarks/phase12/decode_2k.json` (the 2k run), `benchmarks/phase12/decode_32k.json` (the 8k run; filename reflects the original script target). Logs: `benchmarks/phase12/decode_2k.log`, `benchmarks/phase12/decode_8k.log`.
+Raw results: `benchmarks/phase12/decode_2k.json` (the 2k run), `benchmarks/phase12/decode_32k.json` (the 8k run; filename reflects the original script target), `benchmarks/phase12/iteration_breakdown.json` (4k probe). Logs: `benchmarks/phase12/decode_2k.log`, `benchmarks/phase12/decode_8k.log`.
 
-**spec_band per SPEC §7 = "off"** (<1.2×) at all measured contexts.
+**spec_band per SPEC §7 = "off"** (<1.2×) at all deployable contexts.
 
 ### Root cause
 
-The gate-1a verify-kernel ratio (0.87×) was correct but covered only the **attention kernel**. The full verify-forward cost is ~**2.3× a single decode step**, because:
+The gate-1a verify-kernel ratio (0.87×) was correct but covered only the **attention kernel**. The cost-breakdown probe shows the full verify-forward itself amortizes to **1.17×** (not 2.3×; the old "~2.3×" figure was the whole iteration vs a cheap 2k baseline). The actual kill factors are:
 
-1. **Weight-bound projections dominate at bs=1.** AWQ-INT4 decode is ~150 ms/step on this card (weight-bound, not attention-bound). For the verify pass, the Q/K/V projections, output projection, and FFN all run at q=4 instead of q=1 — four decode steps' worth of weight traffic, which does not amortize.
-2. **Per-iteration spec overhead = verify-forward + 4 draft-head steps + draft-KV advance + Python orchestration ≈ 2.3 decodes.** The ~2.1 accepted tokens/iter mean gain is smaller than this cost.
-3. **486 MB bf16 draft head does not fit alongside 32k decode.** At 32k the full model + 32k KV cache + head exceeds the card's 4 GB; the head is swap-resident and the 32k prefill itself swap-thrashes (>7 min, GPU pinned 3949/4096 MiB). The head-resident regime is 2k–8k only.
+1. **The win is narrow and context-dependent.** Verify amortizes at 4k (1.22× model), but decode is too cheap at 2k (0.91×) and head-swap drag at 8k (0.99×) closes the window.
+2. **VRAM caps the usable context, and the OOM is on the spec path's own state.** At ≥16k the spec path OOMs due to full-sequence `fused_seq` accumulation + growing draft KV + verify sandbox — not just the 486 MB head. Freeing head VRAM (e.g. via INT8 quantization) is insufficient; the spec path's state itself won't fit.
+3. **Draft-head steps dominate overhead at the non-4k contexts.** At 2k the 89 ms for 4 draft steps (26% of iteration) pushes total above what the ~2.1-token accept gain covers.
 
-In short: the speedup math (`mean_accepted / verify_cost_ratio`) assumed the verify-cost ratio equals the attention kernel ratio. At bs=1 weight-bound inference, that assumption fails by ~2.7×.
+## INT8-draft-head salvage attempt (Task 12) — failed
+
+After the 16k OOM was diagnosed as spec-path state, a final salvage was attempted: quantize the EAGLE-3 bf16 draft head to weight-only INT8 (per-channel) to free VRAM and check whether the 16k path became viable.
+
+**Result (commit `398b01f`; `benchmarks/phase12/int8_probe.json`, `iteration_breakdown_int8_perchannel.json`, `decode_8k_int8_perchannel.json`):**
+
+| Metric | bf16 head | INT8 per-channel head |
+|---|---|---|
+| mean accepted | 1.684 | 1.684 (unchanged) |
+| draft-argmax agreement | — | 98.7% |
+| head VRAM | 1216 MiB | 985 MiB (freed **232 MiB**) |
+| 16k OOM | yes | **still OOMs** |
+| draft step time | 89 ms | **456 ms (5× slower)** |
+| 4k iteration model | 1.22× | **0.63×** (inverted) |
+
+**Fidelity was never the issue.** Acceptance held at 1.684; draft-argmax agreement was 98.7%. The failure was twofold:
+
+1. **232 MiB freed is insufficient.** The 16k OOM is driven by the spec path's own state (fused-hidden accumulation + draft KV + verify sandbox), which weight quantization of the lm_head does not shrink. 16k still OOMs.
+2. **Weight-only INT8 at seq=1 / bs=1 is a GEMV** — the full 188 MB `lm_head` is re-dequantized every draft token (no batch reuse to amortize). Draft step explodes from 89 ms to 456 ms, inverting the 4k model from 1.22× to 0.63×.
+
+Codex concurred (read-only review): a fused low-bit GEMV kernel (Marlin / tinygemm) could in principle recover draft speed, but even Marlin rarely beats bf16 at bs=1 on a 4 GB consumer GPU — and the VRAM fix is independent, so this is out of scope.
+
+**INT8 draft head ships as the opt-in `--int8-draft` flag** (correct + lossless, not faster here); code kept as a validated reference.
 
 ## Quality (Task B)
 
@@ -102,13 +145,17 @@ RULER is not re-run. Task 9 proves the spec path is **bit-identical** to the non
 
 ## Verdict and disposition
 
-**Phase 12 is killed as a speedup.** The implementation is correct and lossless — spec output is bit-identical to non-spec greedy. But the end-to-end decode benchmark shows ~0.9–1.0× at all measured contexts on this hardware. There is no speedup to ship as a default.
+**Phase 12 is the 5th profile-kill. Dead end on 4 GB / AWQ / bs=1.** The implementation is correct and lossless — spec output is bit-identical to non-spec greedy (Task 9: 100% agreement at n_draft=1 and n_draft=4). The cost-breakdown probe shows the verify forward itself amortizes well (`T_verify(q=4)/T_decode(q=1) = 1.17×`; the old "~2.3× verify" was the full iteration vs a cheap 2k baseline — that claim is corrected here). The win exists (4k models 1.22×) but cannot be widened: short context → decode too cheap to amortize verify + draft overhead; long context → OOM on the spec path's own state (not just the head); INT8-head salvage → 5× slower draft GEMV + insufficient VRAM freed.
 
-**`--speculative` ships opt-in only.** The code is correct, fully tested, and kept as a validated reference. Users who want to experiment with EAGLE-3 on larger VRAM (where the 486 MB head fits comfortably alongside a 32k context and the weight-bound fraction shrinks relative to attention) can enable it. On this 4 GB card, it is slower.
+**`--speculative` ships opt-in only.** The code is correct, fully tested, and kept as a validated reference. The opt-in `--int8-draft` flag (weight-only INT8 draft head) is also kept — correct + lossless but slower at bs=1. Users on larger VRAM (where the head fits comfortably at long ctx and the weight-bound fraction shrinks relative to attention) can experiment. On this 4 GB card, both are slower.
 
 **No `phase-12` tag.** Matches the Phase 9 kill precedent — phases that don't deliver end-to-end gains don't get promotion tags.
 
-**Lesson.** Gate speculative decoding on the FULL verify-forward cost (weight-bound projections + MLP for q=N, verify arm's per-layer ops, draft-head steps, orchestration), not just the attention kernel ratio. At bs=1 weight-bound inference, the kernel is a small fraction of the step; a kernel-only gate is optimistic by the ratio of non-attention work to attention work — here ~2.7×.
+**Lessons (3):**
+
+1. **Gate on the FULL iteration cost** — verify + draft steps + advance + orchestration — vs K·decode, not the attention-kernel ratio. At bs=1 weight-bound inference, the kernel is a small fraction of the step; the kernel ratio is optimistic by the ratio of non-attention work to attention work.
+2. **The speculative win grows with context but VRAM caps the usable context** — and the OOM driver is the spec path's own state (fused-hidden accumulation + draft KV + verify sandbox), not just the draft head. Freeing head VRAM does not unblock long-context spec-decode.
+3. **Weight-only INT8 is SLOWER than bf16 at seq=1 / bs=1** — every token dequantizes the full `lm_head` weight matrix (a GEMV, no batch reuse to amortize). INT8 is a throughput / batched-inference optimization; it is the wrong tool for single-stream decode.
 
 ## Commit chain
 
@@ -127,7 +174,9 @@ ea88954  phase 12: fix page_scores S_q>1 view stride error in verify arm
 36b9bf0  phase 12 task 9: end-to-end losslessness equivalence test
 f0ea58b  phase 12 task 7: incremental draft-KV maintenance (speed/OOM enabler for long ctx)
 c08d3f6  phase 12 task 10: flashquest chat --speculative (EAGLE-3 spec decode)
-<this commit>  phase 12 task 11: end-to-end speed kill — built + lossless but ~0.9-1.0x at bs=1; --speculative opt-in, no tag
+c08d3f6  phase 12 task 11: end-to-end speed kill — built + lossless but ~0.9-1.0x at bs=1; --speculative opt-in, no tag
+398b01f  phase 12 task 12: INT8-draft-head salvage — preserved acceptance but 5x slower draft GEMV; 16k still OOMs; opt-in kept
+<this commit>  phase 12: finalize verdict — probe shows verify amortizes (1.17x) but spec ~0.9-1.0x/16k-OOM at bs=1; INT8-head salvage failed; opt-in, no tag
 ```
 
 ## Surface
