@@ -8,7 +8,7 @@ The implementation includes persistent packed caches and fused Triton decode ker
 
 Run the CLI examples below, or use the quality harness for matched retrieval examples. CPU validation checks: `python -m pytest tests/test_phase6_headtohead.py tests/test_quality_validation.py`. GPU checks: `python -m pytest tests/test_bench_flashquest.py tests/test_sparse_int4.py tests/test_persistent_int4.py tests/test_page_scores_int8.py -m 'not slow'`.
 
-2026-10-03 local validation: 48 CPU checks and 26 targeted GPU checks passed on Linux with an RTX 4080 Laptop GPU (12 GB). The pinned AWQ model passed the initial 4k retrieval screen at retention 0.20: 20/20 single, 20/20 multikey, and 18/20 multivalue; dense and all-pages INT4 scored 20/20 throughout. Expanded quality, competitive speed, novelty, and 4 GB capacity remain unproven.
+2026-10-03 local validation: 73 CPU checks passed; both tiny-Llama GPU checks passed again after adding timing markers and benchmark identity. The earlier 24 kernel/cache checks passed. Retention 0.20 passes the 4k and 8k retrieval pilots but fails 32k multivalue (16/20 versus dense's 19/20); the next quality setting is 0.25. Expanded quality, competitive speed, novelty, and 4 GB capacity remain unproven.
 
 See the [research roadmap](roadmap.md) for the remaining experiments, priorities, and decision criteria.
 
@@ -95,28 +95,40 @@ For TurboQuant K3-V3, swap `PersistentInt4KVCache` for `PersistentTurboKVCache` 
 
 ## Benchmarks and validation
 
-### Current quality — matched 4k pilot
+### Current quality — matched retrieval pilots
 
 Pinned Llama-3.2-3B-Instruct-AWQ revision
 `272b3bde867b606760447deb9a4d2719fbdfd3ae`, seed 0, 20 examples per task.
-All arms use the same 60 input manifests. Dense uses the same AWQ weights with
+Within each context, all arms use the same 60 input manifests. Dense uses the same AWQ weights with
 native FP16 KV; the INT4 arms share one persistent cache and fused attention path.
 
-| Arm | Single | Multikey | Multivalue |
-| --- | --- | --- | --- |
-| Dense FP16 KV | 20/20 | 20/20 | 20/20 |
-| All-pages INT4, retention 1.0 | 20/20 | 20/20 | 20/20 |
-| Sparse INT4, retention 0.20 | 20/20 | 20/20 | 18/20 |
+| Nominal context | Arm | Single | Multikey | Multivalue |
+| --- | --- | --- | --- | --- |
+| 4k | Dense FP16 KV | 20/20 | 20/20 | 20/20 |
+| 4k | All-pages INT4, retention 1.0 | 20/20 | 20/20 | 20/20 |
+| 4k | Sparse INT4, retention 0.20 | 20/20 | 20/20 | 18/20 |
+| 8k | Dense FP16 KV | 20/20 | 18/20 | 20/20 |
+| 8k | All-pages INT4, retention 1.0 | 20/20 | 19/20 | 18/20 |
+| 8k | Sparse INT4, retention 0.20 | 20/20 | 19/20 | 19/20 |
+| 32k | Dense FP16 KV | 20/20 | 17/20 | 19/20 |
+| 32k | All-pages INT4, retention 1.0 | 20/20 | 16/20 | 20/20 |
+| 32k | Sparse INT4, retention 0.20 | 20/20 | 17/20 | 16/20 |
 
-The sparse arm passes the existing per-task screen of at least 85% of dense hits.
-The two multivalue misses reached the 128-token generation limit. Actual input
-lengths are 3,839–3,963 tokens; “4k” is the nominal budget. This small retrieval
-pilot supports proceeding at 0.20; it does not establish statistical equivalence,
-general language quality, competitive throughput, or target-device capacity.
+The sparse arm passes the existing per-task screen of at least 85% of dense hits
+at 4k and 8k. At 32k, multivalue reaches 84.2% of dense hits and fails; all four
+sparse multivalue misses reached the 128-token output limit. Retention 0.25 must be
+screened before using it for 32k performance. Actual input ranges are 3,839–3,963,
+7,935–8,059 and 32,512–32,635 tokens. These small retrieval pilots do not establish
+statistical equivalence, general language quality, competitive throughput, or
+target-device capacity.
 
-[Saved per-example evidence](benchmarks/validation/quality/dd8f60de24c2957a2120473d9ff3a194b64b22d85b2adfecca3aab485092f104/quality.json)
-includes model/tokenizer content, source/environment identity, protocol, actual
-lengths, generated-output hashes, and all 180 outcomes. Raw prompts/answers stay
+[4k evidence](benchmarks/validation/quality/dd8f60de24c2957a2120473d9ff3a194b64b22d85b2adfecca3aab485092f104/quality.json),
+[8k evidence](benchmarks/validation/quality/85c9abbb694ffb21ba5c03336188658ca2d0e9dff0790a9a9b62cb6b28c2ef07/quality.json), and
+[32k evidence](benchmarks/validation/quality/52b2599c93490bdc948431f43bf4fd2294273a00fac583461fe10bd5b0ba9f93/quality.json)
+include model/tokenizer content, source/environment identity, protocol, actual
+lengths, generated-output hashes, and 180 outcomes each. File fingerprints use
+explicit path/sha256 entries; `bench_common.canonical_identity` restores the original
+mapping for run-hash verification. Raw prompts/answers stay
 under ignored `artifacts/quality/`. The separate 1024-token two-example smoke
 completed every arm but sparse multivalue scored 1/2; it remains local diagnostic
 evidence, not a passing quality result.
@@ -188,7 +200,26 @@ The all-pages ablation uses the same fused kernel and page-selection machinery; 
 
 Quality resume checks source/model/environment/protocol identity and matched sample counts. The matrix's `--skip-existing` currently reruns legacy adapters because complete identity cannot be resolved before launch; backend identity integration remains pending. Raw benchmark logs and original backend JSON stay under ignored `artifacts/benchmarks/`; exported records contain normalized evidence and error categories. Timeout/error cells remain failures. GPU name and total memory come from the machine running the matrix. PyTorch allocated/reserved bytes are labeled separately; physical residency and competitor peak memory require additional measurement.
 
-The next research gate is longer-context quality at retention 0.20, then balanced repeated sparse/all-pages comparisons at 8 k and 32 k. Validate on an actual 4 GB GPU before claiming that capacity target.
+The next research gate is 32k quality at retention 0.25, then balanced repeated sparse/all-pages comparisons at each screened setting. Validate on an actual 4 GB GPU before claiming that capacity target.
+
+The new FlashQuest ablation runner freezes a balanced whole-arm schedule, verifies
+matching quality evidence, pins model/source/environment identity, and samples
+physical device usage and the owned process tree. It retains phase markers and raw
+telemetry under ignored `artifacts/ablation/`; exported summaries label sampled peaks
+and missing counters. It records configured CUDA placement without asserting absence
+of OS fallback. Competitor sampler integration and actual capacity runs are pending.
+
+```bash
+python scripts/run_validation_ablation.py --contexts 8192 \
+    --revision 272b3bde867b606760447deb9a4d2719fbdfd3ae \
+    --quality benchmarks/validation/quality/85c9abbb694ffb21ba5c03336188658ca2d0e9dff0790a9a9b62cb6b28c2ef07/quality.json
+```
+
+Use `--resume` for an identical incomplete schedule with completed valid cells.
+After a failed cell, start a fresh whole block with a higher `--attempt` and
+`--retry-of` pointing to the earlier schedule; earlier evidence stays intact.
+`scripts/summarize_validation.py` verifies the saved schedule and reports paired
+per-seed medians, ratios and the proposed practical pilot screen.
 
 ## Non-goals
 

@@ -13,8 +13,10 @@ Establish whether FlashQuest offers a reproducible speed, memory, or context-cap
 - [x] Pass 25 benchmark regression checks, 24 GPU kernel/cache checks, and one tiny local Llama smoke test.
 - [x] Add matched three-arm quality evidence with immutable identity, atomic resume, safe exports, and one reusable INT4 cache.
 - [x] Validate the AWQ loader and run the 4k, retention 0.20 pilot; pass 48 CPU and 26 targeted GPU checks.
+- [x] Run the matched 8k and 32k pilots at retention 0.20; preserve the 32k screen failure.
+- [x] Prepare FlashQuest device/process memory observation and balanced immutable ablation schedules; pass 73 CPU checks and rerun both tiny-Llama GPU checks.
 
-The initial full-model quality screen passes; expanded quality and competitor comparisons are still pending. See the [README](README.md) for the new per-example evidence, commands, and historical limitations.
+The 4k/8k screens pass at 0.20; 32k multivalue fails and needs the 0.25 fallback. Expanded quality and competitor comparisons remain pending. See the [README](README.md) for per-example evidence, commands, and historical limitations.
 
 ## 1. Prepare full-model experiments
 
@@ -36,7 +38,8 @@ Done when every backend produces a valid short-run record with the intended mode
 
 - [x] Run single, multikey, and multivalue retrieval at retention 0.20 and 4k context.
 - [x] Compare the same examples and seeds against the dense baseline; include all-pages INT4 to separate quantization error from page-selection error.
-- [ ] Repeat at 8k and 32k after the 4k check passes.
+- [x] Repeat at 8k and 32k after the 4k check passes.
+- [ ] Screen retention 0.25 at 32k after the 0.20 failure.
 - [x] Save per-example outcomes and failures, not only aggregate hit rates.
 - [ ] Expand beyond the 20-example pilot with additional samples and seeds before making a research claim.
 
@@ -50,6 +53,13 @@ or a statistically confirmed comparison.
 
 [Pilot evidence](benchmarks/validation/quality/dd8f60de24c2957a2120473d9ff3a194b64b22d85b2adfecca3aab485092f104/quality.json)
 contains all 180 paired outcomes; raw answers/prompts are ignored local artifacts.
+
+The [8k pilot](benchmarks/validation/quality/85c9abbb694ffb21ba5c03336188658ca2d0e9dff0790a9a9b62cb6b28c2ef07/quality.json)
+passes: dense 20/18/20, all-pages 20/19/18, sparse 20/19/19 (single/multikey/multivalue,
+out of 20). The [32k pilot](benchmarks/validation/quality/52b2599c93490bdc948431f43bf4fd2294273a00fac583461fe10bd5b0ba9f93/quality.json)
+completed every arm but fails sparse multivalue: dense 20/17/19, all-pages 20/16/20,
+sparse 20/17/16. Its multivalue ratio is 16/19 = 84.2%; all four sparse misses reached
+the output limit. This is a quality-screen failure, not an execution failure or OOM.
 
 Reproduce with a fresh identity, or add `--resume` for the identical completed run:
 
@@ -70,13 +80,9 @@ python scripts/phase6_run_ruler_4k_int4.py \
 Done when the results show whether sparse decode improves on this runtime's all-pages path at a retention that passed the quality screen. Page selection reduces reads; the persistent cache still stores the full context. This ablation shares the sparse kernel and selection machinery, so it also needs independent dense competitors.
 
 ```bash
-python scripts/phase6_run_headtohead.py --backends flashquest \
-    --contexts 8192 32768 --retention 0.20 \
-    --output-dir benchmarks/validation-sparse
-
-python scripts/phase6_run_headtohead.py --backends flashquest \
-    --contexts 8192 32768 --retention 1.0 \
-    --output-dir benchmarks/validation-dense
+python scripts/run_validation_ablation.py --contexts 8192 --retention 0.20 \
+    --revision 272b3bde867b606760447deb9a4d2719fbdfd3ae \
+    --quality benchmarks/validation/quality/85c9abbb694ffb21ba5c03336188658ca2d0e9dff0790a9a9b62cb6b28c2ef07/quality.json
 ```
 
 ## 4. Compare optimized competitors
@@ -91,6 +97,7 @@ Done when a fresh 8k/32k comparison includes valid phase timings and quantized d
 
 ## 5. Verify memory and capacity
 
+- [x] Prepare physical-device polling, owned process-tree RSS, validated phase windows and safe exports for FlashQuest ablation cells.
 - [ ] Measure physical GPU memory throughout loading, prefill, and decode for every backend.
 - [ ] Record GPU usage alongside process/system memory and PyTorch allocator counters; identify any offload or paging.
 - [ ] Repeat the relevant quality and performance runs on an actual 4 GB GPU.
@@ -113,8 +120,8 @@ If the full runtime lacks a competitive advantage, consider a narrower kernel or
 
 Keep new JSON records, logs, configuration/version details, and comparison summaries under `benchmarks/validation*`. Use separate output directories for different experiment configurations and preserve the historical phase files. Capture conclusions and links to their evidence in this roadmap or the README.
 
-The next action is 8k then 32k quality at retention 0.20 where feasible, followed by
-the minimal memory sampler and balanced sparse/all-pages performance blocks. Freeze
+The next action is the 32k quality fallback at retention 0.25, followed by
+balanced sparse/all-pages performance blocks using the prepared memory sampler. Freeze
 a confirmatory protocol before fresh seeds 1–5. Competitor setup can proceed separately.
 The work is on the local feature branch `refactor/benchmark-validation`. Check off
 tasks only when their evidence is saved.

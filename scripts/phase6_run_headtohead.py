@@ -18,6 +18,7 @@ from statistics import median
 from bench_common import (
     DEFAULT_MODEL,
     SCHEMA_VERSION,
+    canonical_identity,
     content_hash,
     is_oom,
     new_record,
@@ -181,7 +182,8 @@ def run_one(backend: str, ctx: int, out_path: Path, args) -> dict:
             elif output.exists():
                 child = json.loads(output.read_text(encoding="utf-8"))
                 if (not isinstance(child, dict) or child.get("schema_version") != SCHEMA_VERSION
-                        or child.get("config") != config):
+                        or not isinstance(child.get("config"), dict)
+                        or any(child["config"].get(key) != value for key, value in config.items())):
                     raise ValueError("child result configuration does not match this run")
                 record = child
                 if rc != 0 and not record.get("error"):
@@ -206,6 +208,8 @@ def reusable_cell(path: Path, config: dict, identity: dict | None = None) -> dic
         return None
     try:
         record = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(record, dict) and isinstance(record.get("identity", {}).get("source"), dict):
+            record["identity"] = canonical_identity(record["identity"])
         samples = record.get("samples") if isinstance(record, dict) else None
         if isinstance(samples, list):
             complete = len(samples) == config["reps"] and all(

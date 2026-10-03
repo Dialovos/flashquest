@@ -250,6 +250,18 @@ def test_source_identity_hashes_untracked_changes(tmp_path):
     assert "scripts/new-file.py" in after["files"]
 
 
+def test_result_progress_does_not_change_source_dirty_identity(tmp_path):
+    subprocess.run(["git", "init", "--initial-branch=main", str(tmp_path)],
+                   capture_output=True, check=True)
+    assert C.source_identity(tmp_path)["dirty"] is False
+    (tmp_path / "benchmarks").mkdir()
+    (tmp_path / "benchmarks" / "progress.json").write_text("{}")
+    assert C.source_identity(tmp_path)["dirty"] is False
+    (tmp_path / "scripts").mkdir()
+    (tmp_path / "scripts" / "changed.py").write_text("# changed source\n")
+    assert C.source_identity(tmp_path)["dirty"] is True
+
+
 def test_local_model_identity_tracks_weights_and_tokenizer(tmp_path):
     model_dir = tmp_path / "local-model"
     model_dir.mkdir()

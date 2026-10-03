@@ -155,7 +155,9 @@ def source_identity(root: Path = REPO_ROOT) -> dict:
         except (OSError, subprocess.SubprocessError):
             return None
     return {"commit": git("rev-parse", "HEAD"),
-            "dirty": bool(git("status", "--porcelain")), "files": hashes,
+            "dirty": bool(git("status", "--porcelain", "--", "src", "scripts",
+                              "pyproject.toml", "requirements-validation.txt",
+                              "data/PaulGrahamEssays.json")), "files": hashes,
             "content_sha256": content_hash(hashes)}
 
 
@@ -240,6 +242,7 @@ def export_identity(identity: dict) -> dict:
     a filename contains 'token' or 'key'. Public evidence uses path/sha256 entries;
     raw evidence and run hashing continue to use the original canonical mappings.
     """
+    identity = canonical_identity(identity)
     exported = dict(identity)
     for section in ("model", "source"):
         metadata = dict(identity[section])
@@ -311,6 +314,8 @@ def export_benchmark(record: dict) -> dict:
     config_keys = {"ctx_len", "n_decode", "reps", "seed", "model", "kv_bits", "retention",
                    "page_size", "num_sinks", "window_pages", "kv_cache_dtype", "kv_k",
                    "kv_v", "n_gpu_layers", "threads"}
+    config_keys |= {"revision", "warmup_steps", "cache_capacity", "input_sha256",
+                    "generation", "runtime", "memory_protocol"}
     sample_keys = {"input_tokens", "output_tokens", "prefill_s", "decode_s", "request_s",
                    "prefill_tok_s", "decode_tok_s", "end_to_end_tok_s",
                    "peak_allocated_mib", "peak_reserved_mib"}
