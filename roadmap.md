@@ -16,7 +16,7 @@ Establish whether FlashQuest offers a reproducible speed, memory, or context-cap
 - [x] Run the matched 8k and 32k pilots at retention 0.20; preserve the 32k screen failure.
 - [x] Prepare FlashQuest device/process memory observation and balanced immutable ablation schedules; pass 76 CPU checks and rerun both tiny-Llama GPU checks.
 
-The 4k/8k screens pass at 0.20; 32k multivalue fails and needs the 0.25 fallback. Expanded quality and competitor comparisons remain pending. See the [README](README.md) for per-example evidence, commands, and historical limitations.
+The 4k/8k screens pass at 0.20. The 32k screen fails at 0.20 and passes its 0.25 fallback. Expanded quality and competitor comparisons remain pending. See the [README](README.md) for per-example evidence, commands, and historical limitations.
 
 ## 1. Prepare full-model experiments
 
@@ -39,7 +39,7 @@ Done when every backend produces a valid short-run record with the intended mode
 - [x] Run single, multikey, and multivalue retrieval at retention 0.20 and 4k context.
 - [x] Compare the same examples and seeds against the dense baseline; include all-pages INT4 to separate quantization error from page-selection error.
 - [x] Repeat at 8k and 32k after the 4k check passes.
-- [ ] Screen retention 0.25 at 32k after the 0.20 failure.
+- [x] Screen retention 0.25 at 32k after the 0.20 failure.
 - [x] Save per-example outcomes and failures, not only aggregate hit rates.
 - [ ] Expand beyond the 20-example pilot with additional samples and seeds before making a research claim.
 
@@ -60,6 +60,13 @@ out of 20). The [32k pilot](benchmarks/validation/quality/52b2599c93490bdc948431
 completed every arm but fails sparse multivalue: dense 20/17/19, all-pages 20/16/20,
 sparse 20/17/16. Its multivalue ratio is 16/19 = 84.2%; all four sparse misses reached
 the output limit. This is a quality-screen failure, not an execution failure or OOM.
+
+The [32k fallback at 0.25](benchmarks/validation/quality/2baea9556c7ecdb9bb4213e0c02caf7444820468d36d912879d1a63190903f97/quality.json)
+passes with sparse 20/17/17. Dense remains 20/17/19 and all-pages 20/16/20 on the
+same 60 prompts. One multivalue example recovers, with no paired losses relative
+to 0.20; three misses still reach the output limit. Use the screened setting for
+each performance context: 0.20 at 8k and 0.25 at 32k. These are tuning pilots,
+not independent confirmatory observations.
 
 Reproduce with a fresh identity, or add `--resume` for the identical completed run:
 
@@ -120,8 +127,8 @@ If the full runtime lacks a competitive advantage, consider a narrower kernel or
 
 Keep new JSON records, logs, configuration/version details, and comparison summaries under `benchmarks/validation*`. Use separate output directories for different experiment configurations and preserve the historical phase files. Capture conclusions and links to their evidence in this roadmap or the README.
 
-The next action is the 32k quality fallback at retention 0.25, followed by
-balanced sparse/all-pages performance blocks using the prepared memory sampler. Freeze
+The next action is balanced sparse/all-pages performance at 8k/0.20 and 32k/0.25
+using the prepared memory sampler. Freeze
 a confirmatory protocol before fresh seeds 1–5. Competitor setup can proceed separately.
 The work is on the local feature branch `refactor/benchmark-validation`. Check off
 tasks only when their evidence is saved.

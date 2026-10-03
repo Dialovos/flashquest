@@ -14,7 +14,9 @@ instrumentation and balanced performance blocks. Competitor setup, expanded
 statistics, and target-device capacity tests remain separate requirements.
 
 Continuation: the 8k screen passes at 0.20; the complete 32k screen fails sparse
-multivalue (16/20 versus dense 19/20). The prescribed 0.25 fallback is next.
+multivalue (16/20 versus dense 19/20). The prescribed 0.25 fallback passes with
+20/17/17 sparse hits against 20/17/19 dense; all-pages is 20/16/20. Timed pilot
+blocks use each screened setting: 8k/0.20 and 32k/0.25.
 FlashQuest benchmark identity, validated phase markers, device/process sampling,
 balanced schedules and paired summaries are implemented; 76 CPU checks and both
 tiny-Llama GPU checks pass. Full-model timed blocks and competitor sampler

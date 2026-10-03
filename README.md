@@ -8,7 +8,7 @@ The implementation includes persistent packed caches and fused Triton decode ker
 
 Run the CLI examples below, or use the quality harness for matched retrieval examples. CPU validation checks: `python -m pytest tests/test_phase6_headtohead.py tests/test_quality_validation.py`. GPU checks: `python -m pytest tests/test_bench_flashquest.py tests/test_sparse_int4.py tests/test_persistent_int4.py tests/test_page_scores_int8.py -m 'not slow'`.
 
-2026-10-03 local validation: 76 CPU checks passed; both tiny-Llama GPU checks passed again after adding timing markers and benchmark identity. The earlier 24 kernel/cache checks passed. Retention 0.20 passes the 4k and 8k retrieval pilots but fails 32k multivalue (16/20 versus dense's 19/20); the next quality setting is 0.25. Expanded quality, competitive speed, novelty, and 4 GB capacity remain unproven.
+2026-10-03 local validation: 76 CPU checks passed; both tiny-Llama GPU checks passed again after adding timing markers and benchmark identity. The earlier 24 kernel/cache checks passed. Retention 0.20 passes the 4k and 8k retrieval pilots but fails 32k multivalue (16/20 versus dense's 19/20). The 32k fallback at 0.25 passes with 20/20 single, 17/20 multikey and 17/20 multivalue. Expanded quality, competitive speed, novelty, and 4 GB capacity remain unproven.
 
 See the [research roadmap](roadmap.md) for the remaining experiments, priorities, and decision criteria.
 
@@ -113,18 +113,23 @@ native FP16 KV; the INT4 arms share one persistent cache and fused attention pat
 | 32k | Dense FP16 KV | 20/20 | 17/20 | 19/20 |
 | 32k | All-pages INT4, retention 1.0 | 20/20 | 16/20 | 20/20 |
 | 32k | Sparse INT4, retention 0.20 | 20/20 | 17/20 | 16/20 |
+| 32k | Sparse INT4, retention 0.25 | 20/20 | 17/20 | 17/20 |
 
 The sparse arm passes the existing per-task screen of at least 85% of dense hits
 at 4k and 8k. At 32k, multivalue reaches 84.2% of dense hits and fails; all four
-sparse multivalue misses reached the 128-token output limit. Retention 0.25 must be
-screened before using it for 32k performance. Actual input ranges are 3,839–3,963,
+sparse multivalue misses reached the 128-token output limit. The matched 0.25
+fallback passes (17/19 = 89.5% on multivalue), recovering one example with no paired
+losses. Its dense and all-pages controls reproduce the table's 32k counts; it is
+a separate 180-outcome run. The three remaining sparse multivalue misses still
+reach the output limit. Actual input ranges are 3,839–3,963,
 7,935–8,059 and 32,512–32,635 tokens. These small retrieval pilots do not establish
 statistical equivalence, general language quality, competitive throughput, or
 target-device capacity.
 
 [4k evidence](benchmarks/validation/quality/dd8f60de24c2957a2120473d9ff3a194b64b22d85b2adfecca3aab485092f104/quality.json),
 [8k evidence](benchmarks/validation/quality/85c9abbb694ffb21ba5c03336188658ca2d0e9dff0790a9a9b62cb6b28c2ef07/quality.json), and
-[32k evidence](benchmarks/validation/quality/52b2599c93490bdc948431f43bf4fd2294273a00fac583461fe10bd5b0ba9f93/quality.json)
+[32k 0.20 evidence](benchmarks/validation/quality/52b2599c93490bdc948431f43bf4fd2294273a00fac583461fe10bd5b0ba9f93/quality.json), and
+[32k 0.25 fallback](benchmarks/validation/quality/2baea9556c7ecdb9bb4213e0c02caf7444820468d36d912879d1a63190903f97/quality.json)
 include model/tokenizer content, source/environment identity, protocol, actual
 lengths, generated-output hashes, and 180 outcomes each. File fingerprints use
 explicit path/sha256 entries; `bench_common.canonical_identity` restores the original
@@ -200,7 +205,7 @@ The all-pages ablation uses the same fused kernel and page-selection machinery; 
 
 Quality resume checks source/model/environment/protocol identity and matched sample counts. The matrix's `--skip-existing` currently reruns legacy adapters because complete identity cannot be resolved before launch; backend identity integration remains pending. Raw benchmark logs and original backend JSON stay under ignored `artifacts/benchmarks/`; exported records contain normalized evidence and error categories. Timeout/error cells remain failures. GPU name and total memory come from the machine running the matrix. PyTorch allocated/reserved bytes are labeled separately; physical residency and competitor peak memory require additional measurement.
 
-The next research gate is 32k quality at retention 0.25, then balanced repeated sparse/all-pages comparisons at each screened setting. Validate on an actual 4 GB GPU before claiming that capacity target.
+The next research gate is balanced repeated sparse/all-pages comparisons at each screened setting: 0.20 at 8k and 0.25 at 32k. Validate on an actual 4 GB GPU before claiming that capacity target.
 
 The new FlashQuest ablation runner freezes a balanced whole-arm schedule, verifies
 matching quality evidence, pins model/source/environment identity, and samples
