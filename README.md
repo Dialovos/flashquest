@@ -6,9 +6,9 @@ The current direction is to validate whether this integration offers a useful me
 
 The implementation includes persistent packed caches and fused Triton decode kernels. Historical reports label the hardware as an RTX 3050 Ti Laptop under WSL2, but the original comparison runner hardcoded that metadata. Their allocator measurements exceed 4 GB, and the saved competitor timings need correction, so they do not establish a GPU-resident 32 k capability advantage on a 4 GB device.
 
-Run the CLI examples below, or use the quality harness for matched retrieval examples. CPU validation checks: `python -m pytest tests/test_phase6_headtohead.py tests/test_quality_validation.py`. GPU checks: `python -m pytest tests/test_bench_flashquest.py tests/test_sparse_int4.py tests/test_persistent_int4.py tests/test_page_scores_int8.py -m 'not slow'`.
+Run the CLI examples below, or use the quality harness for matched retrieval examples. CPU validation checks: `python -m pytest tests/test_phase6_headtohead.py tests/test_quality_validation.py tests/test_gpu_memory.py tests/test_validation_ablation.py`. GPU checks: `python -m pytest tests/test_bench_flashquest.py tests/test_sparse_int4.py tests/test_persistent_int4.py tests/test_page_scores_int8.py -m 'not slow'`.
 
-2026-10-03 local validation: 76 CPU checks passed; both tiny-Llama GPU checks passed again after adding timing markers and benchmark identity. The earlier 24 kernel/cache checks passed. Retention 0.20 passes the 4k and 8k retrieval pilots but fails 32k multivalue (16/20 versus dense's 19/20). The 32k fallback at 0.25 passes with 20/20 single, 17/20 multikey and 17/20 multivalue. Expanded quality, competitive speed, novelty, and 4 GB capacity remain unproven.
+2026-10-03 local validation: 77 CPU checks passed; both tiny-Llama GPU checks passed again after adding timing markers and benchmark identity. The earlier 24 kernel/cache checks passed. Retrieval pilots pass at 0.20 for 4k/8k and at 0.25 for 32k; the failed 32k/0.20 run is preserved. Balanced internal ablations show a 1.84× paired decode ratio at 32k and no practical gain at 8k. Expanded quality, competitive speed, novelty, and 4 GB capacity remain unproven.
 
 See the [research roadmap](roadmap.md) for the remaining experiments, priorities, and decision criteria.
 
@@ -154,6 +154,46 @@ errors return nonzero; `--require-screen-pass` also returns nonzero on a failed
 or inconclusive screen. Pilot seed 0 is reserved for tuning; confirmation uses
 fresh seeds after its protocol is frozen.
 
+### Current performance — balanced sparse/all-pages INT4 ablation
+
+Same pinned AWQ weights, exact synthetic input IDs within each pair, four seeds
+(0–3), one warmup and three timed repetitions per arm. Order is balanced at the
+whole-arm level. Each record includes model/source/environment identity, phase
+markers, configured CUDA placement, allocator counters and device/process sampling.
+
+| Input tokens | Sparse retention | Sparse decode tok/s | All-pages decode tok/s | Median paired ratio | Sampled device peak MiB, both arms | Practical screen |
+| --- | --- | --- | --- | --- | --- | --- |
+| 8,192 | 0.20 | 38.84 | 38.91 | 0.995× | 3,442 | Fail |
+| 32,768 | 0.25 | 35.22 | 19.16 | 1.838× | 7,006 | Pass |
+
+Rates are medians of per-seed medians; ratios are paired by seed. The proposed
+pilot screen requires a median ratio of at least 1.10 and every seed faster.
+Per-seed ratios span 0.980–1.015 at 8k and 1.770–1.853 at 32k. Prefill is similar
+between arms, around 6,627 tok/s at 8k and 4,562 tok/s at 32k. Retention 1.0 still
+pays page scoring/top-k and uses the shared packed attention kernel; this is an
+internal control, not an optimized dense competitor.
+
+[8k summary](benchmarks/validation/ablation/d86279b66c726c5697f408aabfd346170f8f072990bf95f7e0155416643a29a8/summary.json) and
+[32k summary](benchmarks/validation/ablation/c921467929e57dad7293c868610d5dc39cdd0c01275c515a91d9d3d63060d66b/summary.json)
+link the frozen schedules and all 48 timed samples. Sample intervals had medians
+of 50.12–50.16 ms; maximum gaps were 110 ms at 8k and 181.4 ms at 32k, with no
+device or ownership-check dropouts. Raw series stay under ignored `artifacts/`.
+The first 8k load included a cold model download before warmup; subsequent runs
+use the verified project cache, and the duplicate download was removed.
+
+The allocated/reserved peaks are 3,001.9/3,186 MiB at 8k and 5,477.3/6,750 MiB
+at 32k, distinct from device samples. The sampled simultaneous process-tree RSS
+peaks range from 1,895.8 to 2,842.2 MiB at 8k and 2,125.4 to 2,828.6 MiB at 32k.
+Shared RSS pages may double-count; these measurements do not prove absence of OS
+paging or establish target-device capacity. Sparse selection reduces reads while
+retaining the full cache, so both arms have the same peaks here. The current 32k
+prefill exceeds a 4 GB budget on this 12 GB device; target fit remains unverified
+and would require further memory work plus actual target-hardware tests.
+
+These results support investigating the 32k path. Optimized competitors, expanded
+matched quality, profiling and metadata-scoring ablations remain necessary for a
+research claim.
+
 ### Historical quality — RULER NIAH 4 k subset
 
 Llama-3.2-3B-Instruct-AWQ, all-retrieval head pattern, 20 examples per task. These small retrieval subsets do not establish general long-context quality. A dash means no saved result for that exact configuration.
@@ -205,7 +245,7 @@ The all-pages ablation uses the same fused kernel and page-selection machinery; 
 
 Quality resume checks source/model/environment/protocol identity and matched sample counts. The matrix's `--skip-existing` currently reruns legacy adapters because complete identity cannot be resolved before launch; backend identity integration remains pending. Raw benchmark logs and original backend JSON stay under ignored `artifacts/benchmarks/`; exported records contain normalized evidence and error categories. Timeout/error cells remain failures. GPU name and total memory come from the machine running the matrix. PyTorch allocated/reserved bytes are labeled separately; physical residency and competitor peak memory require additional measurement.
 
-The next research gate is balanced repeated sparse/all-pages comparisons at each screened setting: 0.20 at 8k and 0.25 at 32k. Validate on an actual 4 GB GPU before claiming that capacity target.
+The next research gates are profiling the 8k overhead, optimized dense competitors with matched quality, expanded fresh-seed quality and the metadata-scoring contribution. Validate on an actual 4 GB GPU before claiming that capacity target.
 
 The new FlashQuest ablation runner freezes a balanced whole-arm schedule, verifies
 matching quality evidence, pins model/source/environment identity, and samples

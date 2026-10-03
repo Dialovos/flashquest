@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "kind": "balanced-int4-ablation",
+  "cells": [
+    {
+      "cell_id": "c8192-s0-sparse",
+      "ctx_len": 8192,
+      "seed": 0,
+      "arm": "sparse",
+      "retention": 0.2,
+      "block_order": 0
+    },
+    {
+      "cell_id": "c8192-s0-all-pages",
+      "ctx_len": 8192,
+      "seed": 0,
+      "arm": "all-pages",
+      "retention": 1.0,
+      "block_order": 1
+    },
+    {
+      "cell_id": "c8192-s1-all-pages",
+      "ctx_len": 8192,
+      "seed": 1,
+      "arm": "all-pages",
+      "retention": 1.0,
+      "block_order": 0
+    },
+    {
+      "cell_id": "c8192-s1-sparse",
+      "ctx_len": 8192,
+      "seed": 1,
+      "arm": "sparse",
+      "retention": 0.2,
+      "block_order": 1
+    },
+    {
+      "cell_id": "c8192-s2-sparse",
+      "ctx_len": 8192,
+      "seed": 2,
+      "arm": "sparse",
+      "retention": 0.2,
+      "block_order": 0
+    },
+    {
+      "cell_id": "c8192-s2-all-pages",
+      "ctx_len": 8192,
+      "seed": 2,
+      "arm": "all-pages",
+      "retention": 1.0,
+      "block_order": 1
+    },
+    {
+      "cell_id": "c8192-s3-all-pages",
+      "ctx_len": 8192,
+      "seed": 3,
+      "arm": "all-pages",
+      "retention": 1.0,
+      "block_order": 0
+    },
+    {
+      "cell_id": "c8192-s3-sparse",
+      "ctx_len": 8192,
+      "seed": 3,
+      "arm": "sparse",
+      "retention": 0.2,
+      "block_order": 1
+    }
+  ],
+  "quality": [
+    {
+      "run_identity": "85c9abbb694ffb21ba5c03336188658ca2d0e9dff0790a9a9b62cb6b28c2ef07",
+      "sha256": "fbebd5791e2a759375ba2a413f9f22e97997a724de68c9c6bbc48cc0560b577f",
+      "ctx_len": 8192,
+      "path": "benchmarks/validation/quality/85c9abbb694ffb21ba5c03336188658ca2d0e9dff0790a9a9b62cb6b28c2ef07/quality.json"
+    }
+  ],
+  "bench_protocol": {
+    "version": 1,
+    "timing": "cuda-synchronized-monotonic",
+    "warmup": "one-full-trial-including-page-flush",
+    "output_count": "first-from-prefill-plus-decode",
+    "repetitions": "whole-arm"
+  },
+  "order_unit": "whole-arm-warmup-and-repetitions",
+  "minimum_median_ratio": 1.1,
+  "minimum_each_seed_ratio": 1.0,
+  "claims": "pilot ablation; no competitor or capacity claim"
+}

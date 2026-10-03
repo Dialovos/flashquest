@@ -15,8 +15,9 @@ Establish whether FlashQuest offers a reproducible speed, memory, or context-cap
 - [x] Validate the AWQ loader and run the 4k, retention 0.20 pilot; pass 48 CPU and 26 targeted GPU checks.
 - [x] Run the matched 8k and 32k pilots at retention 0.20; preserve the 32k screen failure.
 - [x] Prepare FlashQuest device/process memory observation and balanced immutable ablation schedules; pass 76 CPU checks and rerun both tiny-Llama GPU checks.
+- [x] Complete balanced 8k/0.20 and 32k/0.25 ablations: four input seeds, three repetitions per arm, all 48 timed samples audited.
 
-The 4k/8k screens pass at 0.20. The 32k screen fails at 0.20 and passes its 0.25 fallback. Expanded quality and competitor comparisons remain pending. See the [README](README.md) for per-example evidence, commands, and historical limitations.
+The 4k/8k screens pass at 0.20; 32k passes its 0.25 fallback. The internal performance screen passes at 32k (1.838× median paired ratio) and fails at 8k (0.995×). Expanded quality, competitors, novelty and target capacity remain pending. See the [README](README.md) for evidence and limitations.
 
 ## 1. Prepare full-model experiments
 
@@ -78,13 +79,21 @@ python scripts/phase6_run_ruler_4k_int4.py \
 
 ## 3. Measure the benefit of page selection
 
-- [ ] Benchmark sparse INT4 and all-pages INT4 at 8k and 32k using the same input IDs, model, and cache layout.
-- [ ] Use warmup and at least three repetitions; retain samples, median rates, and run-to-run variation.
-- [ ] Record prefill time, decode throughput, end-to-end throughput, and allocated/reserved memory separately.
-- [ ] Repeat promising results with additional input seeds.
+- [x] Benchmark sparse INT4 and all-pages INT4 at 8k and 32k using the same input IDs, model, and cache layout.
+- [x] Use warmup and at least three repetitions; retain samples, median rates, and run-to-run variation.
+- [x] Record prefill time, decode throughput, end-to-end throughput, and allocated/reserved memory separately.
+- [x] Repeat promising results with additional input seeds.
 - [ ] Profile page scoring, selection, packed attention, and partial-page handling if the benefit is small or inconsistent.
 
 Done when the results show whether sparse decode improves on this runtime's all-pages path at a retention that passed the quality screen. Page selection reduces reads; the persistent cache still stores the full context. This ablation shares the sparse kernel and selection machinery, so it also needs independent dense competitors.
+
+The [8k block](benchmarks/validation/ablation/d86279b66c726c5697f408aabfd346170f8f072990bf95f7e0155416643a29a8/summary.json)
+has sparse/all-pages medians of 38.84/38.91 tok/s, paired ratio 0.995× (range
+0.980–1.015): no practical gain. The [32k block](benchmarks/validation/ablation/c921467929e57dad7293c868610d5dc39cdd0c01275c515a91d9d3d63060d66b/summary.json)
+has medians 35.22/19.16 tok/s, paired ratio 1.838× (range 1.770–1.853); every seed
+is faster and the proposed pilot screen passes. Prefill is essentially unchanged.
+The control still pays scoring/top-k, so these results establish an internal
+ablation benefit at 32k, not a competitive or statistically confirmed research win.
 
 ```bash
 python scripts/run_validation_ablation.py --contexts 8192 --retention 0.20 \
@@ -105,12 +114,21 @@ Done when a fresh 8k/32k comparison includes valid phase timings and quantized d
 ## 5. Verify memory and capacity
 
 - [x] Prepare physical-device polling, owned process-tree RSS, validated phase windows and safe exports for FlashQuest ablation cells.
+- [x] Measure FlashQuest load/warmup/prefill/decode windows, owned process-tree RSS and system memory at 8k and 32k.
 - [ ] Measure physical GPU memory throughout loading, prefill, and decode for every backend.
 - [ ] Record GPU usage alongside process/system memory and PyTorch allocator counters; identify any offload or paging.
 - [ ] Repeat the relevant quality and performance runs on an actual 4 GB GPU.
 - [ ] Document the largest context that completes prefill and decode under the stated memory configuration.
 
 Done when capacity claims have hardware-specific evidence. The available 12 GB RTX 4080 Laptop GPU can validate kernels and comparisons; it cannot establish a GPU-resident 32k result on a 4 GB device. Keep measured values separate from unmeasured fields.
+
+Both arms reached sampled device peaks of 3,442 MiB at 8k and 7,006 MiB at 32k.
+Allocated/reserved peaks were 3,001.9/3,186 and 5,477.3/6,750 MiB respectively.
+Sampling medians were about 50 ms, with maximum gaps of 110/181.4 ms and no device
+or ownership-check dropouts. RSS and MemAvailable remain separate; configured
+CUDA placement does not prove absence of OS fallback. The current 32k prefill
+needs more than a 4 GB budget on this device. Preserve the target-capacity gate;
+evaluate bounded prefill only as separately validated future work.
 
 ## 6. Test the contribution and decide
 
@@ -127,8 +145,10 @@ If the full runtime lacks a competitive advantage, consider a narrower kernel or
 
 Keep new JSON records, logs, configuration/version details, and comparison summaries under `benchmarks/validation*`. Use separate output directories for different experiment configurations and preserve the historical phase files. Capture conclusions and links to their evidence in this roadmap or the README.
 
-The next action is balanced sparse/all-pages performance at 8k/0.20 and 32k/0.25
-using the prepared memory sampler. Freeze
-a confirmatory protocol before fresh seeds 1–5. Competitor setup can proceed separately.
+The next actions are profiling the 8k scoring/selection/attention costs and preparing
+optimized quantized dense competitors with matching quality. The 32k result supports
+continuing that comparison; it does not settle novelty or target fit. Freeze a
+confirmatory protocol before fresh quality seeds 1–5, then test the metadata-scoring
+and fused-attention contributions. Competitor setup and bounded prefill remain separate.
 The work is on the local feature branch `refactor/benchmark-validation`. Check off
 tasks only when their evidence is saved.

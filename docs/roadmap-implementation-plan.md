@@ -19,8 +19,12 @@ multivalue (16/20 versus dense 19/20). The prescribed 0.25 fallback passes with
 blocks use each screened setting: 8k/0.20 and 32k/0.25.
 FlashQuest benchmark identity, validated phase markers, device/process sampling,
 balanced schedules and paired summaries are implemented; 76 CPU checks and both
-tiny-Llama GPU checks pass. Full-model timed blocks and competitor sampler
-integration remain unmeasured. Source dirty status covers measurement sources;
+tiny-Llama GPU checks pass, plus a later relative-path regression (77 CPU checks
+total). Full-model timed blocks are complete: 8k median paired ratio 0.995× fails
+the practical screen; 32k ratio 1.838× passes, with all four seeds faster. Sampled
+device peaks are 3,442/7,006 MiB; 32k allocated peak is 5,477.3 MiB. Competitor
+sampler integration and actual target-capacity tests remain unmeasured.
+Source dirty status covers measurement sources;
 writing result progress alone does not change the identity used for resume.
 
 The work packages specify the intended implementation; completion evidence belongs
