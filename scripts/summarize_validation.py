@@ -19,6 +19,7 @@ from run_validation_ablation import checked_cell, schedule
 
 
 def summarize(path: Path) -> dict:
+    path = path.resolve()
     saved = json.loads(path.read_text())
     identity = canonical_identity(saved["identity"])
     if content_hash(identity) != saved["run_identity"] or content_hash(saved["protocol"]) != identity["protocol_sha256"]:

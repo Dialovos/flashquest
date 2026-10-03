@@ -48,6 +48,7 @@ def quality_prerequisites(paths: list[Path], contexts: list[int], retention: flo
     evidence = []
     covered = set()
     for path in paths:
+        path = path.resolve()
         record = json.loads(path.read_text())
         identity = canonical_identity(record["identity"])
         if content_hash(identity) != record["run_identity"] or record["status"] != "complete":

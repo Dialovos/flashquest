@@ -96,6 +96,12 @@ def test_summary_uses_paired_seed_medians_and_spread(evidence):
     assert result["pairs"][0]["sparse"]["decode_sample_min_tok_s"] < 120
 
 
+def test_summary_accepts_relative_cli_path(evidence, monkeypatch):
+    path, _, _ = evidence
+    monkeypatch.chdir(path.parent)
+    assert S.summarize(Path("schedule.json"))["contexts"][0]["practical_screen_pass"] is True
+
+
 def test_one_slower_seed_fails_practical_screen(evidence):
     path, saved, run = evidence
     entry = next(c for c in saved["cells"] if c["cell"]["arm"] == "sparse")
@@ -200,6 +206,8 @@ def test_quality_prerequisite_recomputes_screen(tmp_path, monkeypatch):
     path = tmp_path / "quality.json"
     C.write_record(path, record)
     assert A.quality_prerequisites([path], [8192], .20, MODEL)[0]["ctx_len"] == 8192
+    monkeypatch.chdir(tmp_path)
+    assert A.quality_prerequisites([Path("quality.json")], [8192], .20, MODEL)[0]["path"] == "quality.json"
     with pytest.raises(ValueError, match="every scheduled context"):
         A.quality_prerequisites([path], [8192, 32768], .20, MODEL)
     record["screen"]["tasks"]["single"]["arms"]["int4-r0.2"]["screen_pass"] = False
