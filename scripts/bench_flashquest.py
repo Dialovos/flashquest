@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 from bench_common import (
+    REPO_ROOT,
     add_run_arguments,
     content_hash,
     is_oom,
@@ -75,7 +76,8 @@ def main() -> int:
         else:
             from flashquest.cache.persistent_int8 import PersistentInt8KVCache as CacheCls
 
-        model, tok = load_awq_model(args.model, revision=resolved_model["revision"])
+        model, tok = load_awq_model(args.model, revision=resolved_model["revision"],
+                                   cache_dir=str(REPO_ROOT / "artifacts" / "hf-cache"))
         cfg = model.config
         actual_revision = getattr(cfg, "_commit_hash", None)
         if actual_revision is not None and actual_revision != resolved_model["revision"]:
@@ -118,7 +120,8 @@ def main() -> int:
             "weight_storage_bytes": storage_bytes(weights),
             "persistent_cache_storage_bytes": storage_bytes(cache_tensors),
         }
-        config.update(model=resolved_model["model"], revision=resolved_model["revision"], warmup_steps=warmup_steps,
+        config.update(model=resolved_model["model"], revision=resolved_model["revision"],
+                      model_cache="project-hf-cache", warmup_steps=warmup_steps,
                       cache_capacity=args.ctx_len + warmup_steps + 1,
                       input_sha256=content_hash(input_ids), runtime=runtime_info,
                       generation="manual-greedy-fixed-output-count-v1",
