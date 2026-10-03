@@ -8,7 +8,7 @@ The implementation includes persistent packed caches and fused Triton decode ker
 
 Run the CLI examples below, or use the quality harness for matched retrieval examples. CPU validation checks: `python -m pytest tests/test_phase6_headtohead.py tests/test_quality_validation.py`. GPU checks: `python -m pytest tests/test_bench_flashquest.py tests/test_sparse_int4.py tests/test_persistent_int4.py tests/test_page_scores_int8.py -m 'not slow'`.
 
-2026-10-03 local validation: 73 CPU checks passed; both tiny-Llama GPU checks passed again after adding timing markers and benchmark identity. The earlier 24 kernel/cache checks passed. Retention 0.20 passes the 4k and 8k retrieval pilots but fails 32k multivalue (16/20 versus dense's 19/20); the next quality setting is 0.25. Expanded quality, competitive speed, novelty, and 4 GB capacity remain unproven.
+2026-10-03 local validation: 76 CPU checks passed; both tiny-Llama GPU checks passed again after adding timing markers and benchmark identity. The earlier 24 kernel/cache checks passed. Retention 0.20 passes the 4k and 8k retrieval pilots but fails 32k multivalue (16/20 versus dense's 19/20); the next quality setting is 0.25. Expanded quality, competitive speed, novelty, and 4 GB capacity remain unproven.
 
 See the [research roadmap](roadmap.md) for the remaining experiments, priorities, and decision criteria.
 

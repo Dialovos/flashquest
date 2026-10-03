@@ -14,6 +14,7 @@ from bench_common import (
     validate_export,
     write_record,
 )
+from gpu_memory import checked_memory
 from run_validation_ablation import checked_cell, schedule
 
 
@@ -26,6 +27,9 @@ def summarize(path: Path) -> dict:
     expected = schedule(config["contexts"], config["seeds"], config["retention"])
     if saved["protocol"]["cells"] != expected or [c["cell"] for c in saved["cells"]] != expected[:len(saved["cells"])]:
         raise ValueError("schedule does not preserve its balanced order")
+    if saved["status"] == "complete" and (len(saved["cells"]) != len(expected) or
+                                            any(c["status"] != "complete" for c in saved["cells"])):
+        raise ValueError("schedule completion differs from its cells")
     records = {}
     for entry in saved["cells"]:
         if entry["status"] != "complete":
@@ -35,10 +39,7 @@ def summarize(path: Path) -> dict:
             raise ValueError("cell file changed after observation")
         record = checked_cell(result_path, entry["cell"], {"identity": identity}, config["reps"], config["n_decode"])
         memory = entry["memory"]
-        if (memory["sampler_failed"] or memory["concurrent_compute_workload"] or
-                memory["ownership_check_dropouts"] or not memory["device_sample_count"] or
-                memory["phase_status"] != "validated-windows"):
-            raise ValueError("cell has invalid memory observation")
+        checked_memory(memory, REPO_ROOT, config["reps"])
         records[entry["cell"]["cell_id"]] = (record, memory)
     contexts = []
     for context in config["contexts"]:

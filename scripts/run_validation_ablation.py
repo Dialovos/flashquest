@@ -25,7 +25,7 @@ from bench_common import (
     write_record,
 )
 from bench_flashquest import BENCH_PROTOCOL
-from gpu_memory import observe_command, resolve_device
+from gpu_memory import checked_memory, observe_command, resolve_device
 from phase6_run_ruler_4k_int4 import screen_verdict
 
 
@@ -199,6 +199,7 @@ def main(argv=None) -> int:
             if file_hash(path) != entry["result"]["sha256"]:
                 raise ValueError("resume cell changed")
             checked_cell(path, entry["cell"], run, args.reps, args.n_decode)
+            checked_memory(entry["memory"], REPO_ROOT, args.reps)
     write_record(REPO_ROOT / "benchmarks" / "validation" / "protocols" /
                  f"{content_hash(protocol)}.json", protocol)
     write_record(out, export_schedule(run, result))
@@ -213,22 +214,27 @@ def main(argv=None) -> int:
                    "--reps", str(args.reps), "--n-decode", str(args.n_decode), "--out", str(output)]
         observed = observe_command(command, raw_dir, device, timeout_s=args.timeout, interval_s=args.interval_ms / 1000)
         entry = {"cell": cell, **observed}
+        entry["observation_status"] = observed["status"]
+        failures = [] if observed["status"] == "complete" else [observed["status"]]
         memory = entry["memory"]
         memory["raw_series"]["path"] = (raw_dir / "memory-series.json").relative_to(REPO_ROOT).as_posix()
-        if observed["returncode"] != 0 and entry["status"] == "complete":
-            entry["status"] = "backend-error"
+        if observed["returncode"] != 0 and observed["status"] == "complete":
+            failures.append("backend-error")
         if output.exists():
             entry["result"] = {"path": output.relative_to(REPO_ROOT).as_posix(), "sha256": file_hash(output)}
-            if entry["status"] == "complete":
+            if not failures:
                 try:
                     checked_cell(output, cell, run, args.reps, args.n_decode)
                 except (KeyError, TypeError, ValueError):
-                    entry["status"] = "invalid-result"
+                    failures.append("invalid-result")
         else:
-            entry["status"] = "missing-result"
-        if (memory["sampler_failed"] or memory["concurrent_compute_workload"] or
-                memory["ownership_check_dropouts"] or not memory["device_sample_count"]):
-            entry["status"] = "invalid-telemetry"
+            failures.append("missing-result")
+        try:
+            checked_memory(memory, REPO_ROOT, args.reps)
+        except (KeyError, TypeError, ValueError):
+            failures.append("invalid-telemetry")
+        entry["failure_categories"] = failures
+        entry["status"] = failures[0] if failures else "complete"
         result["cells"].append(entry)
         result["status"] = "complete" if len(result["cells"]) == len(cells) else "incomplete"
         if entry["status"] != "complete":

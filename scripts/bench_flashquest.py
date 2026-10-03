@@ -118,7 +118,7 @@ def main() -> int:
             "weight_storage_bytes": storage_bytes(weights),
             "persistent_cache_storage_bytes": storage_bytes(cache_tensors),
         }
-        config.update(revision=resolved_model["revision"], warmup_steps=warmup_steps,
+        config.update(model=resolved_model["model"], revision=resolved_model["revision"], warmup_steps=warmup_steps,
                       cache_capacity=args.ctx_len + warmup_steps + 1,
                       input_sha256=content_hash(input_ids), runtime=runtime_info,
                       generation="manual-greedy-fixed-output-count-v1",

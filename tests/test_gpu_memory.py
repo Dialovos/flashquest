@@ -1,5 +1,6 @@
 """CPU-only checks for device selection, attribution, windows and child cleanup."""
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -122,3 +123,20 @@ def test_timeout_stops_only_owned_group(tmp_path, fake_gpu):
                                tmp_path, DEVICE, timeout_s=.1, interval_s=.02)
     assert result["status"] == "timeout" and result["returncode"] != 0
     assert result["memory"]["sample_count"] > 0
+
+
+def test_new_foreign_workload_stops_our_child_and_preserves_foreign_process(tmp_path, fake_gpu, monkeypatch):
+    with subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"], start_new_session=True) as foreign:
+        calls = [0]
+        def active(device):
+            calls[0] += 1
+            return set() if calls[0] == 1 else {foreign.pid}
+        monkeypatch.setattr(M, "compute_pids", active)
+        try:
+            result = M.observe_command([sys.executable, "-c", "import time; time.sleep(30)"],
+                                       tmp_path, DEVICE, interval_s=.02)
+            assert result["status"] == "concurrent-workload" and result["returncode"] != 0
+            assert result["memory"]["concurrent_compute_workload"] is True
+            assert foreign.poll() is None
+        finally:
+            foreign.terminate()

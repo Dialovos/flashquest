@@ -16,7 +16,7 @@ statistics, and target-device capacity tests remain separate requirements.
 Continuation: the 8k screen passes at 0.20; the complete 32k screen fails sparse
 multivalue (16/20 versus dense 19/20). The prescribed 0.25 fallback is next.
 FlashQuest benchmark identity, validated phase markers, device/process sampling,
-balanced schedules and paired summaries are implemented; 73 CPU checks and both
+balanced schedules and paired summaries are implemented; 76 CPU checks and both
 tiny-Llama GPU checks pass. Full-model timed blocks and competitor sampler
 integration remain unmeasured. Source dirty status covers measurement sources;
 writing result progress alone does not change the identity used for resume.

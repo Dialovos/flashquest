@@ -66,10 +66,15 @@ def evidence(tmp_path, monkeypatch):
         C.write_record(path, record)
         memory = {"sampler_failed": False, "concurrent_compute_workload": False,
                   "ownership_check_dropouts": 0, "device_sample_count": 5,
+                  "ownership_checks": 1, "sample_count": 5, "device_baseline_mib": 50,
                   "phase_status": "validated-windows", "device_sampled_peak_mib": 200,
                   "device_baseline_adjusted_peak_mib": 150, "process_tree_rss_sampled_peak_mib": 100,
                   "actual_interval_median_ms": 50, "actual_interval_max_ms": 80,
-                  "device_dropouts": 0, "phases": {"decode": {"device_sampled_peak_mib": 180}}}
+                  "device_dropouts": 0,
+                  "phases": {phase: {"device_sampled_peak_mib": None, "window_count": count,
+                                      "sample_count": 0, "process_tree_rss_sampled_peak_mib": None}
+                             for phase, count in (("load", 1), ("warmup", 1), ("prefill", 3), ("decode", 3))},
+                  "raw_series": {"path": "artifacts/not-in-checkout.json", "sha256": C.content_hash([])}}
         result["cells"].append({"cell": cell, "status": "complete", "memory": memory,
                                 "result": {"path": path.name, "sha256": C.file_hash(path)}})
     saved = A.export_schedule(run, result)
@@ -109,6 +114,31 @@ def test_incomplete_schedule_has_no_gate(evidence):
     saved["status"] = "incomplete"
     rewrite(path, saved)
     assert S.summarize(path)["contexts"][0]["practical_screen_pass"] is None
+
+
+def test_completion_status_requires_every_cell(evidence):
+    path, saved, _ = evidence
+    saved["cells"] = saved["cells"][:2]
+    rewrite(path, saved)
+    with pytest.raises(ValueError, match="completion differs"):
+        S.summarize(path)
+
+
+def test_memory_coverage_and_local_raw_hash_are_verified(evidence):
+    path, saved, _ = evidence
+    saved["cells"][0]["memory"]["device_sample_count"] = 6
+    rewrite(path, saved)
+    with pytest.raises(ValueError, match="coverage"):
+        S.summarize(path)
+    saved["cells"][0]["memory"]["device_sample_count"] = 5
+    rewrite(path, saved)
+    series = path.parent / "artifacts" / "not-in-checkout.json"
+    series.parent.mkdir()
+    series.write_text("[]")
+    assert S.summarize(path)["contexts"][0]["practical_screen_pass"] is True
+    series.write_text("{}")
+    with pytest.raises(ValueError, match="raw memory series changed"):
+        S.summarize(path)
 
 
 def test_changed_cell_hash_is_rejected(evidence):
@@ -220,3 +250,17 @@ def test_partial_resume_keeps_order_and_does_not_repeat_completed_cells(evidence
     assert len(calls) == 8 and completed["status"] == "complete"
     assert hashes == [cell["result"]["sha256"] for cell in completed["cells"][:2]]
     assert S.summarize(schedules[0])["contexts"][0]["practical_screen_pass"] is True
+    original_observer = A.observe_command
+    def timed_out(*args, **kwargs):
+        observed = original_observer(*args, **kwargs)
+        observed["status"] = "timeout"
+        observed["returncode"] = -15
+        observed["memory"]["sampler_failed"] = True
+        return observed
+    monkeypatch.setattr(A, "observe_command", timed_out)
+    assert A.main([*argv, "--attempt", "1", "--retry-of", str(schedules[0])]) == 1
+    retries = list((path.parent / "benchmarks").glob("validation/ablation/*/schedule.json"))
+    failed = next(json.loads(p.read_text()) for p in retries if p != schedules[0])
+    assert failed["status"] == "execution-error" and failed["cells"][0]["status"] == "timeout"
+    assert failed["cells"][0]["failure_categories"] == ["timeout", "invalid-telemetry"]
+    assert failed["identity"]["config"]["retry_of"] == completed["run_identity"]

@@ -18,7 +18,7 @@ from itertools import pairwise
 from pathlib import Path
 from statistics import median
 
-from bench_common import file_hash, write_record
+from bench_common import file_hash, validate_export, write_record
 
 
 def query(arguments: list[str]) -> list[list[str]]:
@@ -182,6 +182,32 @@ def summarize(samples: list[dict], baseline: dict, interval_s: float,
                     "process_tree_rss_sampled_peak_mib": peak(selected, "process_tree_rss_mib"),
                 }
     return result
+
+
+def checked_memory(memory: dict, root: Path, repetitions: int) -> bool:
+    """Validate complete FlashQuest observation; verify local raw series if present."""
+    validate_export(memory)
+    if (memory["sampler_failed"] or memory["concurrent_compute_workload"] or
+            memory["ownership_check_dropouts"] or memory["phase_status"] != "validated-windows" or
+            memory["device_sample_count"] <= 0 or memory["ownership_checks"] <= 0 or
+            memory["device_sample_count"] + memory["device_dropouts"] != memory["sample_count"]):
+        raise ValueError("invalid memory observation coverage")
+    for field in ("device_baseline_mib", "device_sampled_peak_mib",
+                  "device_baseline_adjusted_peak_mib", "process_tree_rss_sampled_peak_mib"):
+        value = memory[field]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+            raise ValueError("invalid memory peak")
+    if not math.isclose(memory["device_baseline_adjusted_peak_mib"],
+                        max(0, memory["device_sampled_peak_mib"] - memory["device_baseline_mib"])):
+        raise ValueError("memory baseline adjustment differs")
+    for phase in ("load", "warmup", "prefill", "decode"):
+        window = memory["phases"][phase]
+        if window is None or window["window_count"] != (1 if phase in {"load", "warmup"} else repetitions):
+            raise ValueError("incomplete memory phase windows")
+    series = root / memory["raw_series"]["path"]
+    if series.exists() and file_hash(series) != memory["raw_series"]["sha256"]:
+        raise ValueError("raw memory series changed")
+    return series.exists()
 
 
 class MemorySampler:

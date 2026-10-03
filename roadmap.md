@@ -14,7 +14,7 @@ Establish whether FlashQuest offers a reproducible speed, memory, or context-cap
 - [x] Add matched three-arm quality evidence with immutable identity, atomic resume, safe exports, and one reusable INT4 cache.
 - [x] Validate the AWQ loader and run the 4k, retention 0.20 pilot; pass 48 CPU and 26 targeted GPU checks.
 - [x] Run the matched 8k and 32k pilots at retention 0.20; preserve the 32k screen failure.
-- [x] Prepare FlashQuest device/process memory observation and balanced immutable ablation schedules; pass 73 CPU checks and rerun both tiny-Llama GPU checks.
+- [x] Prepare FlashQuest device/process memory observation and balanced immutable ablation schedules; pass 76 CPU checks and rerun both tiny-Llama GPU checks.
 
 The 4k/8k screens pass at 0.20; 32k multivalue fails and needs the 0.25 fallback. Expanded quality and competitor comparisons remain pending. See the [README](README.md) for per-example evidence, commands, and historical limitations.
 
