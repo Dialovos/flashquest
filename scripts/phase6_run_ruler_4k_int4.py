@@ -21,6 +21,7 @@ from bench_common import (
     SCHEMA_VERSION,
     content_hash,
     error_code,
+    export_identity,
     file_hash,
     make_identity,
     model_identity,
@@ -203,6 +204,7 @@ def validate_cell(cell, examples, max_new_tokens):
 def export_result(result: dict, raw_path: Path) -> dict:
     exported = {key: result[key] for key in ("schema_version", "run_identity", "identity",
                                             "protocol", "status", "error", "screen", "manifest")}
+    exported["identity"] = export_identity(result["identity"])
     exported["raw_evidence"] = {"path": raw_path.relative_to(REPO_ROOT).as_posix(),
                                 "sha256": file_hash(raw_path)}
     exported["cells"] = []

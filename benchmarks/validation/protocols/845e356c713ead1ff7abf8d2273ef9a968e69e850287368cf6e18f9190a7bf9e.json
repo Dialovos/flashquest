@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "kind": "retrieval-pilot",
+  "scorer": "all-expected-substrings",
+  "ratio_floor": 0.85,
+  "dense_zero": "inconclusive",
+  "generation": "greedy-eos-or-limit",
+  "claims": "small retrieval screen only; no general quality or capacity claim"
+}

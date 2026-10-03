@@ -233,6 +233,44 @@ def make_identity(config: dict, model: dict, protocol: dict, environment: dict,
     return {"run_identity": content_hash(identity), "identity": identity}
 
 
+def export_identity(identity: dict) -> dict:
+    """Give file fingerprints explicit types; retain the canonical identity hash.
+
+    Filename-to-digest mappings can resemble credentials to secret scanners when
+    a filename contains 'token' or 'key'. Public evidence uses path/sha256 entries;
+    raw evidence and run hashing continue to use the original canonical mappings.
+    """
+    exported = dict(identity)
+    for section in ("model", "source"):
+        metadata = dict(identity[section])
+        metadata["files"] = [{"sha256": digest, "path": path}
+                             for path, digest in sorted(metadata["files"].items())]
+        exported[section] = metadata
+    return exported
+
+
+def canonical_identity(identity: dict) -> dict:
+    """Recover the hashed identity from either public or original file mappings."""
+    canonical = dict(identity)
+    for section in ("model", "source"):
+        metadata = dict(identity[section])
+        entries = metadata["files"]
+        if isinstance(entries, list):
+            files = {}
+            for entry in entries:
+                if (set(entry) != {"sha256", "path"} or
+                        not isinstance(entry["path"], str) or entry["path"] in files or
+                        not isinstance(entry["sha256"], str) or
+                        not re.fullmatch(r"[0-9a-f]{64}", entry["sha256"])):
+                    raise ValueError("invalid file fingerprint entry")
+                files[entry["path"]] = entry["sha256"]
+            metadata["files"] = files
+        if content_hash(metadata["files"]) != metadata["content_sha256"]:
+            raise ValueError("file fingerprints differ from their content identity")
+        canonical[section] = metadata
+    return canonical
+
+
 def validate_export(value) -> None:
     """Fail closed on paths, identifying fields, non-finite numbers and unknown types."""
     if isinstance(value, dict):
@@ -277,6 +315,8 @@ def export_benchmark(record: dict) -> dict:
                    "prefill_tok_s", "decode_tok_s", "end_to_end_tok_s",
                    "peak_allocated_mib", "peak_reserved_mib"}
     result = {key: value for key, value in record.items() if key in keys}
+    if "identity" in result:
+        result["identity"] = export_identity(result["identity"])
     result["config"] = {key: value for key, value in record.get("config", {}).items()
                         if key in config_keys}
     model = result["config"].get("model")

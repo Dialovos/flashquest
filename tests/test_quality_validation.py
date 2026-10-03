@@ -15,6 +15,7 @@ import bench_common as C
 import phase6_run_ruler_4k_int4 as Q
 
 MODEL_ID = {"model": "test/model", "revision": "a" * 40, "files": {"config.json": "b" * 64}}
+MODEL_ID["content_sha256"] = C.content_hash(MODEL_ID["files"])
 ENV = {"python": "test", "packages": {}, "gpus": None}
 
 
@@ -32,7 +33,7 @@ class Cache:
 @pytest.fixture
 def fixture_runtime(tmp_path, monkeypatch):
     monkeypatch.setattr(Q, "REPO_ROOT", tmp_path)
-    monkeypatch.setattr(C, "source_identity", lambda: {"content_sha256": "c" * 64})
+    monkeypatch.setattr(C, "source_identity", lambda: {"files": {}, "content_sha256": C.content_hash({})})
     attn = Attention()
     model = SimpleNamespace(
         attn=attn, device="cuda:0",
@@ -109,10 +110,29 @@ def test_three_arms_share_inputs_and_reuse_one_cache(tmp_path, fixture_runtime):
     gc.collect()
     assert state["caches"][0]() is None
     exported = json.loads(path.read_text())
+    assert C.content_hash(C.canonical_identity(exported["identity"])) == exported["run_identity"]
     assert "generated" not in exported["cells"][0]["samples"][0]
     assert "/private/path" not in path.read_text()
     raw = tmp_path / exported["raw_evidence"]["path"]
     assert "generated" in json.loads(raw.read_text())["cells"][0]["samples"][0]
+
+
+def test_export_fingerprints_preserve_identity_and_reject_tampering():
+    files = {"tokenizer.json": C.content_hash("model"),
+             "scripts/run_passkey.py": C.content_hash("source")}
+    metadata = {"files": files, "content_sha256": C.content_hash(files)}
+    run = C.make_identity({}, metadata, {}, ENV, source=metadata)
+    exported = C.export_identity(run["identity"])
+    assert C.canonical_identity(exported) == run["identity"]
+    assert C.content_hash(C.canonical_identity(exported)) == run["run_identity"]
+    assert isinstance(run["identity"]["source"]["files"], dict)
+    exported["source"]["files"][0]["sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="content identity"):
+        C.canonical_identity(exported)
+    exported = C.export_identity(run["identity"])
+    exported["source"]["files"].append(exported["source"]["files"][0])
+    with pytest.raises(ValueError, match="fingerprint entry"):
+        C.canonical_identity(exported)
 
 
 def test_failure_preserves_completed_cells_and_resume_skips_them(tmp_path, fixture_runtime):
