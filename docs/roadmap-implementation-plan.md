@@ -1,35 +1,22 @@
 # Roadmap implementation and test plan
 
-Updated: 2026-10-03. Implements [roadmap.md](../roadmap.md).
+Updated: 2026-10-04. Implements [roadmap.md](../roadmap.md).
 
-Implementation started 2026-10-03: AWQ setup, the three-arm quality harness, quality
-identity/resume/export support, and the initial 4k screen are complete. See the
-[roadmap](../roadmap.md) and [README](../README.md) for evidence and remaining work;
-the work packages below retain the design and validation requirements.
+The initial 4k milestone, longer retrieval pilots, balanced internal ablations,
+component profiling and bounded contribution ablations are complete. They support
+a 32k internal page-selection benefit and a metadata-storage saving. Fresh quality
+confirmation, optimized competitor comparisons and actual 4 GB capacity remain
+open. See the [current execution checklist and decision framework](#6-current-execution-status-and-decision-framework)
+and the [README evidence](../README.md#benchmarks-and-validation).
 
-**Initial milestone (completed): the 4k quality screen at retention 0.20, with
-matched dense, all-pages INT4, and sparse INT4 arms.** AWQ setup, result identity,
-and the quality harness preceded it. Next: longer-context quality, then memory
-instrumentation and balanced performance blocks. Competitor setup, expanded
-statistics, and target-device capacity tests remain separate requirements.
+**Sections 1–5 preserve the 2026-10-03 audited design snapshot.** Their findings,
+candidate versions, planned interfaces and proposed thresholds describe that
+starting point, rather than today's completion status. Section 6 records progress
+and the subsequently frozen confirmation protocol; that protocol supersedes the
+earlier confirmation proposal. Do not retroactively change historical source
+identities or reinterpret pilots as confirmatory results.
 
-Continuation: the 8k screen passes at 0.20; the complete 32k screen fails sparse
-multivalue (16/20 versus dense 19/20). The prescribed 0.25 fallback passes with
-20/17/17 sparse hits against 20/17/19 dense; all-pages is 20/16/20. Timed pilot
-blocks use each screened setting: 8k/0.20 and 32k/0.25.
-FlashQuest benchmark identity, validated phase markers, device/process sampling,
-balanced schedules and paired summaries are implemented; 76 CPU checks and both
-tiny-Llama GPU checks pass, plus a later relative-path regression (77 CPU checks
-total). Full-model timed blocks are complete: 8k median paired ratio 0.995× fails
-the practical screen; 32k ratio 1.838× passes, with all four seeds faster. Sampled
-device peaks are 3,442/7,006 MiB; 32k allocated peak is 5,477.3 MiB. Competitor
-sampler integration and actual target-capacity tests remain unmeasured.
-Source dirty status covers measurement sources;
-writing result progress alone does not change the identity used for resume.
-
-The work packages specify the intended implementation; completion evidence belongs
-in the roadmap and README. Candidate engines and confirmatory thresholds remain
-proposals, and no approval of commits, publishing, or hardware changes is implied.
+No approval of publishing or hardware changes is implied.
 Follow workspace `AGENTS.md`, preserve existing edits and historical
 results, and ask before pushes/PRs as required there. Technical browsing and routine
 implementation choices do not acquire additional approval gates here.
@@ -501,3 +488,99 @@ artifacts/
 Save units, observed/estimated/unmeasured status, hashes, source links and limitations.
 Check roadmap boxes only after complete evidence is saved and linked. Preserve
 historical files and all user work.
+
+## 6. Current execution status and decision framework
+
+Status at this documentation checkpoint, 2026-10-04. Evidence remains conditional
+on its recorded source/model/environment and measurement boundaries. Historical
+records are preserved; a later clean commit must not replace the dirty-source
+fingerprints recorded by the completed pilots.
+
+| Work package | Completed evidence | Remaining endpoint |
+| --- | --- | --- |
+| WP0–WP2 | AWQ loading, safe immutable quality records/resume, cache restoration and matched three-arm pilots; 77 earlier CPU checks and two tiny-Llama GPU checks. | Recheck affected paths after changes; accept fresh confirmation only under its frozen source/protocol. |
+| WP3 | Pinned AWQ snapshot; matching-family Q4_K_M GGUF; external llama.cpp b11382 and isolated vLLM 0.30.0 environments prepared. | Valid intended-cache smokes and realized kernel/cache/EOS verification for every competitor configuration. |
+| WP4 | 4k/8k pass the existing screen at 0.20; 32k/0.20 fails and its prescribed 0.25 tuning fallback passes. A fresh protocol is saved. | Complete and audit all nine fresh task/context endpoints before a confirmatory claim. |
+| WP5 | Balanced four-seed, three-repetition sparse/all-pages blocks: 0.995× at 8k, 1.838× at 32k. Isolated score/top-k/packed/tail/merge timings at both contexts are saved. | Compare optimized competitors; component timings alone do not identify a whole-model causal bottleneck or competitive win. |
+| WP6 | Exact-ID native-server adapters, sanitized identities, request metrics and failure-preserving schedules implemented. llama.cpp Q4/FP16 short requests completed in the linked smoke. | Valid 8k/32k repeated comparisons and matching retrieval quality; the saved vLLM smoke cells are execution errors. |
+| WP7 | FlashQuest physical-device/process-tree sampling covers completed blocks. Competitor smoke telemetry includes load/warmup/request windows where validated. | Full competitor observations and hardware-specific capacity runs. Native prefill/decode memory windows remain unmeasured without aligned markers. |
+| WP8 | Representative actual BF16 post-RoPE captures, metadata-versus-summary bytes/timings, exact FP32 packed-value output/LSE oracle, BF16 SDPA comparison and closest-prior-work map. | Investigate selection disagreements, then write the evidence-linked research decision after fresh quality/competitor gates. |
+
+Evidence: [matched pilots and internal blocks](../README.md#benchmarks-and-validation),
+[component/contribution reports](../benchmarks/validation/contrib/summary.md),
+[competitor protocol](competitor-validation.md),
+[preserved short smoke](../benchmarks/validation/competitors/038adb95458098fad6f72e110dcfc1272cfde5e0d7292023ab72e0db9e52a379/schedule.json),
+[prior-work map](contribution-prior-work.md), and
+[independent checkpoints](independent-roadmap-audit.md).
+Preparing an environment or completing one short request does not finish WP6/WP7.
+
+### Frozen fresh quality confirmation
+
+The [saved protocol](../benchmarks/validation/protocols/9f2f55af018bf2dc27efc97cf0d90940acf638fc08aeb2ae23330318b63226aa.json)
+selects 100 examples per task/context: seeds 1–5 × 20, excluding tuning seed 0;
+retention 0.20 at nominal 4k/8k and 0.25 at 32k. Dense, all-pages INT4 and sparse
+INT4 use identical examples, the pinned model, greedy EOS-or-128 generation and
+the frozen substring scorer. Actual input lengths and input-plus-generation
+capacity remain checked independently of nominal labels.
+
+All nine simultaneous lower bounds on sparse-minus-dense accuracy must exceed
+−0.10, with observed dense and sparse rates at least 0.80 in each endpoint.
+The exact gain/loss bounds use `alpha = 0.05/(2×9)` per bound; all-pages comparisons
+are diagnostics outside that family. The accuracy floors are observed screens,
+not population confidence guarantees. One clean identical measurement-source
+snapshot, fixed sample counts and complete paired records are required.
+These choices are now recorded execution settings, rather than the earlier open
+threshold proposal. Results remain pending at this checkpoint. Failure to establish
+non-inferiority does not establish inferiority; incomplete records or a weak dense
+baseline are inconclusive. Adjusting settings after seeing confirmation makes that
+analysis exploratory and requires fresh confirmation.
+
+### Contribution interpretation still open
+
+The real captures cover one seed-0 single-needle prompt, layers 0/13/27 and steps
+0/1/63, with all query/KV heads. Metadata reuse avoids an extra BF16 min/max pair:
+12.5% of packed INT4 K payload, not total KV/model/device memory. Scoring latency
+is similar, with some slower metadata snapshots; a repeatable scoring-latency
+advantage is unestablished. Four 8k and one 32k snapshot means fall below the 0.99
+Jaccard investigation trigger. Saved reports omit changed-page IDs and their score
+margins, so a bounded diagnostic capture is still needed to explain those flips.
+Do not call rounded affine endpoints exact original-key extrema or a strict bound
+on the original keys. Broader held-out/layer coverage would be needed to generalize
+the metadata result beyond these representative captures.
+
+The fused kernel agrees with the exact FP32 reconstruction of the same packed
+values within the recorded BF16-output/LSE errors. Its small temporary allocation
+versus full BF16 dequantization plus SDPA establishes avoided materialization in
+that reference workload; native quantized competitors and whole-model timings
+remain separate. Closest prior work already combines sparse selection and low-bit
+KV, and compressed representations already serve as retrieval indexes. The
+remaining affine-metadata specialization is an engineering candidate, with no
+verified first-of-its-kind or publishable research claim.
+
+### Remaining checklist and final decision
+
+- [ ] Accept a complete fresh confirmation record and its simultaneous-bound summary.
+- [ ] Complete valid competitor smokes, then 8k/32k repeated performance and matching
+  quality with explicit weight/KV differences, timing boundaries, order limitations,
+  realized kernels, residency settings and physical-device/process telemetry.
+- [ ] Explain metadata selection flips using changed pages and score margins without
+  retuning the frozen confirmatory settings.
+- [ ] When actual 4 GB hardware is available, record the largest tested successful
+  context under a stated no-offload/fallback policy: prefill, 128 outputs and a
+  matching quality check. The current 12 GB results cannot close this endpoint.
+- [ ] Record one decision with evidence links and failed/inconclusive gates preserved.
+
+Continue runtime research when fresh quality and a repeatable benefit over
+reasonably configured quantized dense competitors survive comparable measurement
+boundaries, or an actual-target capacity advantage survives matching quality.
+The 1.838× internal ratio alone does not meet that standard. If the runtime lacks
+such an advantage, narrow to metadata/kernel research only when its own matched
+ablations establish a useful delta and the precise prior-work comparison supports
+the claim. Byte accounting and the affine identity alone are insufficient.
+If neither case survives fair completed checks, retain an engineering reference
+and redirect research. Missing/unsupported measurements call for an explicitly
+inconclusive decision, rather than a fabricated pass or scientific rejection.
+
+A research decision may proceed with the actual-4-GB endpoint explicitly pending;
+it must then omit that capacity claim. New system policy, purchases, publishing
+and PRs retain their applicable workspace authorization requirements.

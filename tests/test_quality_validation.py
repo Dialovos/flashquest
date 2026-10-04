@@ -117,6 +117,33 @@ def test_three_arms_share_inputs_and_reuse_one_cache(tmp_path, fixture_runtime):
     assert "generated" in json.loads(raw.read_text())["cells"][0]["samples"][0]
 
 
+def test_fresh_confirmation_binds_protocol_before_matched_examples(
+        tmp_path, fixture_runtime, monkeypatch):
+    import validation_stats as S
+
+    root = Path(__file__).resolve().parents[1]
+    protocol_path = (root / "benchmarks/validation/protocols" /
+                     "9f2f55af018bf2dc27efc97cf0d90940acf638fc08aeb2ae23330318b63226aa.json")
+    protocol = S.load_protocol(protocol_path)
+    pilot_path = (root / "benchmarks/validation/quality" /
+                  "dd8f60de24c2957a2120473d9ff3a194b64b22d85b2adfecca3aab485092f104/quality.json")
+    model = C.canonical_identity(json.loads(pilot_path.read_text())["identity"])["model"]
+    files = {row["path"]: row["sha256"] for row in protocol["input_sources"]}
+    source = {"files": files, "content_sha256": C.content_hash(files), "dirty": False,
+              "commit": "a" * 40}
+    monkeypatch.setattr(Q, "source_identity", lambda: source)
+    runtime, _, state = fixture_runtime
+    args = Q.parse_args(["--ctx-len", "4096", "--seeds", "1", "2", "3", "4", "5",
+                         "--confirmation-protocol", str(protocol_path)])
+    result, path = Q.run_quality(args, runtime, model, ENV)
+    assert result["protocol"] == protocol
+    assert result["identity"]["protocol_sha256"] == C.content_hash(protocol)
+    assert result["identity"]["source"] == source
+    assert result["manifest"]["count"] == 300 and len(result["cells"]) == 45
+    assert len(state["calls"]) == 45
+    assert S.checked_quality(path, protocol, tmp_path)["complete"]
+
+
 def test_export_fingerprints_preserve_identity_and_reject_tampering():
     files = {"tokenizer.json": C.content_hash("model"),
              "scripts/run_passkey.py": C.content_hash("source")}

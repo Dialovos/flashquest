@@ -119,7 +119,7 @@ def phase_windows(markers: list[dict], start_ns: int, end_ns: int) -> dict[str, 
             raise ValueError("markers do not share the observation clock/window")
         previous = timestamp
         phase, edge = marker["event"].rsplit("_", 1)
-        if phase not in {"load", "warmup", "prefill", "decode"} or edge not in {"start", "end"}:
+        if phase not in {"load", "warmup", "prefill", "decode", "request"} or edge not in {"start", "end"}:
             raise ValueError("unknown phase marker")
         key = (phase, marker.get("repetition"))
         if edge == "start":
@@ -263,23 +263,25 @@ class MemorySampler:
             self.failed = True
 
 
-def stop_owned_group(process: subprocess.Popen, root_start: int):
-    snapshot = processes()
-    owned = owned_processes(snapshot, process.pid, root_start, {})
-    if not any(info["pgrp"] == process.pid for info in owned.values()):
-        return
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-        deadline = time.monotonic() + 2
-        while time.monotonic() < deadline:
-            process.poll()
-            if not any(info["pgrp"] == process.pid and info["start_ticks"] >= root_start
-                       for info in processes().values()):
-                return
-            time.sleep(0.05)
-        os.killpg(process.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
+def stop_owned_group(process: subprocess.Popen, root_start: int, known=None):
+    """Terminate creation-checked descendants, including tracked escaped workers."""
+    known = known if known is not None else {}
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        owned = owned_processes(processes(), process.pid, root_start, known)
+        for pid, info in owned.items():
+            # Recheck immediately before signaling to guard reuse between snapshots.
+            if processes().get(pid, {}).get("start_ticks") == info["start_ticks"]:
+                try:
+                    os.kill(pid, sig)
+                except ProcessLookupError:
+                    pass
+        if sig == signal.SIGTERM:
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline:
+                process.poll()
+                if not owned_processes(processes(), process.pid, root_start, known):
+                    return
+                time.sleep(0.05)
 
 
 def observe_command(command: list[str], directory: Path, device: dict,
@@ -316,7 +318,7 @@ def observe_command(command: list[str], directory: Path, device: dict,
                     break
                 time.sleep(0.05)
         finally:
-            stop_owned_group(process, root_start)
+            stop_owned_group(process, root_start, sampler.known)
             process.wait()
             sampler.stop()
     end_ns = time.monotonic_ns()

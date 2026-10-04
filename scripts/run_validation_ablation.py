@@ -44,7 +44,7 @@ def schedule(contexts: list[int], seeds: list[int], retention: float) -> list[di
 
 
 def quality_prerequisites(paths: list[Path], contexts: list[int], retention: float,
-                          model: dict) -> list[dict]:
+                          model: dict, current_identity: dict | None = None) -> list[dict]:
     evidence = []
     covered = set()
     for path in paths:
@@ -53,6 +53,19 @@ def quality_prerequisites(paths: list[Path], contexts: list[int], retention: flo
         identity = canonical_identity(record["identity"])
         if content_hash(identity) != record["run_identity"] or record["status"] != "complete":
             raise ValueError("quality record is incomplete or has an invalid identity")
+        if current_identity is not None:
+            prefixes = ("src/flashquest/cache/", "src/flashquest/kernel/", "src/flashquest/eager/",
+                        "src/flashquest/quant/", "src/flashquest/runtime/")
+            exact = {"src/flashquest/eval/runner.py", "src/flashquest/eval/niah.py",
+                     "scripts/phase6_run_ruler_4k_int4.py", "data/PaulGrahamEssays.json"}
+            def semantic_files(section, prefixes=prefixes, exact=exact):
+                return {p: h for p, h in section["files"].items()
+                        if p.startswith(prefixes) or p in exact}
+            if semantic_files(identity["source"]) != semantic_files(current_identity["source"]):
+                raise ValueError("quality evidence uses a different runtime/quantizer/kernel")
+            for key in ("python", "packages", "os", "kernel", "wsl", "gpus"):
+                if identity["environment"].get(key) != current_identity["environment"].get(key):
+                    raise ValueError("quality evidence uses a different validation environment")
         cfg = identity["config"]
         args = SimpleNamespace(tasks=cfg["tasks"], seeds=cfg["seeds"],
                                n_samples=cfg["n_samples"], retentions=cfg["retentions"])
@@ -161,7 +174,8 @@ def main(argv=None) -> int:
     args = parse_args(argv)
     model = model_identity(args.model, args.revision)
     device = resolve_device(args.gpu_index)
-    quality = quality_prerequisites(args.quality, args.contexts, args.retention, model)
+    current_identity = make_identity({}, model, {}, provenance())["identity"]
+    quality = quality_prerequisites(args.quality, args.contexts, args.retention, model, current_identity)
     cells = schedule(args.contexts, args.seeds, args.retention)
     protocol = {"version": 1, "kind": "balanced-int4-ablation", "cells": cells,
                 "quality": quality, "bench_protocol": BENCH_PROTOCOL,

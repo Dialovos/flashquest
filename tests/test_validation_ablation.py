@@ -206,6 +206,16 @@ def test_quality_prerequisite_recomputes_screen(tmp_path, monkeypatch):
     path = tmp_path / "quality.json"
     C.write_record(path, record)
     assert A.quality_prerequisites([path], [8192], .20, MODEL)[0]["ctx_len"] == 8192
+    current = C.canonical_identity(record["identity"])
+    assert A.quality_prerequisites([path], [8192], .20, MODEL, current)
+    altered = deepcopy(current)
+    altered["source"]["files"]["src/flashquest/kernel/sparse_int4_fwd.py"] = "b" * 64
+    with pytest.raises(ValueError, match="different runtime"):
+        A.quality_prerequisites([path], [8192], .20, MODEL, altered)
+    altered = deepcopy(current)
+    altered["environment"]["packages"] = {"torch": "different"}
+    with pytest.raises(ValueError, match="different validation environment"):
+        A.quality_prerequisites([path], [8192], .20, MODEL, altered)
     monkeypatch.chdir(tmp_path)
     assert A.quality_prerequisites([Path("quality.json")], [8192], .20, MODEL)[0]["path"] == "quality.json"
     with pytest.raises(ValueError, match="every scheduled context"):

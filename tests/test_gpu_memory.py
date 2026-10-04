@@ -125,6 +125,19 @@ def test_timeout_stops_only_owned_group(tmp_path, fake_gpu):
     assert result["memory"]["sample_count"] > 0
 
 
+def test_timeout_stops_tracked_worker_with_new_session(tmp_path, fake_gpu):
+    pid_path = tmp_path / "worker.json"
+    code = ("import subprocess,sys,time,json; "
+            "p=subprocess.Popen([sys.executable,'-c','import time;time.sleep(30)'],start_new_session=True); "
+            f"open({str(pid_path)!r},'w').write(json.dumps(p.pid));time.sleep(30)")
+    result = M.observe_command([sys.executable, "-c", code], tmp_path, DEVICE,
+                               timeout_s=.4, interval_s=.02)
+    pid = json.loads(pid_path.read_text())
+    stat = Path(f"/proc/{pid}/stat")
+    assert result["status"] == "timeout"
+    assert not stat.exists() or stat.read_text().rsplit(")", 1)[1].split()[0] == "Z"
+
+
 def test_new_foreign_workload_stops_our_child_and_preserves_foreign_process(tmp_path, fake_gpu, monkeypatch):
     with subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"], start_new_session=True) as foreign:
         calls = [0]

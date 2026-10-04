@@ -26,6 +26,7 @@ from bench_common import (
     make_identity,
     model_identity,
     provenance,
+    source_identity,
     validate_export,
     write_record,
 )
@@ -133,6 +134,8 @@ def parse_args(argv=None):
     parser.add_argument("--out", type=Path, help="defaults to quality/<identity>/quality.json")
     parser.add_argument("--resume", action="store_true", help="resume an identical incomplete run")
     parser.add_argument("--require-screen-pass", action="store_true")
+    parser.add_argument("--confirmation-protocol", type=Path,
+                        help="hash-addressed frozen protocol; reject settings drift before loading")
     args = parser.parse_args(argv)
     args.retentions = args.retentions or ([args.retention, 1.0] if args.retention is not None
                                         else [0.20, 1.0])
@@ -225,6 +228,16 @@ def run_quality(args, runtime: Runtime, resolved_model: dict, environment: dict)
     out_path = raw_path = None
     execution_started = False
     try:
+        protocol = SCREEN_PROTOCOL
+        frozen_source = None
+        if args.confirmation_protocol is not None:
+            from validation_stats import load_protocol, validate_run_settings
+
+            protocol = load_protocol(args.confirmation_protocol)
+            validate_run_settings(args, resolved_model, protocol)
+            frozen_source = source_identity()
+            if frozen_source.get("dirty") is not False:
+                raise ValueError("confirmation requires a clean source snapshot before loading")
         model, tokenizer = runtime.loader(args.model, revision=resolved_model["revision"])
         actual_revision = getattr(model.config, "_commit_hash", None)
         if actual_revision is not None and actual_revision != resolved_model["revision"]:
@@ -244,13 +257,13 @@ def run_quality(args, runtime: Runtime, resolved_model: dict, environment: dict)
                   "page_size": args.page_size, "num_sinks": args.num_sinks,
                   "window_pages": args.window_pages, "max_new_tokens": args.max_new_tokens,
                   "manifest_sha256": content_hash(manifest), "runtime": runtime_info}
-        run = make_identity(config, resolved_model, SCREEN_PROTOCOL, environment)
+        run = make_identity(config, resolved_model, protocol, environment, source=frozen_source)
         validate_export(run)
         directory = REPO_ROOT / "artifacts" / "quality" / run["run_identity"]
         raw_path = directory / "raw.json"
         out_path = args.out or (REPO_ROOT / "benchmarks" / "validation" / "quality" /
                                 run["run_identity"] / "quality.json")
-        result = {"schema_version": SCHEMA_VERSION, **run, "protocol": SCREEN_PROTOCOL,
+        result = {"schema_version": SCHEMA_VERSION, **run, "protocol": protocol,
                   "manifest": {"sha256": content_hash(manifest), "count": len(manifest),
                                "min_prompt_tokens": min(len(e["input_ids"]) for e in manifest),
                                "max_prompt_tokens": max_prompt},
@@ -281,7 +294,7 @@ def run_quality(args, runtime: Runtime, resolved_model: dict, environment: dict)
         write_record(directory / "manifest.json", {"run_identity": run["run_identity"],
                                                    "examples": manifest})
         write_record(REPO_ROOT / "benchmarks" / "validation" / "protocols" /
-                     f"{content_hash(SCREEN_PROTOCOL)}.json", SCREEN_PROTOCOL)
+                     f"{content_hash(protocol)}.json", protocol)
 
         def save():
             result["screen"] = screen_verdict(result["cells"], args)

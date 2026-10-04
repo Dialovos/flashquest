@@ -2,15 +2,15 @@
 
 Experimental sparse attention runtime for memory-constrained GPUs: AWQ weights, packed INT4/TurboQuant KV, and Quest page selection.
 
-The current direction is to validate whether this integration offers a useful memory/quality/speed tradeoff against dense quantized KV. The broad combination builds on [Quest](https://arxiv.org/abs/2406.10774), [KIVI](https://arxiv.org/abs/2402.02750), and [TurboQuant](https://arxiv.org/abs/2504.19874). Reusing quantization metadata for page scoring is an engineering contribution candidate; research novelty and a competitive advantage remain unproven.
+The current direction is to validate whether this integration offers a useful memory/quality/speed tradeoff against dense quantized KV. The broad combination builds on [Quest](https://arxiv.org/abs/2406.10774), [KIVI](https://arxiv.org/abs/2402.02750), and [TurboQuant](https://arxiv.org/abs/2504.19874). The [closest-prior-work map](docs/contribution-prior-work.md) also covers sparse/quantized hybrids and compressed keys used as retrieval indexes. Reusing affine page metadata is a narrower engineering contribution candidate; research novelty and a competitive advantage remain unproven.
 
 The implementation includes persistent packed caches and fused Triton decode kernels. Historical reports label the hardware as an RTX 3050 Ti Laptop under WSL2, but the original comparison runner hardcoded that metadata. Their allocator measurements exceed 4 GB, and the saved competitor timings need correction, so they do not establish a GPU-resident 32 k capability advantage on a 4 GB device.
 
-Run the CLI examples below, or use the quality harness for matched retrieval examples. CPU validation checks: `python -m pytest tests/test_phase6_headtohead.py tests/test_quality_validation.py tests/test_gpu_memory.py tests/test_validation_ablation.py`. GPU checks: `python -m pytest tests/test_bench_flashquest.py tests/test_sparse_int4.py tests/test_persistent_int4.py tests/test_page_scores_int8.py -m 'not slow'`.
+Run the CLI examples below, or use the quality harness for matched retrieval examples. CPU validation checks: `CUDA_VISIBLE_DEVICES="" python -m pytest tests/test_phase6_headtohead.py tests/test_quality_validation.py tests/test_gpu_memory.py tests/test_validation_ablation.py`. Contribution, statistics and competitor checks: `CUDA_VISIBLE_DEVICES="" python -m pytest tests/test_profile_contribution.py tests/test_validation_stats.py tests/test_competitor_backend.py tests/test_competitor_validation.py`. GPU checks: `python -m pytest tests/test_bench_flashquest.py tests/test_sparse_int4.py tests/test_persistent_int4.py tests/test_page_scores_int8.py -m 'not slow'`.
 
-2026-10-03 local validation: 77 CPU checks passed; both tiny-Llama GPU checks passed again after adding timing markers and benchmark identity. The earlier 24 kernel/cache checks passed. Retrieval pilots pass at 0.20 for 4k/8k and at 0.25 for 32k; the failed 32k/0.20 run is preserved. Balanced internal ablations show a 1.84× paired decode ratio at 32k and no practical gain at 8k. Expanded quality, competitive speed, novelty, and 4 GB capacity remain unproven.
+2026-10-04 status: retrieval pilots pass at 0.20 for 4k/8k and at 0.25 for 32k; the failed 32k/0.20 run is preserved. Balanced internal ablations show a 1.84× paired decode ratio at 32k and no practical gain at 8k. Component profiling and representative contribution ablations are complete; metadata reuse saves summary storage, with similar scoring latency and some selection disagreements. Earlier validation passed 77 CPU checks, two tiny-Llama GPU checks and 24 kernel/cache checks; the contribution work passed 17 additional targeted checks. Fresh confirmation, competitive speed, research novelty and actual 4 GB capacity remain unproven.
 
-See the [research roadmap](roadmap.md) for the remaining experiments, priorities, and decision criteria.
+See the [research roadmap](roadmap.md) and the [dated execution checklist and decision framework](docs/roadmap-implementation-plan.md#6-current-execution-status-and-decision-framework) for remaining endpoints. The original plan is preserved alongside its current progress record.
 
 ## Install
 
@@ -87,10 +87,10 @@ For TurboQuant K3-V3, swap `PersistentInt4KVCache` for `PersistentTurboKVCache` 
 
 ## Architecture
 
-- **Quest top-k page selection.** Per-page channel-wise (`K_scale`, `K_mn`) lets us bound the per-page max QK score algebraically: `Σ_d max(Q[d]·K_min[p,d], Q[d]·K_max[p,d])`. We rewrite that bound as `Q·K_mn + 255·relu(Q)·K_scale` (INT8) or `15·relu(Q)·K_scale` (INT4) — two matmuls per layer, no dequant, no per-token criticality. `retention=0.20` (default) reads ~one page in five.
+- **Quest-style top-k page selection.** Existing per-page channel-wise (`K_scale`, `K_mn`) supplies affine endpoints for the interval score `Q·K_mn + levels·relu(Q)·K_scale`, with `levels=255` (INT8) or `15` (INT4). Two matmuls avoid separate stored min/max summaries and full-key dequantization for scoring. Rounded/clamped affine ranges can differ from original extrema, so this is not guaranteed to bound the original keys' scores. Retention selects a fraction of completed pages; forced sink/window pages and the unquantized tail also contribute.
 - **Paged INT8/INT4 KV cache.** KIVI-style asymmetric quantization: per-page channel-wise K, per-token V. INT8 packs 1 byte/value, INT4 packs 2 nibbles/byte. Persistent across decode steps; partial pages live in BF16 staging until they fill.
 - **TurboQuant K3-V3 (opt-in).** Per-token Walsh-Hadamard rotation along `head_dim`, fixed 8-codepoint Lloyd-Max codebook, bit-split storage (1-bit MSB plane @ 8/byte + 2-bit LSB plane @ 4/byte). 25 % smaller packed K/V payload than INT4, before metadata and staging. Two non-paper adjustments were needed on Llama-3.2-3B: per-token RMS scale (paper uses max-abs) and V at 3-bit (paper's K3-V2 multivalue regressed too far).
-- **Fused Triton sparse decode kernel.** One CTA per `(batch, query head)`, decode-only `S_q=1`. Reads packed K/V tiles directly — no BF16 dequant intermediate, no GMEM codebook gather (the TurboQuant codebook is inlined as a `tl.where` chain over compile-time constants). Online-softmax accumulation, same numerics as FlashAttention.
+- **Fused Triton sparse decode kernel.** One CTA per `(batch, query head)`, decode-only `S_q=1`. Reads packed K/V tiles directly — no BF16 dequant intermediate, no GMEM codebook gather (the TurboQuant codebook is inlined as a `tl.where` chain over compile-time constants). Online-softmax accumulation returns BF16 output; the INT4 path is checked against FP32 reconstruction of the same packed values, rather than assumed bit-identical to another attention backend.
 - **Dispatcher.** `make_quest_persistent_forward` branches on `cache.kv_bits ∈ {3, 4, 8}` and routes to the right dequant + sparse kernel. INT8 is the original Phase 3 baseline; INT4 is the v1 default; TurboQuant is the storage opt-in.
 
 ## Benchmarks and validation
@@ -190,9 +190,57 @@ retaining the full cache, so both arms have the same peaks here. The current 32k
 prefill exceeds a 4 GB budget on this 12 GB device; target fit remains unverified
 and would require further memory work plus actual target-hardware tests.
 
-These results support investigating the 32k path. Optimized competitors, expanded
-matched quality, profiling and metadata-scoring ablations remain necessary for a
-research claim.
+These results support investigating the 32k path. The component and metadata
+ablations below are complete within their stated scope; optimized competitors,
+fresh matched quality and selection-disagreement diagnostics remain necessary
+for a stronger research claim.
+
+### Current contribution — representative operator ablations
+
+The [contribution reports](benchmarks/validation/contrib/summary.md) cover actual
+post-RoPE BF16 Q/K from one seed-0 single-needle prompt at nominal 8k/0.20 and
+32k/0.25: layers 0/13/27, steps 0/1/63, all 24 query heads and eight KV heads.
+Actual inputs are 7,936 and 32,512 tokens. Each operator has 10 warmups and 32
+CUDA-event samples; isolated timings cannot be summed into whole-model latency.
+
+Metadata reuse avoids two separately stored BF16 min/max arrays: exactly 12.5%
+of packed INT4 **K** payload for page size 64, rather than of total KV/model/device
+memory. Median scoring times are 0.0566/0.0675 ms versus separate-summary
+0.0599/0.0710 ms at 8k/32k, with some metadata snapshots slower. This does not
+establish a repeatable scoring-latency advantage. Mean top-k Jaccard is
+0.98896/0.99222; four 8k and one 32k snapshot means fall below the proposed 0.99
+investigation trigger. The saved records lack changed-page IDs and score margins,
+so explaining the observed selection flips still requires a diagnostic
+capture. Exact original-key summary equivalence is unestablished.
+
+Fused output maximum absolute errors are 0.011434/0.013576 and LSE errors
+0.000002385/0.000001431 versus exact FP32 reconstruction of the same packed
+values and selected tokens. A separate BF16 full-dequantization/SDPA comparison
+uses an observed efficient-attention dispatch. Packed attention including the
+tail peaks at a 70,144-byte temporary allocator increment in these captures,
+versus 163,840,000/667,156,480 bytes for that materialized comparison. This
+supports avoided reference-path temporaries, without establishing a native
+quantized competitor win or physical-device capacity. The reports retain the
+original dirty-source content identity; later commits do not change that provenance.
+
+### Fresh confirmation and current competitor validation
+
+The [frozen confirmation protocol](benchmarks/validation/protocols/9f2f55af018bf2dc27efc97cf0d90940acf638fc08aeb2ae23330318b63226aa.json)
+uses seeds 1–5, excludes tuning seed 0, and collects 100 examples for each of nine
+task/context endpoints at retention 0.20/0.20/0.25 for nominal 4k/8k/32k.
+Every simultaneous sparse-minus-dense lower bound must exceed −10 percentage
+points, with observed dense/sparse accuracy at least 0.80. Complete paired records
+from one clean identical source snapshot are required; the observed floors are
+screens, not population confidence guarantees. Results remain pending. These
+fixed-generator retrieval checks cannot establish general language quality.
+
+[Pinned competitor validation](docs/competitor-validation.md) uses separate
+native-server adapters and exact input IDs, with verified tokenizer/EOS behavior
+required for matching quality. In the [preserved 1024-token smoke](benchmarks/validation/competitors/038adb95458098fad6f72e110dcfc1272cfde5e0d7292023ab72e0db9e52a379/schedule.json),
+llama.cpp Q4/FP16 requests completed, while vLLM FP8/auto cells remain execution
+errors. Full 8k/32k timings, matching quality and competitor memory comparisons
+remain pending. Native server and FlashQuest timing boundaries differ; short
+smoke rates cannot establish a comparable competitive advantage.
 
 ### Historical quality — RULER NIAH 4 k subset
 
@@ -219,9 +267,9 @@ These are historical single runs. Allocated memory is not physical GPU residency
 
 The old head-to-head tables are not a reliable comparison: llama.cpp's `-p CTX -n 128` timed separate prefill and empty-context decode tests; vLLM mixed prefill and decode in its throughput calculation. The original files remain under `benchmarks/` for provenance.
 
-### Reproduce corrected comparisons
+### Legacy comparison runner and current validation
 
-The runner writes new results to `benchmarks/validation/`, preserving the historical phase files. It measures 128 generated tokens as 127 post-prefill decode steps, warms FlashQuest/vLLM, and reports median throughput across three repetitions. FlashQuest and vLLM share seeded synthetic input IDs; llama-bench uses its own token fixture at the same cache depth. These are throughput workloads, not quality evaluations.
+The legacy matrix below preserves the historical phase files and corrects several old timing/depth mistakes. It measures 128 generated tokens as 127 post-prefill decode steps; llama-bench uses its own token fixture. Its V0 vLLM adapter remains historical. Use the separate [pinned native-server validation workflow](docs/competitor-validation.md) for current competitors and the FlashQuest ablation runner below for balanced internal comparisons.
 
 ```bash
 # Inspect the bounded 8 k / 32 k matrix first.
@@ -241,18 +289,19 @@ python scripts/phase6_run_headtohead.py --backends flashquest \
 python scripts/phase6_run_ruler_4k_int4.py --retentions 0.20 1.0 --seeds 0
 ```
 
-The all-pages ablation uses the same fused kernel and page-selection machinery; it is not an independently optimized dense implementation. Compare it with llama.cpp Q4 KV and vLLM FP8 KV before drawing a performance conclusion. llama.cpp requires a build supporting `-d`, quantized K/V, and Flash Attention. The vLLM adapter still targets V0 `RequestMetrics`; migrating it to a pinned current release with same-request server metrics is pending in the implementation plan. Do not use the legacy adapter as evidence against a current competitor. `--llamacpp-kv f16` and `--vllm-kv-cache-dtype auto` retain FP16 baseline options.
+The all-pages ablation uses the same fused kernel and page-selection machinery; it is not an independently optimized dense implementation. Compare it with llama.cpp Q4 KV and vLLM FP8 KV before drawing a competitive performance conclusion. The legacy llama-bench path requires a build supporting `-d`, quantized K/V, and Flash Attention. Its V0 `RequestMetrics` vLLM path is not evidence against a current engine; current adapters are documented separately. `--llamacpp-kv f16` and `--vllm-kv-cache-dtype auto` retain legacy baseline options.
 
-Quality resume checks source/model/environment/protocol identity and matched sample counts. The matrix's `--skip-existing` currently reruns legacy adapters because complete identity cannot be resolved before launch; backend identity integration remains pending. Raw benchmark logs and original backend JSON stay under ignored `artifacts/benchmarks/`; exported records contain normalized evidence and error categories. Timeout/error cells remain failures. GPU name and total memory come from the machine running the matrix. PyTorch allocated/reserved bytes are labeled separately; physical residency and competitor peak memory require additional measurement.
+Quality resume checks source/model/environment/protocol identity and matched sample counts. The legacy matrix's `--skip-existing` reruns its adapters because complete identity cannot be resolved before launch; this limitation does not describe the new native-server runner. Raw legacy logs and original backend JSON stay under ignored `artifacts/benchmarks/`; exported records contain normalized evidence and error categories. Timeout/error cells remain failures. GPU name and total memory come from the machine running the matrix. PyTorch allocated/reserved bytes are labeled separately.
 
-The next research gates are profiling the 8k overhead, optimized dense competitors with matched quality, expanded fresh-seed quality and the metadata-scoring contribution. Validate on an actual 4 GB GPU before claiming that capacity target.
+The remaining gates are fresh confirmation, optimized dense competitors with matching quality/memory records, selection-flip diagnostics and an evidence-linked research decision. Actual 4 GB tests are required for that capacity claim. A decision about runtime or narrower metadata/kernel research can proceed while target hardware is unavailable, with the capacity claim explicitly withheld.
 
 The new FlashQuest ablation runner freezes a balanced whole-arm schedule, verifies
 matching quality evidence, pins model/source/environment identity, and samples
 physical device usage and the owned process tree. It retains phase markers and raw
 telemetry under ignored `artifacts/ablation/`; exported summaries label sampled peaks
 and missing counters. It records configured CUDA placement without asserting absence
-of OS fallback. Competitor sampler integration and actual capacity runs are pending.
+of OS fallback. The native-server competitor observation path is implemented and
+has smoke records; full competitor measurements and actual capacity runs remain pending.
 
 ```bash
 python scripts/run_validation_ablation.py --contexts 8192 \

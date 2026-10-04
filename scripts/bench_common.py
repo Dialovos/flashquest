@@ -144,7 +144,7 @@ def file_hash(path: Path) -> str:
 def source_identity(root: Path = REPO_ROOT) -> dict:
     """Hash relevant contents, including new files, without exporting local paths."""
     paths = [p for base in ("src", "scripts") for p in (root / base).rglob("*.py")]
-    paths += [root / name for name in ("pyproject.toml", "requirements-validation.txt",
+    paths += [root / name for name in ("pyproject.toml", "requirements-validation.txt", "requirements-vllm.txt",
                                       "data/PaulGrahamEssays.json", "scripts/bench_llamacpp.sh")]
     hashes = {p.relative_to(root).as_posix(): file_hash(p) for p in sorted(paths) if p.is_file()}
     def git(*args):
@@ -156,7 +156,7 @@ def source_identity(root: Path = REPO_ROOT) -> dict:
             return None
     return {"commit": git("rev-parse", "HEAD"),
             "dirty": bool(git("status", "--porcelain", "--", "src", "scripts",
-                              "pyproject.toml", "requirements-validation.txt",
+                              "pyproject.toml", "requirements-validation.txt", "requirements-vllm.txt",
                               "data/PaulGrahamEssays.json")), "files": hashes,
             "content_sha256": content_hash(hashes)}
 
@@ -300,6 +300,8 @@ def validate_export(value) -> None:
 def error_code(exc: Exception) -> str:
     if is_oom(str(exc)):
         return "out_of_memory"
+    if isinstance(exc, TimeoutError):
+        return "timeout"
     if isinstance(exc, (ImportError, ModuleNotFoundError)):
         return "missing_dependency"
     return "execution_error"

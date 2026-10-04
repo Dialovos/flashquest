@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "kind": "paired-retrieval-confirmation",
+  "model": {
+    "model": "casperhansen/llama-3.2-3b-instruct-awq",
+    "revision": "272b3bde867b606760447deb9a4d2719fbdfd3ae",
+    "content_sha256": "9fb77b1a658472280fd64e03223f5e029e43a8c42ec0101ee5cde7012ea64c0c"
+  },
+  "tasks": [
+    "single",
+    "multikey",
+    "multivalue"
+  ],
+  "seeds": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "examples_per_task_seed": 20,
+  "examples_per_endpoint": 100,
+  "excluded_tuning_seeds": [
+    0
+  ],
+  "contexts": [
+    {
+      "ctx_len": 4096,
+      "retention": 0.2
+    },
+    {
+      "ctx_len": 8192,
+      "retention": 0.2
+    },
+    {
+      "ctx_len": 32768,
+      "retention": 0.25
+    }
+  ],
+  "scorer": "all-expected-substrings",
+  "generation": "greedy-eos-or-limit",
+  "max_new_tokens": 128,
+  "page_size": 64,
+  "num_sinks": 4,
+  "window_pages": 2,
+  "kv_bits": 4,
+  "family_alpha": 0.05,
+  "confirmatory_endpoints": 9,
+  "bound_alpha": 0.002777777777777778,
+  "noninferiority_margin": 0.1,
+  "observed_sparse_accuracy_floor": 0.8,
+  "observed_dense_accuracy_floor": 0.8,
+  "diagnostic_bound_alpha": 0.025,
+  "minimum_lower_difference_exclusive": -0.1,
+  "source_policy": "one-clean-identical-source-snapshot",
+  "stopping": "fixed-count-no-favorable-early-stop-or-post-hoc-expansion",
+  "input_sources": [
+    {
+      "sha256": "adfa0fdaca2db5bd9c15ea913ae1a9d0a6eff499fac27207773a228f5f6f4a3b",
+      "path": "src/flashquest/eval/niah.py"
+    },
+    {
+      "sha256": "4a759b62dd7c296197b214fde774dea6164448e8f9940d7d7a35e26fe1eaf685",
+      "path": "data/PaulGrahamEssays.json"
+    }
+  ],
+  "interpretation": [
+    "all nine simultaneous lower bounds must exceed -0.10",
+    "observed 0.80 accuracy floors are screens, not confidence guarantees",
+    "incomplete evidence or weak dense baseline is inconclusive",
+    "all-pages paired bounds are diagnostics outside the confirmatory family",
+    "generation-limit misses remain failures",
+    "fixed prompt generator and model; independent within-endpoint Bernoulli assumption",
+    "noninferiority failure does not prove inferiority"
+  ],
+  "methods_sources": [
+    "https://www.itl.nist.gov/div898/software/dataplot/refman1/auxillar/propconf.htm",
+    "https://itl.nist.gov/div898/handbook/prc/section4/prc473.htm"
+  ],
+  "claims": "conditional fixed-generator retrieval noninferiority only; no general language quality or capacity claim"
+}
