@@ -30,6 +30,7 @@ from competitor_backend import (
     command_for,
     compile_workers,
     completion_payload,
+    flashinfer_disable_jit,
     marker,
     parse_completion,
 )
@@ -243,6 +244,7 @@ def main():
               "ctx_len": original["config"]["ctx_len"], "capacity": original["config"]["cache_capacity"],
               "max_new_tokens": 128, "examples": len(examples), "limit_per_task": args.limit_per_task,
               "compile_workers": compile_workers(args.backend),
+              "flashinfer_disable_jit": flashinfer_disable_jit(args.backend),
               "backend_identity": backend_identity(args), "gpu_utilization": args.gpu_utilization if args.backend == "vllm" else None}
     model = original["model"]
     if args.backend == "llamacpp":

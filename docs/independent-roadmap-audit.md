@@ -850,3 +850,87 @@ engineering characterization, without an established comparable-quality
 advantage. The terminal evidence audit passes, so the confirmation source freeze
 may close and the separately reviewed deferred work may proceed. No source,
 dependencies, GPU work or commits were changed during this audit.
+
+## Checkpoint 17 — Selection evidence recalculation and original-tensor mismatch
+
+On 2026-10-05, the [selection diagnostic](../benchmarks/validation/selection-flips/84923860ca3235323e8882a7f296857e419839cdd5afb6fada0eee7412718a06/report.json)
+is complete with all 18 layer/step/context snapshots and 432 query-head
+observations. A separate CPU implementation, without the producer's explanation
+functions, reconstructs raw/public equality, raw and score-array hashes, canonical
+model/protocol/source/run identities, actual FP32-retention top-k counts and
+rank-valid selected IDs, all sink/window unions, exact changed-page IDs,
+thresholds/margins, exchange perturbations, tie/error labels, overlaps and FP32
+endpoint-residual arithmetic. Every source file and all six actual pinned model
+files rehash successfully; current CPU environment and read-only GPU metadata
+match. The diagnostic records clean source `a0100a5` and kernel
+`7.0.0-38-generic`.
+
+This evidence recalculation was performed by the agent who authored the producer;
+it complements the earlier independent draft code review, rather than representing
+an independent author review. Saved computed score/per-page error arrays support
+the reconstruction. Full Q/K/affine-metadata tensors were not saved, so their GPU
+score construction cannot independently be rerun from this raw record alone.
+
+| Diagnostic observation | 8k / 0.20 | 32k / 0.25 |
+| --- | ---: | ---: |
+| Changed top-k heads / observed heads | 28 / 216 | 102 / 216 |
+| Headwise page replacements | 28 | 115 |
+| Mean top-k Jaccard | 0.990028 | 0.991715 |
+| Maximum absolute score difference | 0.862610 | 1.105164 |
+| Maximum reconstructed-maximum error | 0.109375 | 0.117188 |
+| Maximum residual after recorded endpoint term | 0.000135064 | 0.000149190 |
+
+All changed heads also retain effective sink/window differences. No boundary is
+exactly tied, and every changed head's summary margin is at most twice its maximum
+score perturbation. Recorded minima match, while affine maxima differ. Concrete
+page exchanges and their signed score/endpoint margins are documented in the
+[reviewed summary](../benchmarks/validation/selection-flips/summary.md). These
+observations explain the current capture's ranked-score changes; they do not
+identify the causes of quality failures or establish broader equivalence.
+
+Crucially, all 18 input fingerprints match the original contribution captures,
+but **zero of 18 query and zero of 18 key fingerprints match**. At each context
+the counts are 9/9, 0/9 and 0/9 respectively. Original captures use kernel
+`7.0.0-34-generic`; the new environment uses `7.0.0-38-generic`, and shared
+measurement-script fingerprints also differ. Model, runtime/generator/corpus
+hashes, listed packages and GPU metadata match. The observed differences do not
+attribute the mismatch to the kernel or another single cause.
+
+Treat this as valid new representative evidence, without labeling it an exact
+explanation or replay of the original snapshots. Their missing full-score/tensor
+records prevent recovery of exact original changed-page lists. Preserve those
+original identities and results. The new result supplies no general quality,
+novelty, runtime-speed or physical 4 GB capacity claim. No source, dependency,
+Git HEAD or GPU execution was changed during this audit; the premeasurement
+offline-launch failure log remains preserved.
+
+## Checkpoint 18 — Independent selection review and precompiled-kernel policy
+
+On 2026-10-05, an agent independent of the selection producer reconstructed all
+18 new snapshots and 432 query-head observations, raw/public score hashes,
+47 scoped source files and six actual pinned model files. Changed-head counts
+are 28/216 at 8k and 102/216 at 32k, with 28/115 replacements; the summary's
+means, margins and endpoint-residual maxima reproduce. All input fingerprints
+match older captures, but no Q/K fingerprints match. Full Q/K/metadata values
+were not saved; review validates stored score/error evidence and cannot rerun
+GPU construction or attribute quality/kernel causality. The bounded report passes
+independent author review with those limitations preserved.
+
+The sixth native performance smoke completes with failures: llama.cpp Q4/FP16
+requests pass, while both vLLM cells fail during FlashInfer compilation. Read-only
+inspection finds coherent nvcc/ptxas 13.0 but unconstrained NVVM 13.4.92, explaining
+unsupported PTX 9.4. Pinning NVVM 13.0.88 resolves that version mismatch but a
+minimal host compile still fails against glibc 2.43 `rsqrt` declarations. No
+successful compilation or engine inferiority follows from either setup failure.
+
+The official matching FlashInfer 0.6.18.post1+cu130 wheel contains the exact failed
+FA2 E4M3 prefill module. The independently reviewed adapter policy forces
+`FLASHINFER_DISABLE_JIT=1`, removes the version-check bypass, and binds typed
+vLLM true / llama.cpp null policies in child and schedule identities. Both modes
+and resume reject missing, false, numeric/string or coherently rehashed policy
+drift. FlashInfer tries matching precompiled modules first; missing/unloadable
+coverage fails explicitly before compilation. The six-file patch passes
+160 focused CPU checks, Ruff and diff checks. The installed 199-package isolated
+environment passes dependency checks. Both FP16/E4M3 prefill modules pass CPU
+load and installed wheel-record hashes. Successful native execution still requires
+a fresh intended-precision smoke. Root AWQ dependencies are unchanged.

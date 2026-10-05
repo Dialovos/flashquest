@@ -10,7 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from competitor_backend import Server, completion_payload, parse_completion
 
 
-def test_vllm_compile_workers_override_inherited_and_explicit_environment(tmp_path, monkeypatch):
+@pytest.mark.parametrize("explicit_jit", [None, "0", "false", ""])
+def test_vllm_build_policy_overrides_inherited_and_explicit_environment(tmp_path, monkeypatch, explicit_jit):
     import competitor_backend as adapter
 
     class FakeSocket:
@@ -32,10 +33,22 @@ def test_vllm_compile_workers_override_inherited_and_explicit_environment(tmp_pa
     (toolkit / "bin" / "nvcc").touch()
     monkeypatch.setattr(adapter.socket, "socket", FakeSocket)
     monkeypatch.setenv("MAX_JOBS", "64")
+    monkeypatch.setenv("FLASHINFER_DISABLE_JIT", "0")
+    monkeypatch.setenv("FLASHINFER_DISABLE_VERSION_CHECK", "1")
+    explicit = {"MAX_JOBS": "99"}
+    if explicit_jit is not None:
+        explicit["FLASHINFER_DISABLE_JIT"] = explicit_jit
+        explicit["FLASHINFER_DISABLE_VERSION_CHECK"] = "1"
     server = Server([str(python), "-m", "vllm.entrypoints.openai.api_server"], tmp_path,
-                    env={"MAX_JOBS": "99"})
+                    env=explicit)
     assert server.env["MAX_JOBS"] == "2" == str(adapter.compile_workers("vllm"))
     assert adapter.compile_workers("llamacpp") is None
+    assert server.env["FLASHINFER_DISABLE_JIT"] == "1"
+    assert "FLASHINFER_DISABLE_VERSION_CHECK" not in server.env
+    assert adapter.flashinfer_disable_jit("vllm") is True
+    assert adapter.flashinfer_disable_jit("llamacpp") is None
+    assert adapter.os.environ["FLASHINFER_DISABLE_JIT"] == "0"
+    assert adapter.os.environ["FLASHINFER_DISABLE_VERSION_CHECK"] == "1"
     assert str(python.parent) in server.env["PATH"].split(adapter.os.pathsep)
     assert server.env["CUDA_HOME"] == str(toolkit)
 

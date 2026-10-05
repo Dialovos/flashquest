@@ -42,16 +42,34 @@ remain ignored development provenance.
 The independently reviewed selection diagnostic and tests are installed at
 `scripts/diagnose_selection_flips.py` and `tests/test_selection_flips.py`.
 Together the real-path changes pass 170 focused CPU checks, Ruff and diff checks.
-Commit this source through the shared hooks before GPU evidence collection.
+This source was committed through the shared hooks as `a0100a5`.
 The measured runtime, quantizer, kernels, retrieval generator and scorer are
 unchanged; fresh matching-environment quality can satisfy the internal timing
 runner's semantic prerequisite.
 
+## New completed diagnostic and native setup repair
+
+The [selection diagnostic](../benchmarks/validation/selection-flips/summary.md)
+and its independent author review cover all 18 new snapshots and 432 query-head
+observations. Rounded affine maxima explain concrete ranked-score perturbations.
+All input fingerprints match the older captures, but no Q/K fingerprints match;
+these explanations do not recover the exact old flips or establish quality/kernel
+causality. Full Q/K/metadata values were not saved, so the audit reconstructs the
+stored score/error evidence rather than independently recomputing GPU scores.
+
+The terminal sixth native smoke preserves successful llama.cpp Q4/FP16 requests
+and both vLLM startup failures. NVVM 13.4 generated PTX unsupported by the 13.0
+assembler; the coherent NVVM 13.0.88 pin then exposed a glibc 2.43 header conflict.
+The matching official FlashInfer 0.6.18.post1+cu130 precompiled package is
+installed; both FP16/E4M3 prefill modules pass CPU load and wheel-record hashes. The reviewed adapters bind AOT-only execution and enabled version
+checking, with 160 focused competitor CPU checks passing. Missing precompiled
+coverage remains failure; compilation and successful vLLM execution are not yet
+verified. Keep all setup/failed-attempt evidence.
+
 ## Remaining execution sequence
 
-1. Recapture all 18 representative selection snapshots (8k/0.20, 32k/0.25,
-   layers 0/13/27, steps 0/1/63, tuning seed 0). Compare Q/K fingerprints with
-   the original contribution reports; a mismatch cannot explain an old snapshot.
+1. Commit the independently reviewed AOT-only source through shared hooks.
+   Installation, 199-package compatibility and CPU module-load checks passed.
 2. Complete successful 1024-token native performance smokes and six-example
    matching quality smokes for llama.cpp Q4/FP16 and vLLM FP8/FP16. Validate
    actual devices, weight/attention kernels, cache precision, mapping, EOS and

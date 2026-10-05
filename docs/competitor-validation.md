@@ -10,7 +10,7 @@ Use a separate environment for vLLM:
 ```bash
 uv venv --python .venv/bin/python .venv/backends/vllm
 uv pip install --python .venv/backends/vllm/bin/python -r requirements-vllm.txt
-uv pip check --python .venv/backends/vllm/bin/python
+uv --no-cache pip check --python .venv/backends/vllm/bin/python
 ```
 
 This resolves vLLM 0.30.0, Torch 2.13.0/CUDA 13.0, Triton 3.7.1, Transformers
@@ -19,6 +19,26 @@ the full isolated package set and interpreter. Keep the existing Torch 2.5.1 AWQ
 environment for FlashQuest. See [vLLM installation](https://docs.vllm.ai/en/v0.30.0/getting_started/installation/gpu/)
 and [same-request metrics](https://docs.vllm.ai/en/v0.30.0/features/per_request_metrics/)
 for the pinned upstream contracts.
+
+The compiler components are pinned together: nvcc, NVVM and CRT 13.0.88,
+with CCCL 13.0.85. An unconstrained NVVM 13.4.92 installation generated PTX 9.4
+that the 13.0 assembler rejected. Pinning NVVM resolves that version mismatch,
+but a minimal compile still fails because CUDA 13.0 headers conflict with this
+host's glibc 2.43 `rsqrt` exception declarations. Compilation is not validated.
+The installed environment and both failure logs remain local setup evidence.
+See the [CUDA 13.0 Update 1 component table](https://docs.nvidia.com/cuda/archive/13.0.1/cuda-toolkit-release-notes/index.html).
+
+The bounded setup uses the matching precompiled
+`flashinfer-jit-cache==0.6.18.post1+cu130` from the
+[official CUDA 13.0 index](https://flashinfer.ai/whl/cu130/flashinfer-jit-cache/),
+with `flashinfer-python==0.6.18.post1` and version checking enabled.
+The adapters force `FLASHINFER_DISABLE_JIT=1` in the vLLM child and bind
+that effective policy in the child/schedule identities. Missing or unloadable
+precompiled modules remain explicit failures; this route does not establish
+successful host compilation or native execution. Both FP16/E4M3 prefill modules
+pass CPU load and installed wheel-record hashes; 199 packages pass dependency
+checks. Accept runtime execution only after
+successful intended-precision requests, runtime observations and cleanup.
 
 The external llama.cpp CUDA 12.8 binary release is
 [b11382](https://github.com/ggml-org/llama.cpp/releases/tag/b11382), commit

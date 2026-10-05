@@ -504,7 +504,7 @@ fingerprints recorded by the completed pilots.
 | WP5 | Balanced four-seed, three-repetition sparse/all-pages blocks: 0.995× at 8k, 1.838× at 32k. Isolated score/top-k/packed/tail/merge timings at both contexts are saved. | Compare optimized competitors; component timings alone do not identify a whole-model causal bottleneck or competitive win. |
 | WP6 | Exact-ID native-server adapters, sanitized identities, request metrics and failure-preserving schedules implemented. llama.cpp Q4/FP16 short requests completed in the linked smoke. | Valid 8k/32k repeated comparisons and matching retrieval quality; the saved vLLM smoke cells are execution errors. |
 | WP7 | FlashQuest physical-device/process-tree sampling covers completed blocks. Competitor smoke telemetry includes load/warmup/request windows where validated. | Full competitor observations and hardware-specific capacity runs. Native prefill/decode memory windows remain unmeasured without aligned markers. |
-| WP8 | Representative actual BF16 post-RoPE captures, metadata-versus-summary bytes/timings, exact FP32 packed-value output/LSE oracle, BF16 SDPA comparison and closest-prior-work map. | Investigate selection disagreements, then write the evidence-linked research decision after fresh quality/competitor gates. |
+| WP8 | Representative actual BF16 post-RoPE captures, metadata-versus-summary bytes/timings, exact FP32 packed-value output/LSE oracle, BF16 SDPA comparison and closest-prior-work map. | Changed-page diagnostics and their independent review are complete for new representative tensors; write the evidence-linked decision after competitor gates. |
 
 Evidence: [matched pilots and internal blocks](../README.md#benchmarks-and-validation),
 [component/contribution reports](../benchmarks/validation/contrib/summary.md),
@@ -546,8 +546,10 @@ The real captures cover one seed-0 single-needle prompt, layers 0/13/27 and step
 12.5% of packed INT4 K payload, not total KV/model/device memory. Scoring latency
 is similar, with some slower metadata snapshots; a repeatable scoring-latency
 advantage is unestablished. Four 8k and one 32k snapshot means fall below the 0.99
-Jaccard investigation trigger. Saved reports omit changed-page IDs and their score
-margins, so a bounded diagnostic capture is still needed to explain those flips.
+Jaccard investigation trigger. The [new diagnostic](../benchmarks/validation/selection-flips/summary.md) records
+changed IDs and margins for 18 independently reviewed representative captures.
+All input fingerprints match the old captures, but no Q/K fingerprints match;
+these explanations apply to the new tensors and cannot recover the old flips.
 Do not call rounded affine endpoints exact original-key extrema or a strict bound
 on the original keys. Broader held-out/layer coverage would be needed to generalize
 the metadata result beyond these representative captures.
@@ -567,8 +569,8 @@ verified first-of-its-kind or publishable research claim.
 - [ ] Complete valid competitor smokes, then 8k/32k repeated performance and matching
   quality with explicit weight/KV differences, timing boundaries, order limitations,
   realized kernels, residency settings and physical-device/process telemetry.
-- [ ] Explain metadata selection flips using changed pages and score margins without
-  retuning the frozen confirmatory settings.
+- [x] Explain metadata selection flips in new representative tensors using changed
+  pages and score margins; preserve the old-tensor mismatch and frozen settings.
 - [ ] When actual 4 GB hardware is available, record the largest tested successful
   context under a stated no-offload/fallback policy: prefill, 128 outputs and a
   matching quality check. The current 12 GB results cannot close this endpoint.

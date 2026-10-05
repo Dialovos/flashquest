@@ -190,6 +190,7 @@ def install_scheduler(monkeypatch, root, *, mode="performance", mutation=None, r
                    "llama_ubatch": 512 if backend == "llamacpp" else None,
                    "backend_identity": copy.deepcopy(BACKEND), "generation": B.PROTOCOL["generation"],
                    "compile_workers": 2 if backend == "vllm" else None,
+                   "flashinfer_disable_jit": True if backend == "vllm" else None,
                    "ready_timeout_s": 300, "request_timeout_s": 300,
                    "engine_settings": {"offload_gb": 0, "prefix_cache": False, "batch": 1,
                                        "temperature": 0, "ignore_eos": True, "speculation": False,
@@ -215,6 +216,7 @@ def install_scheduler(monkeypatch, root, *, mode="performance", mutation=None, r
                    "capacity": original["config"]["cache_capacity"],
                    "max_new_tokens": 128, "examples": len(examples), "limit_per_task": None,
                    "compile_workers": 2 if backend == "vllm" else None,
+                   "flashinfer_disable_jit": True if backend == "vllm" else None,
                    "backend_identity": copy.deepcopy(BACKEND),
                    "gpu_utilization": .7 if backend == "vllm" else None}
             protocol = {"version": 2, "quality_run": quality["run_identity"], "manifest": ref,
@@ -307,6 +309,7 @@ def test_schedule_quality_context_strings_roundtrip(isolated, monkeypatch):
     assert canonical["protocol_sha256"] == C.content_hash(schedule["protocol"])
     assert set(canonical["config"]["quality"]) == {"8192", "32768"}
     assert canonical["config"]["quality"] == schedule["protocol"]["quality"]
+    assert canonical["config"]["flashinfer_disable_jit"] == {"vllm": True}
     assert [command_value(c, "--quality") for c in commands] == list(map(str, paths))
 
 
@@ -946,6 +949,7 @@ def test_quality_scores_canonical_ids_and_keeps_native_text_private(isolated, mo
     raw = json.loads((isolated / public["raw_evidence"]["path"]).read_text())
     assert public["protocol"]["answer_decoder"] == N.ANSWER_DECODER
     assert public["protocol"]["termination_validation"] == N.QUALITY_STOP_POLICY
+    assert C.canonical_identity(public["identity"])["config"]["flashinfer_disable_jit"] is True
     for private, exported in zip(raw["samples"], public["samples"], strict=True):
         assert private["native_text"] == "missing" and private["generated"] == "red blue"
         assert private["generated_ids"] == [3, 10, 4, 1] and exported["hit"] is True
@@ -1015,12 +1019,55 @@ def test_child_compile_worker_drift_is_rejected(isolated, monkeypatch, mode):
         R.main()
 
 
+@pytest.mark.parametrize("mode", ["performance", "quality"])
+@pytest.mark.parametrize("value", [False, 1, "1", None])
+def test_child_flashinfer_jit_policy_drift_is_rejected(isolated, monkeypatch, mode, value):
+    path = quality_fixture(isolated)[0] if mode == "quality" else None
+    install_scheduler(monkeypatch, isolated, mode=mode,
+                      mutation=lambda parts: parts["config"].update(flashinfer_disable_jit=value))
+    monkeypatch.setattr(sys, "argv", scheduler_args(isolated, mode=mode, quality=[path] if path else None))
+    with pytest.raises(ValueError, match="child FlashInfer JIT policy differs"):
+        R.main()
+
+
+@pytest.mark.parametrize("mode", ["performance", "quality"])
+def test_resume_rejects_coherently_rehashed_child_jit_policy_drift(isolated, monkeypatch, mode):
+    quality = quality_fixture(isolated)[0] if mode == "quality" else None
+    install_scheduler(monkeypatch, isolated, mode=mode)
+    argv = scheduler_args(isolated, mode=mode, quality=[quality] if quality else None)
+    monkeypatch.setattr(sys, "argv", argv)
+    assert R.main() == 0
+    schedule_path = next(isolated.glob("benchmarks/validation/competitors/*/schedule.json"))
+    schedule = json.loads(schedule_path.read_text())
+    entry = schedule["cells"][0]
+    child_path = isolated / entry["path"]
+    child = json.loads(child_path.read_text())
+    raw_path = isolated / child["raw_evidence"]["path"]
+    raw = json.loads(raw_path.read_text())
+    identity = C.canonical_identity(child["identity"])
+    identity["config"]["flashinfer_disable_jit"] = False
+    raw["identity"] = identity
+    child["identity"] = C.export_identity(identity)
+    raw["run_identity"] = child["run_identity"] = C.content_hash(identity)
+    # Corruption fixtures deliberately bypass the production identified-output guard.
+    raw_path.write_text(json.dumps(raw) + "\n")
+    child["raw_evidence"]["sha256"] = C.file_hash(raw_path)
+    child_path.write_text(json.dumps(child) + "\n")
+    entry["sha256"] = C.file_hash(child_path)
+    entry["run_identity"] = child["run_identity"]
+    C.write_record(schedule_path, schedule)
+    monkeypatch.setattr(sys, "argv", [*argv, "--resume"])
+    with pytest.raises(ValueError, match="child FlashInfer JIT policy differs"):
+        R.main()
+
+
 def test_schedule_records_effective_compile_workers(isolated, monkeypatch):
     install_scheduler(monkeypatch, isolated)
     monkeypatch.setattr(sys, "argv", scheduler_args(isolated))
     assert R.main() == 0
     schedule = json.loads(next(isolated.glob("benchmarks/validation/competitors/*/schedule.json")).read_text())
     assert C.canonical_identity(schedule["identity"])["config"]["compile_workers"] == {"vllm": 2}
+    assert C.canonical_identity(schedule["identity"])["config"]["flashinfer_disable_jit"] == {"vllm": True}
 
 
 @pytest.mark.parametrize("target", [None, "checked_vocabulary_ids", "method"])

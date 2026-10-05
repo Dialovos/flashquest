@@ -23,6 +23,11 @@ def compile_workers(backend):
     return VLLM_COMPILE_WORKERS if backend == "vllm" else None
 
 
+def flashinfer_disable_jit(backend):
+    """Require matching precompiled FlashInfer kernels for the vLLM subprocess."""
+    return True if backend == "vllm" else None
+
+
 class UnsupportedConfiguration(ValueError):
     """The exact input/model/cache configuration cannot be compared."""
 
@@ -134,8 +139,10 @@ class Server:
             runtime_dir = llama_runtime_directory(command[0])
             self.env["LD_LIBRARY_PATH"] = str(runtime_dir) + os.pathsep + self.env.get("LD_LIBRARY_PATH", "")
         if "vllm.entrypoints.openai.api_server" in command:
-            # Override inherited/explicit values to preserve the recorded build bound.
+            # Enforce the recorded build policy and matching cached-kernel versions.
             self.env["MAX_JOBS"] = str(VLLM_COMPILE_WORKERS)
+            self.env["FLASHINFER_DISABLE_JIT"] = "1"
+            self.env.pop("FLASHINFER_DISABLE_VERSION_CHECK", None)
             toolkits = [p for p in Path(command[0]).absolute().parent.parent.glob("lib/python*/site-packages/nvidia/cu13")
                         if (p / "bin" / "nvcc").exists()]
             if len(toolkits) != 1:

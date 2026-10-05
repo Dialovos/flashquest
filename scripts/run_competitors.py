@@ -23,7 +23,7 @@ from bench_common import (
     write_record,
 )
 from bench_competitor import PROTOCOL, backend_identity, verified_awq_model, verify_runtime
-from competitor_backend import add_backend_arguments, compile_workers
+from competitor_backend import add_backend_arguments, compile_workers, flashinfer_disable_jit
 from competitor_niah import (
     ANSWER_DECODER,
     PRIVATE_SAMPLE_FIELDS,
@@ -79,8 +79,14 @@ def checked_result(record, spec, schedule, args, quality):
         raise ValueError("child model differs from frozen artifacts")
     if frozen["config"]["compile_workers"][spec["backend"]] != compile_workers(spec["backend"]):
         raise ValueError("schedule compile worker policy differs from the effective backend environment")
+    jit_policy = flashinfer_disable_jit(spec["backend"])
+    if frozen["config"]["flashinfer_disable_jit"].get(spec["backend"], ...) is not jit_policy:
+        raise ValueError("schedule FlashInfer JIT policy differs from the effective backend environment")
+    if cfg.get("flashinfer_disable_jit", ...) is not jit_policy:
+        raise ValueError("child FlashInfer JIT policy differs from scheduled cell")
     common = {"backend": spec["backend"], "kv_dtype": spec["kv_dtype"], "ctx_len": spec["ctx_len"],
               "compile_workers": frozen["config"]["compile_workers"][spec["backend"]],
+              "flashinfer_disable_jit": jit_policy,
               "gpu_utilization": args.gpu_utilization if spec["backend"] == "vllm" else None}
     if args.mode == "performance":
         expected = {**common, "n_decode": args.n_decode, "reps": args.reps, "seeds": [spec["seed"]],
@@ -301,6 +307,7 @@ def main():
               "attempt": args.attempt, "quality": quality,
               "tokenizer_size": vocabulary_size,
               "compile_workers": {backend: compile_workers(backend) for backend in backend_fingerprints},
+              "flashinfer_disable_jit": {backend: flashinfer_disable_jit(backend) for backend in backend_fingerprints},
               "backend_fingerprints": backend_fingerprints, "gguf_sha256": gguf_sha256}
     pinned_awq = verified_awq_model(args.awq_model_path)
     schedule = {**make_identity(config, pinned_awq, protocol, provenance()),
