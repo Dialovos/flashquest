@@ -10,6 +10,36 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from competitor_backend import Server, completion_payload, parse_completion
 
 
+def test_vllm_compile_workers_override_inherited_and_explicit_environment(tmp_path, monkeypatch):
+    import competitor_backend as adapter
+
+    class FakeSocket:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *unused):
+            pass
+
+        def bind(self, address):
+            assert address == ("127.0.0.1", 0)
+
+        def getsockname(self):
+            return ("127.0.0.1", 12345)
+
+    python = tmp_path / "backend" / "bin" / "python"
+    toolkit = python.parent.parent / "lib" / "python3.12" / "site-packages" / "nvidia" / "cu13"
+    (toolkit / "bin").mkdir(parents=True)
+    (toolkit / "bin" / "nvcc").touch()
+    monkeypatch.setattr(adapter.socket, "socket", FakeSocket)
+    monkeypatch.setenv("MAX_JOBS", "64")
+    server = Server([str(python), "-m", "vllm.entrypoints.openai.api_server"], tmp_path,
+                    env={"MAX_JOBS": "99"})
+    assert server.env["MAX_JOBS"] == "2" == str(adapter.compile_workers("vllm"))
+    assert adapter.compile_workers("llamacpp") is None
+    assert str(python.parent) in server.env["PATH"].split(adapter.os.pathsep)
+    assert server.env["CUDA_HOME"] == str(toolkit)
+
+
 def response(backend, nout=8):
     if backend == "vllm":
         return {"choices": [{"text": "answer", "token_ids": list(range(nout)), "finish_reason": "length"}],

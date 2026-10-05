@@ -23,8 +23,17 @@ from bench_common import (
     write_record,
 )
 from bench_competitor import PROTOCOL, backend_identity, verified_awq_model, verify_runtime
-from competitor_backend import add_backend_arguments
-from competitor_niah import load_manifest
+from competitor_backend import add_backend_arguments, compile_workers
+from competitor_niah import (
+    ANSWER_DECODER,
+    PRIVATE_SAMPLE_FIELDS,
+    QUALITY_STOP_POLICY,
+    TOKEN_MAPPING_METHOD,
+    decode_answer,
+    generation_eos_ids,
+    load_manifest,
+    validate_quality_stop,
+)
 from gpu_memory import observe_command, resolve_device, summarize
 
 
@@ -68,7 +77,10 @@ def checked_result(record, spec, schedule, args, quality):
                           "files": hashes, "content_sha256": content_hash(hashes)}
     if identity["model"] != expected_model:
         raise ValueError("child model differs from frozen artifacts")
+    if frozen["config"]["compile_workers"][spec["backend"]] != compile_workers(spec["backend"]):
+        raise ValueError("schedule compile worker policy differs from the effective backend environment")
     common = {"backend": spec["backend"], "kv_dtype": spec["kv_dtype"], "ctx_len": spec["ctx_len"],
+              "compile_workers": frozen["config"]["compile_workers"][spec["backend"]],
               "gpu_utilization": args.gpu_utilization if spec["backend"] == "vllm" else None}
     if args.mode == "performance":
         expected = {**common, "n_decode": args.n_decode, "reps": args.reps, "seeds": [spec["seed"]],
@@ -92,8 +104,10 @@ def checked_result(record, spec, schedule, args, quality):
             raise ValueError("frozen quality model/run differs")
         expected = {**common, "capacity": original_identity["config"]["cache_capacity"],
                     "max_new_tokens": 128, "examples": len(examples), "limit_per_task": None}
-        expected_protocol = {"version": 1, "quality_run": original["run_identity"], "manifest": manifest,
+        expected_protocol = {"version": 2, "quality_run": original["run_identity"], "manifest": manifest,
                              "max_new_tokens": 128, "scorer": "all expected substrings in decoded answer",
+                             "answer_decoder": ANSWER_DECODER,
+                             "termination_validation": QUALITY_STOP_POLICY,
                              "generation": "greedy EOS or output limit; exact input IDs; no wrapping",
                              "timing": "native phases and client times; quality may stop at EOS"}
     if any(cfg.get(k) != value for k, value in expected.items()) or record["protocol"] != expected_protocol:
@@ -105,7 +119,7 @@ def checked_result(record, spec, schedule, args, quality):
         raise ValueError("child raw evidence missing/changed/outside artifact directory")
     raw = json.loads(raw_path.read_text())
     exported = {**raw, "identity": export_identity(raw["identity"]), "raw_evidence": ref,
-                "samples": [{k: v for k, v in s.items() if k not in {"generated", "expected"}}
+                "samples": [{k: v for k, v in s.items() if k not in PRIVATE_SAMPLE_FIELDS}
                             for s in raw["samples"]]}
     if exported != record:
         raise ValueError("child raw/public evidence differs")
@@ -114,6 +128,10 @@ def checked_result(record, spec, schedule, args, quality):
         return record
     verify_runtime(record["runtime"], spec["backend"], spec["kv_dtype"], cfg["capacity"])
     samples = record["samples"]
+    if examples is not None:
+        from transformers import AutoTokenizer
+        answer_tokenizer = AutoTokenizer.from_pretrained(args.awq_model_path, local_files_only=True)
+        eos_ids = generation_eos_ids(answer_tokenizer)
     if len(samples) != (args.reps if examples is None else len(examples)):
         raise ValueError("incomplete competitor sample set")
     if examples is None:
@@ -171,11 +189,18 @@ def checked_result(record, spec, schedule, args, quality):
             raise ValueError("competitor phases differ from backend-native metrics")
         if examples is not None:
             example, private_sample = examples[index], raw["samples"][index]
+            generated_ids = private_sample["generated_ids"]
+            validate_quality_stop(generated_ids, sample["termination"], eos_ids, cfg["max_new_tokens"])
+            answer = decode_answer(answer_tokenizer, generated_ids)
             if (any(sample[k] != example[k] for k in ("task", "seed", "index", "input_sha256")) or
                     private_sample["expected"] != example["expected"] or
+                    len(generated_ids) != nout or private_sample["generated"] != answer or
+                    not isinstance(private_sample["native_text"], str) or
+                    sample["native_text_sha256"] != content_hash(private_sample["native_text"]) or
+                    sample["generated_ids_sha256"] != content_hash(generated_ids) or
                     type(sample["hit"]) is not bool or
-                    sample["hit"] != all(v in private_sample["generated"] for v in example["expected"]) or
-                    sample["generated_sha256"] != content_hash(private_sample["generated"])):
+                    sample["hit"] != all(v in answer for v in example["expected"]) or
+                    sample["generated_sha256"] != content_hash(answer)):
                 raise ValueError("competitor quality scorer/input differs")
     if examples is None and any(not math.isclose(record[k], median(s[k] for s in samples), rel_tol=1e-8)
                                 for k in ("decode_tok_s", "prefill_tok_s")):
@@ -186,6 +211,8 @@ def checked_result(record, spec, schedule, args, quality):
             if mapping != {"status": "same-pinned-HF-tokenizer", "manifest_sha256": content_hash(examples)}:
                 raise ValueError("competitor tokenizer mapping unverified")
         elif (mapping["status"] != "complete" or mapping["checked_prompts"] != len(examples) or
+              mapping["checked_vocabulary_ids"] != len(answer_tokenizer) or
+              mapping["method"] != TOKEN_MAPPING_METHOD or
               mapping["input_manifest_sha256"] != content_hash(examples)):
             raise ValueError("competitor GGUF mapping incomplete")
     return record
@@ -273,6 +300,7 @@ def main():
               "gpu_utilization": args.gpu_utilization, "gpu_index": args.gpu_index,
               "attempt": args.attempt, "quality": quality,
               "tokenizer_size": vocabulary_size,
+              "compile_workers": {backend: compile_workers(backend) for backend in backend_fingerprints},
               "backend_fingerprints": backend_fingerprints, "gguf_sha256": gguf_sha256}
     pinned_awq = verified_awq_model(args.awq_model_path)
     schedule = {**make_identity(config, pinned_awq, protocol, provenance()),

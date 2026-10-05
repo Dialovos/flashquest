@@ -8,7 +8,7 @@ The implementation includes persistent packed caches and fused Triton decode ker
 
 Run the CLI examples below, or use the quality harness for matched retrieval examples. CPU validation checks: `CUDA_VISIBLE_DEVICES="" python -m pytest tests/test_phase6_headtohead.py tests/test_quality_validation.py tests/test_gpu_memory.py tests/test_validation_ablation.py`. Contribution, statistics and competitor checks: `CUDA_VISIBLE_DEVICES="" python -m pytest tests/test_profile_contribution.py tests/test_validation_stats.py tests/test_competitor_backend.py tests/test_competitor_validation.py`. GPU checks: `python -m pytest tests/test_bench_flashquest.py tests/test_sparse_int4.py tests/test_persistent_int4.py tests/test_page_scores_int8.py -m 'not slow'`.
 
-2026-10-04 status: retrieval pilots pass at 0.20 for 4k/8k and at 0.25 for 32k; the failed 32k/0.20 run is preserved. Balanced internal ablations show a 1.84× paired decode ratio at 32k and no practical gain at 8k. Component profiling and representative contribution ablations are complete; metadata reuse saves summary storage, with similar scoring latency and some selection disagreements. Earlier validation passed 77 CPU checks, two tiny-Llama GPU checks and 24 kernel/cache checks; the contribution work passed 17 additional targeted checks. Fresh confirmation, competitive speed, research novelty and actual 4 GB capacity remain unproven.
+2026-10-05 status: the complete 2,700-outcome retrieval confirmation fails its frozen non-inferiority rule at four of nine endpoints; all pilot screens pass. Historical balanced internal ablations show a 1.84× paired decode ratio at 32k and no practical gain at 8k. Component profiling and representative contribution ablations are complete; metadata reuse saves summary storage, with similar scoring latency and some selection disagreements. The reviewed native-output validation and selection diagnostic pass 170 focused CPU checks. Optimized competitor comparisons, changed-page captures and actual 4 GB capacity remain pending; competitive speed and research novelty are unproven.
 
 See the [research roadmap](roadmap.md) and the [dated execution checklist and decision framework](docs/roadmap-implementation-plan.md#6-current-execution-status-and-decision-framework) for remaining endpoints. The original plan is preserved alongside its current progress record.
 
@@ -231,8 +231,19 @@ task/context endpoints at retention 0.20/0.20/0.25 for nominal 4k/8k/32k.
 Every simultaneous sparse-minus-dense lower bound must exceed −10 percentage
 points, with observed dense/sparse accuracy at least 0.80. Complete paired records
 from one clean identical source snapshot are required; the observed floors are
-screens, not population confidence guarantees. Results remain pending. These
+screens, not population confidence guarantees. The completed original 4k/8k
+group has independently audited multivalue endpoint failures: sparse/dense hits
+are 96/99 and 86/97 out of 100, respectively. After an OS-kernel change across a
+work pause, the unchanged full family was re-executed under one current
+environment; the original records remain preserved and unpooled. The
+[complete current-family summary](benchmarks/validation/confirmation/9a279d05ca13c7038902ebd26fa9244b3b566240d91407c3a6261efef8d724d6/summary.json)
+has passed independent evidence and bound reconstruction. Five endpoints pass;
+multivalue at all three contexts and multikey at 32k fail. Dense/all-pages/sparse
+32k hits are 100/100/100, 91/90/88 and 91/90/89. All observed accuracy floors and
+pilot-ratio screens pass, permitting engineering timing characterization.
+Failure to establish non-inferiority does not prove inferiority; these
 fixed-generator retrieval checks cannot establish general language quality.
+See the [execution notes](docs/execution-checkpoint.md).
 
 [Pinned competitor validation](docs/competitor-validation.md) uses separate
 native-server adapters and exact input IDs, with verified tokenizer/EOS behavior
@@ -293,7 +304,7 @@ The all-pages ablation uses the same fused kernel and page-selection machinery; 
 
 Quality resume checks source/model/environment/protocol identity and matched sample counts. The legacy matrix's `--skip-existing` reruns its adapters because complete identity cannot be resolved before launch; this limitation does not describe the new native-server runner. Raw legacy logs and original backend JSON stay under ignored `artifacts/benchmarks/`; exported records contain normalized evidence and error categories. Timeout/error cells remain failures. GPU name and total memory come from the machine running the matrix. PyTorch allocated/reserved bytes are labeled separately.
 
-The remaining gates are fresh confirmation, optimized dense competitors with matching quality/memory records, selection-flip diagnostics and an evidence-linked research decision. Actual 4 GB tests are required for that capacity claim. A decision about runtime or narrower metadata/kernel research can proceed while target hardware is unavailable, with the capacity claim explicitly withheld.
+The remaining gates are optimized dense competitors with matching quality/memory records, selection-flip diagnostics and an evidence-linked research decision. The completed fresh confirmation failed its specified non-inferiority rule. Actual 4 GB tests are required for that capacity claim. A decision about runtime or narrower metadata/kernel research can proceed while target hardware is unavailable, with the capacity claim explicitly withheld.
 
 The new FlashQuest ablation runner freezes a balanced whole-arm schedule, verifies
 matching quality evidence, pins model/source/environment identity, and samples
@@ -303,10 +314,15 @@ and missing counters. It records configured CUDA placement without asserting abs
 of OS fallback. The native-server competitor observation path is implemented and
 has smoke records; full competitor measurements and actual capacity runs remain pending.
 
+Set `QUALITY_8K` to a completed, passing quality record from the current runtime,
+quality harness, corpus and validation environment. Historical pilot records are
+preserved for their original measurements; they do not pass the current semantic
+prerequisite check for a new block.
+
 ```bash
 python scripts/run_validation_ablation.py --contexts 8192 \
     --revision 272b3bde867b606760447deb9a4d2719fbdfd3ae \
-    --quality benchmarks/validation/quality/85c9abbb694ffb21ba5c03336188658ca2d0e9dff0790a9a9b62cb6b28c2ef07/quality.json
+    --quality "$QUALITY_8K"
 ```
 
 Use `--resume` for an identical incomplete schedule with completed valid cells.

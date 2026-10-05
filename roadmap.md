@@ -1,8 +1,8 @@
 # FlashQuest research roadmap
 
-Updated: 2026-10-03
+Updated: 2026-10-05
 
-Establish whether FlashQuest offers a reproducible speed, memory, or context-capacity advantage over dense quantized KV at comparable quality. Keep the current direction while testing the narrower contribution of reusing quantization metadata for page scoring. Research novelty and competitive advantage remain open questions.
+Establish whether FlashQuest offers a reproducible speed, memory, or context-capacity advantage over dense quantized KV at comparable quality. Continue bounded validation of affine quantization metadata for page scoring. Broad sparse/low-bit and compressed-index novelty is unsupported by the closest prior work; the narrower implementation's research significance and competitive advantage remain unproven.
 
 ## Completed
 
@@ -16,22 +16,29 @@ Establish whether FlashQuest offers a reproducible speed, memory, or context-cap
 - [x] Run the matched 8k and 32k pilots at retention 0.20; preserve the 32k screen failure.
 - [x] Prepare FlashQuest device/process memory observation and balanced immutable ablation schedules; pass 76 CPU checks and rerun both tiny-Llama GPU checks.
 - [x] Complete balanced 8k/0.20 and 32k/0.25 ablations: four input seeds, three repetitions per arm, all 48 timed samples audited.
+- [x] Profile scoring, top-k, packed attention, tail and merge costs on synthetic and actual pinned-model inputs; independently audit the three reports.
+- [x] Map the metadata/kernel implementation against closer low-bit sparse and self-indexing prior work.
+- [x] Freeze a nine-endpoint fresh-seed confirmation protocol and validate its statistics and evidence contracts.
+- [x] Implement pinned competitor adapters, exact-input quality manifests, realized-runtime checks and resumable evidence validation; preserve failed smoke attempts.
+- [x] Complete and independently audit all 2,700 fresh-confirmation outcomes and the nine-endpoint simultaneous-bound summary; preserve its failed quality rule.
 
-The 4k/8k screens pass at 0.20; 32k passes its 0.25 fallback. The internal performance screen passes at 32k (1.838× median paired ratio) and fails at 8k (0.995×). Expanded quality, competitors, novelty and target capacity remain pending. See the [README](README.md) for evidence and limitations.
+The full confirmation fails at four of nine endpoints; its pilot screens pass. The historical internal performance screen passes at 32k (1.838× median paired ratio) and fails at 8k (0.995×). Current-environment timing, optimized competitor comparisons, changed-page diagnostics and actual 4 GB capacity remain pending. See the [provisional research decision](docs/research-decision.md) and [independent audit](docs/independent-roadmap-audit.md).
 
 ## 1. Prepare full-model experiments
 
 - [x] Install and verify the AWQ loader and kernels for Llama-3.2-3B-Instruct-AWQ.
-- [ ] Obtain the matching Llama-3.2-3B-Instruct Q4_K_M GGUF.
-- [ ] Prepare an external llama.cpp build supporting context depth, quantized K/V, and Flash Attention.
-- [ ] Prepare a pinned current vLLM environment with same-request server timing metrics; verify actual kernels and FP8 KV support on the test GPU.
+- [x] Obtain the matching Llama-3.2-3B-Instruct Q4_K_M GGUF.
+- [x] Prepare an external llama.cpp build supporting context depth, quantized K/V, and Flash Attention.
+- [x] Prepare an isolated pinned current vLLM environment with same-request server timing metrics and a matching CUDA compiler/header toolchain.
+- [ ] Verify actual vLLM kernels and FP8/FP16 KV support in successful requests on the test GPU.
 - [ ] Run one short request with each backend before launching a matrix.
-- [ ] Record model revisions, backend versions, GPU, context length, cache settings, and seeds with the results.
+- [x] Record model revisions, backend versions, GPU, context length, cache settings, and seeds with the results.
 
 AWQ setup and its short-run record are complete. Quality records include source,
-model/tokenizer, protocol and environment identity. llama.cpp/vLLM setup and complete
-benchmark identity integration remain pending; legacy matrix resume is disabled
-when identity cannot be resolved.
+model/tokenizer, protocol and environment identity. llama.cpp Q4/FP16 short requests
+complete on GPU. vLLM startup failures are preserved; the corrected-toolchain retry
+was interrupted without terminal evidence. Its successful performance/quality smoke
+and the full matrix remain pending. See [competitor setup and contracts](docs/competitor-validation.md).
 
 Done when every backend produces a valid short-run record with the intended model and cache precision. Unsupported configurations remain explicit failures.
 
@@ -42,7 +49,29 @@ Done when every backend produces a valid short-run record with the intended mode
 - [x] Repeat at 8k and 32k after the 4k check passes.
 - [x] Screen retention 0.25 at 32k after the 0.20 failure.
 - [x] Save per-example outcomes and failures, not only aggregate hit rates.
-- [ ] Expand beyond the 20-example pilot with additional samples and seeds before making a research claim.
+- [x] Expand beyond the 20-example pilot with additional samples and seeds before making a research claim.
+
+The [frozen confirmation](benchmarks/validation/protocols/9f2f55af018bf2dc27efc97cf0d90940acf638fc08aeb2ae23330318b63226aa.json)
+uses seeds 1–5 and 100 paired examples per task/context, with simultaneous bounds
+over all nine endpoints. Fresh 4k is complete under commit `05f6400`: sparse
+single/multikey/multivalue score 100/99/96 out of 100, against dense 100/100/99.
+The original multivalue lower difference bound is −0.127912, failing the frozen
+−0.10 endpoint rule without proving inferiority. Original 8k is also complete:
+dense/all-pages/sparse hits are 100/100/100, 98/98/97 and 97/96/86; its multivalue
+lower bound is −0.223272. Both original records are independently audited.
+The same-seed current-environment 4k re-execution is complete and audited:
+100/100/100, 100/100/100 and 99/99/97; multivalue still fails with lower bound
+−0.112446. Some generated outputs differ despite identical prompts/settings, so
+bitwise greedy reproducibility and kernel causality are not established. The
+current 8k re-execution is complete: dense/all-pages/sparse hits are 100/100/100,
+98/98/96 and 97/96/89; multivalue fails with lower bound −0.184352. Its independent
+terminal audit passed. The 32k context is also complete and audited at unchanged
+retention 0.25: dense/all-pages/sparse hits are 100/100/100, 91/90/88 and 91/90/89.
+Multikey and multivalue lower bounds are −0.141958 and −0.151236, respectively,
+failing the rule. The [complete, independently reconstructed family](benchmarks/validation/confirmation/9a279d05ca13c7038902ebd26fa9244b3b566240d91407c3a6261efef8d724d6/summary.json)
+has five passing and four failing endpoints, with all observed floors passing.
+This completes collection while failing to establish non-inferiority. The original
+group remains unpooled; no margin, retention or sample budget was changed.
 
 Use the existing quality script's per-task gate of at least 85% of dense hits as an initial screen. Report absolute hit counts too; passing this small retrieval screen does not establish general long-context quality. If retention 0.20 fails, test 0.25 and carry that setting into the performance comparisons.
 
@@ -83,7 +112,12 @@ python scripts/phase6_run_ruler_4k_int4.py \
 - [x] Use warmup and at least three repetitions; retain samples, median rates, and run-to-run variation.
 - [x] Record prefill time, decode throughput, end-to-end throughput, and allocated/reserved memory separately.
 - [x] Repeat promising results with additional input seeds.
-- [ ] Profile page scoring, selection, packed attention, and partial-page handling if the benefit is small or inconsistent.
+- [x] Profile page scoring, selection, packed attention, and partial-page handling if the benefit is small or inconsistent.
+
+The [component reports](benchmarks/validation/contrib/summary.md) contain warmed
+operator samples on real model captures. Metadata scoring has similar latency to
+stored-summary scoring; selection agreement is qualified. The dequantization/SDPA
+reference is separately timed and does not represent an optimized low-bit engine.
 
 Done when the results show whether sparse decode improves on this runtime's all-pages path at a retention that passed the quality screen. Page selection reduces reads; the persistent cache still stores the full context. This ablation shares the sparse kernel and selection machinery, so it also needs independent dense competitors.
 
@@ -95,10 +129,15 @@ is faster and the proposed pilot screen passes. Prefill is essentially unchanged
 The control still pays scoring/top-k, so these results establish an internal
 ablation benefit at 32k, not a competitive or statistically confirmed research win.
 
+Set `QUALITY_8K` to a completed, passing quality record produced with the current
+runtime, quality harness, corpus and validation environment. The historical pilot
+above remains evidence for its original block; the strengthened semantic gate
+rejects it as a prerequisite for a new block at the current source.
+
 ```bash
 python scripts/run_validation_ablation.py --contexts 8192 --retention 0.20 \
     --revision 272b3bde867b606760447deb9a4d2719fbdfd3ae \
-    --quality benchmarks/validation/quality/85c9abbb694ffb21ba5c03336188658ca2d0e9dff0790a9a9b62cb6b28c2ef07/quality.json
+    --quality "$QUALITY_8K"
 ```
 
 ## 4. Compare optimized competitors
@@ -132,10 +171,17 @@ evaluate bounded prefill only as separately validated future work.
 
 ## 6. Test the contribution and decide
 
-- [ ] Compare metadata-based page scoring with separately computed page summaries: score/selection agreement, metadata bytes, and scoring latency.
-- [ ] Compare fused packed attention with the reference dequantization path: output agreement, temporary allocations, and latency.
-- [ ] Map the precise implementation claim against the closest prior work, recording overlaps and remaining differences.
+- [x] Compare metadata-based page scoring with separately computed page summaries: score/selection agreement, metadata bytes, and scoring latency.
+- [x] Compare fused packed attention with the reference dequantization path: output agreement, temporary allocations, and latency.
+- [x] Map the precise implementation claim against the closest prior work, recording overlaps and remaining differences.
+- [ ] Capture concrete changed-page IDs and score/error margins to explain selection disagreements.
 - [ ] Write a decision supported by the saved quality, performance, and memory results.
+
+The [current decision](docs/research-decision.md) is provisional while competitive
+measurements are unfinished. Fresh quality collection is complete and fails its
+frozen rule. Metadata reuse avoids separate-summary
+bytes but has no established scoring-speed advantage. The closest prior-work map
+does not certify first-of-kind novelty.
 
 Continue research if the benefit is repeatable beyond measurement variation at comparable quality, or if an accurately measured capacity advantage survives quantized dense baselines. A performance win and a novelty claim need separate evidence.
 
@@ -145,10 +191,17 @@ If the full runtime lacks a competitive advantage, consider a narrower kernel or
 
 Keep new JSON records, logs, configuration/version details, and comparison summaries under `benchmarks/validation*`. Use separate output directories for different experiment configurations and preserve the historical phase files. Capture conclusions and links to their evidence in this roadmap or the README.
 
-The next actions are profiling the 8k scoring/selection/attention costs and preparing
-optimized quantized dense competitors with matching quality. The 32k result supports
-continuing that comparison; it does not settle novelty or target fit. Freeze a
-confirmatory protocol before fresh quality seeds 1–5, then test the metadata-scoring
-and fused-attention contributions. Competitor setup and bounded prefill remain separate.
+The user resumed work after supervised confirmation completed. Its independent
+terminal audit passed, releasing the source freeze. The complete failed summary
+retains source `05f6400` and its exact recorded environment; the original 4k/8k
+group remains separate. The reviewed canonical decoder, EOS/cap, token mapping,
+compile-worker and attention-backend checks plus the selection diagnostic pass
+170 focused CPU tests. Commit their source before new GPU measurements, recapture
+the changed-page evidence, verify native smokes, and repeat both internal timing
+blocks under the current environment before the full optimized comparison.
+The earlier usage cutoff remains removed. See
+[exact continuation instructions](docs/execution-checkpoint.md).
+Changed-page diagnostics and actual 4 GB testing remain separate pending endpoints;
+the user authorized deferring unavailable target hardware for collaboration.
 The work is on the local feature branch `refactor/benchmark-validation`. Check off
 tasks only when their evidence is saved.

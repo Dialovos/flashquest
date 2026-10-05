@@ -28,6 +28,7 @@ from competitor_backend import (
     Server,
     add_backend_arguments,
     command_for,
+    compile_workers,
     completion_payload,
     llama_runtime_directory,
     marker,
@@ -108,6 +109,7 @@ def verify_runtime(runtime, backend, dtype, capacity):
                 observed["cache_storage_dtypes"] != [expected_dtype] or
                 observed["cache_tensor_devices"] != ["cuda:0"] or observed["cache_tensor_bytes"] <= 0 or
                 observed["model_parameter_devices"] != ["cuda:0"] or not runtime["weight_kernels"] or
+                not runtime.get("attention_backend") or
                 (runtime["allocated_kv_tokens"] or 0) < capacity or observed["cpu_offload_gb"] != 0 or
                 observed["offload_group_size"] != 0 or
                 "AutoAWQMarlinLinearMethod" not in observed["quantization_methods"] or
@@ -143,6 +145,7 @@ def main():
               "capacity": args.ctx_len + args.n_decode, "gpu_utilization": args.gpu_utilization if args.backend == "vllm" else None,
               "max_batch_tokens": 2048, "llama_ubatch": 512 if args.backend == "llamacpp" else None,
               "backend_identity": backend, "generation": PROTOCOL["generation"],
+              "compile_workers": compile_workers(args.backend),
               "ready_timeout_s": args.ready_timeout, "request_timeout_s": args.ready_timeout,
               "engine_settings": {"offload_gb": 0, "prefix_cache": False, "batch": 1,
                                   "temperature": 0, "ignore_eos": True, "speculation": False,

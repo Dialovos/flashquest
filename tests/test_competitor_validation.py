@@ -27,6 +27,7 @@ BACKEND = {"version": "test", "binary_sha256": "e" * 64}
 
 @pytest.fixture
 def isolated(monkeypatch, tmp_path):
+    (tmp_path / "generation_config.json").write_text('{"eos_token_id":[1,2]}')
     monkeypatch.setattr(Q, "REPO_ROOT", tmp_path)
     for module in (N, R):
         monkeypatch.setattr(module, "REPO_ROOT", tmp_path)
@@ -36,6 +37,8 @@ def isolated(monkeypatch, tmp_path):
     monkeypatch.setattr(C, "source_identity", lambda: copy.deepcopy(SOURCE))
     monkeypatch.setattr(R, "resolve_device", lambda index: "test-device")
     monkeypatch.setattr(R, "tokenizer_size", lambda path: 6, raising=False)
+    monkeypatch.setitem(sys.modules, "transformers", SimpleNamespace(AutoTokenizer=SimpleNamespace(
+        from_pretrained=lambda path, *, local_files_only: Tokenizer(tmp_path))))
     return tmp_path
 
 
@@ -101,14 +104,16 @@ def command_value(command, flag):
     return command[command.index(flag) + 1]
 
 
-def native_response(backend, text, input_count, output_count, *, performance):
+def native_response(backend, text, input_count, output_count, *, performance, generated_ids=None):
+    generated_ids = generated_ids or ([3] * output_count if performance else [3] * (output_count - 1) + [1])
+    assert len(generated_ids) == output_count
     if backend == "vllm":
-        return {"choices": [{"text": text, "token_ids": [3] * output_count,
+        return {"choices": [{"text": text, "token_ids": generated_ids,
                              "finish_reason": "length" if performance else "stop"}],
                 "usage": {"prompt_tokens": input_count, "completion_tokens": output_count},
                 "metrics": {"time_to_first_token_ms": 100, "generation_time_ms": 200,
                             "queue_time_ms": 0}}
-    return {"content": text, "tokens": [3] * output_count, "tokens_predicted": output_count,
+    return {"content": text, "tokens": generated_ids, "tokens_predicted": output_count,
             "stop_type": "limit" if performance else "eos",
             "timings": {"prompt_n": input_count, "prompt_ms": 100,
                         "predicted_n": output_count, "predicted_ms": 200}}
@@ -128,6 +133,13 @@ def vllm_runtime(dtype="auto", capacity=131):
             "attention_backend": ["TRITON_ATTN"], "allocated_kv_tokens": capacity,
             "kv_scale_policy": "checkpoint-or-unit-default; values in worker observation",
             "cpu_offload_gb": 0, "os_fallback": "unmeasured", "worker_observation": observed}
+
+
+def llama_runtime(dtype="q4_0", capacity=131):
+    return {"weight_placement": "all-model-layers-GPU", "offloaded_layers": 29, "total_layers": 29,
+            "gpu_kv_buffers_mib": [{"device": "CUDA0", "mib": 20.0}],
+            "flash_attention_enabled": True, "cache_capacity_tokens": capacity,
+            "cache_k_dtype": dtype, "cache_v_dtype": dtype, "os_fallback": "unmeasured"}
 
 
 def observed_memory(private, *, performance, repetitions, interval_s):
@@ -174,8 +186,10 @@ def install_scheduler(monkeypatch, root, *, mode="performance", mutation=None, r
             cfg = {"backend": backend, "kv_dtype": dtype, "ctx_len": context,
                    "n_decode": output_count, "capacity": context + output_count,
                    "reps": repetitions, "seeds": [seed],
-                   "gpu_utilization": .7, "max_batch_tokens": 2048, "llama_ubatch": None,
+                   "gpu_utilization": .7 if backend == "vllm" else None, "max_batch_tokens": 2048,
+                   "llama_ubatch": 512 if backend == "llamacpp" else None,
                    "backend_identity": copy.deepcopy(BACKEND), "generation": B.PROTOCOL["generation"],
+                   "compile_workers": 2 if backend == "vllm" else None,
                    "ready_timeout_s": 300, "request_timeout_s": 300,
                    "engine_settings": {"offload_gb": 0, "prefix_cache": False, "batch": 1,
                                        "temperature": 0, "ignore_eos": True, "speculation": False,
@@ -200,24 +214,38 @@ def install_scheduler(monkeypatch, root, *, mode="performance", mutation=None, r
                    "ctx_len": original["config"]["ctx_len"],
                    "capacity": original["config"]["cache_capacity"],
                    "max_new_tokens": 128, "examples": len(examples), "limit_per_task": None,
-                   "backend_identity": copy.deepcopy(BACKEND), "gpu_utilization": .7}
-            protocol = {"version": 1, "quality_run": quality["run_identity"], "manifest": ref,
+                   "compile_workers": 2 if backend == "vllm" else None,
+                   "backend_identity": copy.deepcopy(BACKEND),
+                   "gpu_utilization": .7 if backend == "vllm" else None}
+            protocol = {"version": 2, "quality_run": quality["run_identity"], "manifest": ref,
                         "max_new_tokens": 128, "scorer": "all expected substrings in decoded answer",
+                        "answer_decoder": copy.deepcopy(N.ANSWER_DECODER),
+                        "termination_validation": copy.deepcopy(N.QUALITY_STOP_POLICY),
                         "generation": "greedy EOS or output limit; exact input IDs; no wrapping",
                         "timing": "native phases and client times; quality may stop at EOS"}
             samples = []
             for example in examples:
-                sample = N.parse_completion(backend, native_response(backend, "red blue", 3, 2,
-                                            performance=False), 3, 128, performance=False)
+                sample = N.parse_completion(backend, native_response(backend, "red blue", 3, 3,
+                                            performance=False, generated_ids=[3, 4, 1]), 3, 128, performance=False)
                 sample.pop("text")
-                sample.pop("tokens")
+                generated_ids = sample.pop("tokens")
+                answer = N.decode_answer(Tokenizer(root), generated_ids)
                 sample.update(example_id=example["example_id"], task=example["task"],
                               seed=example["seed"], index=example["index"],
                               input_sha256=example["input_sha256"], hit=True,
-                              generated_sha256=C.content_hash("red blue"), client_request_s=.31,
-                              generated="red blue", expected=example["expected"])
+                              generated_sha256=C.content_hash(answer), client_request_s=.31,
+                              native_text_sha256=C.content_hash("red blue"),
+                              generated_ids_sha256=C.content_hash(generated_ids),
+                              generated=answer, expected=example["expected"],
+                              native_text="red blue", generated_ids=generated_ids)
                 samples.append(sample)
         model, source, environment = copy.deepcopy(MODEL), copy.deepcopy(SOURCE), copy.deepcopy(ENVIRONMENT)
+        if backend == "llamacpp":
+            gguf = Path(command_value(command, "--gguf"))
+            hashes = {gguf.name: C.file_hash(gguf)}
+            model = {"model": "bartowski/Llama-3.2-3B-Instruct-GGUF",
+                     "revision": "5ab33fa94d1d04e903623ae72c95d1696f09f9e8",
+                     "files": hashes, "content_sha256": C.content_hash(hashes)}
         parts = {"config": cfg, "model": model, "source": source,
                  "environment": environment, "protocol": protocol}
         if mutation:
@@ -225,17 +253,25 @@ def install_scheduler(monkeypatch, root, *, mode="performance", mutation=None, r
         result = {**C.make_identity(parts["config"], parts["model"], parts["protocol"],
                                    parts["environment"], source=parts["source"]),
                   "protocol": parts["protocol"], "status": "complete", "samples": samples,
-                  "runtime": vllm_runtime(dtype, cfg["capacity"])}
+                  "runtime": vllm_runtime(dtype, cfg["capacity"]) if backend == "vllm"
+                             else llama_runtime(dtype, cfg["capacity"])}
         if mode == "quality":
-            result["token_mapping"] = {"status": "same-pinned-HF-tokenizer",
-                                       "manifest_sha256": C.content_hash(examples)}
+            if backend == "vllm":
+                result["token_mapping"] = {"status": "same-pinned-HF-tokenizer",
+                                           "manifest_sha256": C.content_hash(examples)}
+            else:
+                result["token_mapping"] = {"status": "complete", "checked_used_ids": 4,
+                                           "checked_special_ids": 4, "checked_vocabulary_ids": len(Tokenizer(root)),
+                                           "checked_prompts": len(examples), "eos_ids": [1, 2],
+                                           "input_manifest_sha256": C.content_hash(examples),
+                                           "method": N.TOKEN_MAPPING_METHOD}
         else:
             result["decode_tok_s"] = samples[0]["decode_tok_s"]
             result["prefill_tok_s"] = samples[0]["prefill_tok_s"]
         raw_path = root / "artifacts" / ("competitors" if mode == "performance" else "competitor-quality") / result["run_identity"] / "raw.json"
         C.write_record(raw_path, result)
         result["identity"] = C.export_identity(result["identity"])
-        result["samples"] = [{k: v for k, v in sample.items() if k not in {"generated", "expected"}}
+        result["samples"] = [{k: v for k, v in sample.items() if k not in N.PRIVATE_SAMPLE_FIELDS}
                              for sample in samples]
         result["raw_evidence"] = {"path": raw_path.relative_to(root).as_posix(),
                                   "sha256": C.file_hash(raw_path)}
@@ -411,7 +447,8 @@ def test_quality_schedule_reconstructs_self_hashed_samples_from_manifest_and_ans
         R.main()
 
 
-@pytest.mark.parametrize("target", ["quality_run", "manifest", "examples", "limit_per_task"])
+@pytest.mark.parametrize("target", ["quality_run", "manifest", "examples", "limit_per_task",
+                                    "answer_decoder", "termination_validation"])
 def test_quality_schedule_rejects_child_manifest_or_subset_drift(isolated, monkeypatch, target):
     path, _ = quality_fixture(isolated)
 
@@ -420,6 +457,10 @@ def test_quality_schedule_rejects_child_manifest_or_subset_drift(isolated, monke
             parts["protocol"]["quality_run"] = "0" * 64
         elif target == "manifest":
             parts["protocol"]["manifest"]["sha256"] = "0" * 64
+        elif target == "answer_decoder":
+            parts["protocol"]["answer_decoder"]["clean_up_tokenization_spaces"] = False
+        elif target == "termination_validation":
+            parts["protocol"]["termination_validation"]["length"] = "partial outputs allowed"
         else:
             parts["config"][target] = 1
 
@@ -633,19 +674,25 @@ def test_gguf_metadata_rejects_unsupported_or_truncated_inputs(tmp_path, payload
 
 
 class Tokenizer:
-    vocabulary = ("B", "E", "T", "A", "C", "D")
+    vocabulary = ("B", "E", "T", "red", " blue", "missing", "A", " .", " I", " 'm", "CTRL",
+                  "red and blue", "red blue")
     all_special_ids = (0, 1, 2)
     bos_token_id = 0
 
     def __init__(self, directory):
         self.name_or_path = str(directory)
+        self.added_tokens_decoder = {index: SimpleNamespace(special=True) for index in (*self.all_special_ids, 10)}
 
     def convert_ids_to_tokens(self, index):
         return self.vocabulary[index]
 
+    def __len__(self):
+        return len(self.vocabulary)
+
     def decode(self, ids, *, skip_special_tokens, clean_up_tokenization_spaces):
-        assert skip_special_tokens is False and clean_up_tokenization_spaces is False
-        return "".join(self.vocabulary[index] for index in ids)
+        special = {index for index, token in self.added_tokens_decoder.items() if token.special}
+        result = "".join(self.vocabulary[index] for index in ids if not skip_special_tokens or index not in special)
+        return result.replace(" .", ".").replace(" 'm", "'m") if clean_up_tokenization_spaces else result
 
 
 def mapping_fixture(tmp_path):
@@ -673,18 +720,28 @@ def test_gguf_mapping_checks_every_used_special_id_and_every_prompt(tmp_path):
     metadata, tokenizer, examples, server, calls = mapping_fixture(tmp_path)
     result = N.validate_gguf_tokens(metadata, tokenizer, examples, server)
     assert result["status"] == "complete" and result["checked_prompts"] == 2
-    assert result["checked_used_ids"] == 4 and result["checked_special_ids"] == 3
+    assert result["checked_used_ids"] == 4 and result["checked_special_ids"] == 4
+    assert result["checked_vocabulary_ids"] == len(tokenizer)
+    assert result["method"] == N.TOKEN_MAPPING_METHOD
     assert result["eos_ids"] == [1, 2] and result["input_manifest_sha256"] == C.content_hash(examples)
     assert calls == [e["input_ids"] for e in examples]
 
 
-@pytest.mark.parametrize("target", ["used_id", "unused_special_id", "bos", "eos", "second_full_prompt"])
+@pytest.mark.parametrize("target", ["used_id", "unused_special_id", "output_only_ordinary_id",
+                                    "vocabulary_size", "bos", "eos", "second_full_prompt"])
 def test_gguf_mapping_rejects_vocab_full_prompt_and_eos_differences(tmp_path, target):
     metadata, tokenizer, examples, server, _ = mapping_fixture(tmp_path)
     if target == "used_id":
         metadata["tokenizer.ggml.tokens"][5] = "different"
     elif target == "unused_special_id":
         metadata["tokenizer.ggml.tokens"][1] = "different"
+    elif target == "output_only_ordinary_id":
+        ordinary_id = 6
+        assert ordinary_id not in {x for example in examples for x in example["input_ids"]}
+        assert ordinary_id not in tokenizer.all_special_ids and ordinary_id not in tokenizer.added_tokens_decoder
+        metadata["tokenizer.ggml.tokens"][ordinary_id] = "different-output-only-piece"
+    elif target == "vocabulary_size":
+        metadata["tokenizer.ggml.tokens"].append("extra-ID")
     elif target == "bos":
         metadata["tokenizer.ggml.bos_token_id"] = 3
     elif target == "eos":
@@ -696,9 +753,11 @@ def test_gguf_mapping_rejects_vocab_full_prompt_and_eos_differences(tmp_path, ta
         N.validate_gguf_tokens(metadata, tokenizer, examples, server)
 
 
-def install_quality_server(monkeypatch, tokenizer, *, answers=None):
+def install_quality_server(monkeypatch, tokenizer, *, answers=None, generated_ids=None, terminations=None):
     calls = []
     answers = iter(answers or ["red blue"] * 6)
+    generated_ids = iter(generated_ids or [[3, 4, 1]] * 6)
+    terminations = iter(terminations or ["stop"] * 6)
 
     class FakeServer:
         def __init__(self, command, directory, **kwargs):
@@ -715,8 +774,9 @@ def install_quality_server(monkeypatch, tokenizer, *, answers=None):
         def request(self, route, payload):
             calls.append((route, copy.deepcopy(payload)))
             text = next(answers)
-            return {"choices": [{"text": text, "token_ids": [3, 4], "finish_reason": "stop"}],
-                    "usage": {"prompt_tokens": len(payload["prompt"]), "completion_tokens": 2},
+            ids = next(generated_ids)
+            return {"choices": [{"text": text, "token_ids": ids, "finish_reason": next(terminations)}],
+                    "usage": {"prompt_tokens": len(payload["prompt"]), "completion_tokens": len(ids)},
                     "metrics": {"time_to_first_token_ms": 100, "generation_time_ms": 200,
                                 "queue_time_ms": 0}}
 
@@ -736,8 +796,9 @@ def install_quality_server(monkeypatch, tokenizer, *, answers=None):
 
 def test_quality_answers_reconstruct_public_outcomes_and_exact_requests(isolated, monkeypatch):
     path, _ = quality_fixture(isolated)
-    answers = ["red", "missing", "red blue", "red", "blue", "red and blue"]
-    calls = install_quality_server(monkeypatch, Tokenizer(isolated), answers=answers)
+    answers = ["red", "missing", "red blue", "red", " blue", "red and blue"]
+    generated_ids = [[3, 1], [5, 1], [3, 4, 1], [3, 1], [4, 1], [11, 1]]
+    calls = install_quality_server(monkeypatch, Tokenizer(isolated), answers=answers, generated_ids=generated_ids)
     output = isolated / "result.json"
     monkeypatch.setattr(sys, "argv", ["competitor_niah", "--backend", "vllm", "--kv-dtype", "auto",
                                       "--awq-model-path", "unused-model", "--quality", str(path),
@@ -752,8 +813,10 @@ def test_quality_answers_reconstruct_public_outcomes_and_exact_requests(isolated
     for sample, exported, answer, (_, payload) in zip(raw["samples"], public["samples"], answers, calls, strict=True):
         assert sample["hit"] == all(value in answer for value in sample["expected"])
         assert exported["generated_sha256"] == C.content_hash(answer)
-        assert {k: v for k, v in sample.items() if k not in {"generated", "expected"}} == exported
-        assert "generated" not in exported and "expected" not in exported
+        assert {k: v for k, v in sample.items() if k not in N.PRIVATE_SAMPLE_FIELDS} == exported
+        assert not N.PRIVATE_SAMPLE_FIELDS.intersection(exported)
+        assert sample["generated_ids"] and exported["generated_ids_sha256"] == C.content_hash(sample["generated_ids"])
+        assert exported["native_text_sha256"] == C.content_hash(sample["native_text"])
         assert payload["ignore_eos"] is False and payload["max_tokens"] == 128
         assert C.content_hash(payload["prompt"]) == exported["input_sha256"]
     canonical = C.canonical_identity(public["identity"])
@@ -786,6 +849,34 @@ def test_runtime_rejects_unresolved_weight_kernel():
         B.verify_runtime(runtime, "vllm", "auto", 131)
 
 
+@pytest.mark.parametrize("selection", [None, []])
+def test_runtime_rejects_missing_or_empty_attention_selection(selection):
+    runtime = vllm_runtime()
+    if selection is None:
+        runtime.pop("attention_backend")
+    else:
+        runtime["attention_backend"] = selection
+    with pytest.raises(ValueError, match="realized vLLM"):
+        B.verify_runtime(runtime, "vllm", "auto", 131)
+
+
+@pytest.mark.parametrize("attention", [None, "FLASHINFER", "FLASH_ATTN"])
+def test_runtime_requires_pinned_attention_selection_log(attention):
+    log = "Using MarlinLinearKernel for AutoAWQMarlinLinearMethod\nGPU KV cache size: 131 tokens\n"
+    if attention is not None:
+        log += f"Using {attention} attention backend out of potential backends: ['{attention}'].\n"
+    runtime = B.resolved_runtime("vllm", log)
+    runtime["worker_observation"] = vllm_runtime()["worker_observation"]
+    assert runtime["weight_kernels"] == ["MarlinLinearKernel"]
+    if attention is None:
+        assert runtime["attention_backend"] == []
+        with pytest.raises(ValueError, match="realized vLLM"):
+            B.verify_runtime(runtime, "vllm", "auto", 131)
+    else:
+        assert runtime["attention_backend"] == [attention]
+        B.verify_runtime(runtime, "vllm", "auto", 131)
+
+
 def test_quality_mapping_mismatch_is_explicitly_unsupported(isolated, monkeypatch):
     path, _ = quality_fixture(isolated)
     metadata, tokenizer, _, _, _ = mapping_fixture(isolated)
@@ -801,3 +892,225 @@ def test_quality_mapping_mismatch_is_explicitly_unsupported(isolated, monkeypatc
     assert N.main() == 1
     public = json.loads(output.read_text())
     assert public["status"] == "unsupported" and public["samples"] == []
+
+
+def test_answer_decode_matches_hf_cleanup_and_skips_control_tokens():
+    from tokenizers import Tokenizer as BackendTokenizer
+    from tokenizers import decoders, models
+    from transformers import PreTrainedTokenizerFast
+
+    backend = BackendTokenizer(models.WordLevel({"A": 0, " .": 1, " I": 2, " 'm": 3,
+                                                "CTRL": 4, "UNK": 5}, unk_token="UNK"))
+    backend.decoder = decoders.Fuse()
+    tokenizer = PreTrainedTokenizerFast(tokenizer_object=backend, unk_token="UNK",
+                                        additional_special_tokens=["CTRL"])
+    ids = [0, 1, 2, 3, 4]
+    assert tokenizer.decode(ids, skip_special_tokens=False, clean_up_tokenization_spaces=False) == "A . I 'mCTRL"
+    assert N.decode_answer(tokenizer, ids) == "A. I'm"
+
+
+@pytest.mark.parametrize("ids", [[], [True], [-1], [13], "3,4"])
+def test_answer_decoder_rejects_invalid_output_ids(tmp_path, ids):
+    with pytest.raises(ValueError, match="invalid generated IDs"):
+        N.decode_answer(Tokenizer(tmp_path), ids)
+
+
+@pytest.mark.parametrize("target", ["added_control_id", "generation_eos_id"])
+def test_gguf_mapping_checks_hidden_added_special_and_generation_eos_ids(tmp_path, target):
+    metadata, tokenizer, examples, server, _ = mapping_fixture(tmp_path)
+    if target == "added_control_id":
+        hidden_id = 10
+        assert hidden_id not in tokenizer.all_special_ids
+    else:
+        hidden_id = 8
+        tokenizer.all_special_ids = (0,)
+        tokenizer.added_tokens_decoder = {0: SimpleNamespace(special=True)}
+        (Path(tokenizer.name_or_path) / "generation_config.json").write_text('{"eos_token_id":[8]}')
+        metadata["tokenizer.ggml.eos_token_id"] = 8
+        (server.directory / "server.log").write_text("EOG token = 8\n")
+    metadata["tokenizer.ggml.tokens"][hidden_id] = "mismatch-hidden-ID"
+    with pytest.raises(N.UnsupportedConfiguration, match="vocabulary differs"):
+        N.validate_gguf_tokens(metadata, tokenizer, examples, server)
+
+
+def test_quality_scores_canonical_ids_and_keeps_native_text_private(isolated, monkeypatch):
+    path, _ = quality_fixture(isolated)
+    install_quality_server(monkeypatch, Tokenizer(isolated), answers=["missing"] * 6,
+                           generated_ids=[[3, 10, 4, 1]] * 6)
+    output = isolated / "canonical-quality.json"
+    monkeypatch.setattr(sys, "argv", ["competitor_niah", "--backend", "vllm", "--kv-dtype", "auto",
+                                      "--awq-model-path", "unused-model", "--quality", str(path),
+                                      "--out", str(output)])
+    assert N.main() == 0
+    public = json.loads(output.read_text())
+    raw = json.loads((isolated / public["raw_evidence"]["path"]).read_text())
+    assert public["protocol"]["answer_decoder"] == N.ANSWER_DECODER
+    assert public["protocol"]["termination_validation"] == N.QUALITY_STOP_POLICY
+    for private, exported in zip(raw["samples"], public["samples"], strict=True):
+        assert private["native_text"] == "missing" and private["generated"] == "red blue"
+        assert private["generated_ids"] == [3, 10, 4, 1] and exported["hit"] is True
+        assert exported["native_text_sha256"] == C.content_hash("missing")
+        assert exported["generated_sha256"] == C.content_hash("red blue")
+        assert not N.PRIVATE_SAMPLE_FIELDS.intersection(exported)
+
+
+@pytest.mark.parametrize("target", ["decoded_ids", "native_hash", "ids_hash", "ids_count", "native_scored"])
+def test_quality_checker_reconstructs_returned_ids_despite_coherent_rehash(isolated, monkeypatch, target):
+    path, _ = quality_fixture(isolated)
+
+    def mutation(result):
+        raw_path = isolated / result["raw_evidence"]["path"]
+        raw = json.loads(raw_path.read_text())
+        private = raw["samples"][0]
+        if target == "decoded_ids":
+            private["generated_ids"] = [5, 5, 1]
+            private["generated_ids_sha256"] = C.content_hash(private["generated_ids"])
+        elif target == "native_hash":
+            private["native_text"] = "different-native-text"
+        elif target == "ids_hash":
+            private["generated_ids_sha256"] = "0" * 64
+        elif target == "ids_count":
+            private["generated_ids"] = [3, 10, 4, 1]
+            private["generated_ids_sha256"] = C.content_hash(private["generated_ids"])
+        else:
+            private["native_text"] = private["generated"] = "missing"
+            private["native_text_sha256"] = private["generated_sha256"] = C.content_hash("missing")
+            private["hit"] = False
+        result["samples"][0] = {k: v for k, v in private.items() if k not in N.PRIVATE_SAMPLE_FIELDS}
+        C.write_record(raw_path, raw)
+        result["raw_evidence"]["sha256"] = C.file_hash(raw_path)
+
+    install_scheduler(monkeypatch, isolated, mode="quality", result_mutation=mutation)
+    monkeypatch.setattr(sys, "argv", scheduler_args(isolated, mode="quality", quality=[path]))
+    with pytest.raises(ValueError, match="quality scorer/input differs"):
+        R.main()
+
+
+def test_quality_checker_allows_native_text_difference_when_ids_reconstruct_answer(isolated, monkeypatch):
+    path, _ = quality_fixture(isolated)
+
+    def mutation(result):
+        raw_path = isolated / result["raw_evidence"]["path"]
+        raw = json.loads(raw_path.read_text())
+        for sample in raw["samples"]:
+            sample["native_text"] = "native presentation differs"
+            sample["native_text_sha256"] = C.content_hash(sample["native_text"])
+        result["samples"] = [{k: v for k, v in sample.items() if k not in N.PRIVATE_SAMPLE_FIELDS}
+                             for sample in raw["samples"]]
+        C.write_record(raw_path, raw)
+        result["raw_evidence"]["sha256"] = C.file_hash(raw_path)
+
+    install_scheduler(monkeypatch, isolated, mode="quality", result_mutation=mutation)
+    monkeypatch.setattr(sys, "argv", scheduler_args(isolated, mode="quality", quality=[path]))
+    assert R.main() == 0
+
+
+@pytest.mark.parametrize("mode", ["performance", "quality"])
+def test_child_compile_worker_drift_is_rejected(isolated, monkeypatch, mode):
+    path = quality_fixture(isolated)[0] if mode == "quality" else None
+    install_scheduler(monkeypatch, isolated, mode=mode,
+                      mutation=lambda parts: parts["config"].update(compile_workers=99))
+    monkeypatch.setattr(sys, "argv", scheduler_args(isolated, mode=mode, quality=[path] if path else None))
+    with pytest.raises(ValueError, match="settings/protocol differ"):
+        R.main()
+
+
+def test_schedule_records_effective_compile_workers(isolated, monkeypatch):
+    install_scheduler(monkeypatch, isolated)
+    monkeypatch.setattr(sys, "argv", scheduler_args(isolated))
+    assert R.main() == 0
+    schedule = json.loads(next(isolated.glob("benchmarks/validation/competitors/*/schedule.json")).read_text())
+    assert C.canonical_identity(schedule["identity"])["config"]["compile_workers"] == {"vllm": 2}
+
+
+@pytest.mark.parametrize("target", [None, "checked_vocabulary_ids", "method"])
+def test_quality_checker_requires_complete_gguf_vocabulary_contract(isolated, monkeypatch, target):
+    path, _ = quality_fixture(isolated)
+    gguf = isolated / "pinned.gguf"
+    gguf.write_bytes(b"fixture-GGUF-hashed-content")
+
+    def mutation(result):
+        if target is None:
+            return
+        raw_path = isolated / result["raw_evidence"]["path"]
+        raw = json.loads(raw_path.read_text())
+        for record in (raw, result):
+            record["token_mapping"][target] = 12 if target == "checked_vocabulary_ids" else "prompt-pieces-only"
+        C.write_record(raw_path, raw)
+        result["raw_evidence"]["sha256"] = C.file_hash(raw_path)
+
+    install_scheduler(monkeypatch, isolated, mode="quality", result_mutation=mutation)
+    argv = scheduler_args(isolated, mode="quality", quality=[path])
+    argv[argv.index("vllm:auto")] = "llamacpp:q4_0"
+    argv += ["--gguf", str(gguf)]
+    monkeypatch.setattr(sys, "argv", argv)
+    if target is None:
+        assert R.main() == 0
+    else:
+        with pytest.raises(ValueError, match="GGUF mapping incomplete"):
+            R.main()
+
+
+@pytest.mark.parametrize("termination,ids", [("stop", [3, 4, 1]), ("eos", [3, 2]), ("stop", [1]),
+                                            ("length", [3] * 128),
+                                            ("stop", [3] * 127 + [1]), ("eos", [3] * 127 + [2])])
+def test_quality_stop_accepts_first_eos_or_exact_cap(termination, ids):
+    N.validate_quality_stop(ids, termination, {1, 2}, 128)
+
+
+@pytest.mark.parametrize("termination,ids", [("stop", [3, 4]), ("eos", [3, 4]),
+                                            ("stop", [3, 1, 4]), ("eos", [1, 2]),
+                                            ("length", [3, 4]),
+                                            ("length", [3] * 127 + [1]),
+                                            ("length", [3, 1] + [3] * 126),
+                                            ("aborted", [3, 1]), ("stop", [3] * 128 + [1])])
+def test_quality_stop_rejects_missing_nonterminal_eos_and_premature_length(termination, ids):
+    with pytest.raises(ValueError):
+        N.validate_quality_stop(ids, termination, {1, 2}, 128)
+
+
+@pytest.mark.parametrize("termination,ids", [("length", [3, 4, 10]), ("stop", [3, 4, 10]),
+                                            ("stop", [3, 1, 4])])
+def test_quality_producer_rejects_false_native_termination(isolated, monkeypatch, termination, ids):
+    path, _ = quality_fixture(isolated)
+    install_quality_server(monkeypatch, Tokenizer(isolated), generated_ids=[ids] * 6,
+                           terminations=[termination] * 6)
+    output = isolated / "false-stop.json"
+    monkeypatch.setattr(sys, "argv", ["competitor_niah", "--backend", "vllm", "--kv-dtype", "auto",
+                                      "--awq-model-path", "unused-model", "--quality", str(path),
+                                      "--out", str(output)])
+    assert N.main() == 1
+    public = json.loads(output.read_text())
+    assert public["status"] == "execution_error" and public["samples"] == []
+
+
+@pytest.mark.parametrize("termination,ids", [("length", [3, 4, 10]), ("stop", [3, 4, 10]),
+                                            ("stop", [3, 1, 4])])
+def test_quality_checker_rejects_rehashed_false_termination(isolated, monkeypatch, termination, ids):
+    path, _ = quality_fixture(isolated)
+
+    def mutation(result):
+        raw_path = isolated / result["raw_evidence"]["path"]
+        raw = json.loads(raw_path.read_text())
+        private = raw["samples"][0]
+        private["termination"] = termination
+        private["generated_ids"] = ids
+        private["generated_ids_sha256"] = C.content_hash(ids)
+        # Cleanup/special-token skipping keeps the canonical answer and all rates unchanged.
+        assert N.decode_answer(Tokenizer(isolated), ids) == private["generated"]
+        result["samples"][0] = {k: v for k, v in private.items() if k not in N.PRIVATE_SAMPLE_FIELDS}
+        C.write_record(raw_path, raw)
+        result["raw_evidence"]["sha256"] = C.file_hash(raw_path)
+
+    install_scheduler(monkeypatch, isolated, mode="quality", result_mutation=mutation)
+    monkeypatch.setattr(sys, "argv", scheduler_args(isolated, mode="quality", quality=[path]))
+    with pytest.raises(ValueError, match="quality (?:output continued|stop lacks|length stop)"):
+        R.main()
+
+
+def test_performance_parser_retains_ignore_eos_policy():
+    ids = [128009] * 8
+    response = native_response("vllm", "", 8192, 8, performance=True, generated_ids=ids)
+    sample = N.parse_completion("vllm", response, 8192, 8, performance=True)
+    assert sample["tokens"] == ids and sample["output_tokens"] == 8
+    assert N.completion_payload("vllm", [128000, 3], 8, performance=True)["ignore_eos"] is True

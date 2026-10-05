@@ -1,6 +1,6 @@
 # Independent roadmap audit
 
-Updated: 2026-10-03. Initial checkpoint: local commit `46a319c`.
+Updated: 2026-10-04. Initial checkpoint: local commit `46a319c`.
 
 This audit was performed independently of implementation and experiment execution.
 It covers [the roadmap](../roadmap.md),
@@ -380,3 +380,473 @@ or runs successfully. Freeze one clean source/environment before fresh retrieval
 confirmation, and keep operator pilots, fresh statistical confirmation,
 competitive runtime results and unavailable physical 4 GB testing separate in
 the final decision.
+
+## Checkpoint 6 — Evidence integrity and fresh-run source freeze
+
+On 2026-10-04, an independent CPU run passed 174 checks across competitor
+validation, native response contracts, confirmation statistics, quality,
+internal ablation and contribution tests. CUDA was hidden; four GPU contribution
+cases were skipped and the socket readiness/cleanup case was excluded. This
+run includes 83 competitor-validation cases and the explicit async-prefetch
+offload rejection. It checks the implementation's evidence contracts; it does
+not establish backend initialization, retrieval quality or competitive speed.
+No implementation file was edited and no GPU experiment was run by this auditor.
+
+All saved competitor cell identities and private raw hashes were independently
+rechecked. The fourth
+[1024-token smoke schedule](../benchmarks/validation/competitors/eef23d91caff6fdef91041ba4de25c42d5a37a12caae006fbc46980c3aab03c3/schedule.json)
+is correctly `complete-with-failures`. Its llama.cpp Q4 and FP16 cells each
+complete one eight-output request, report 29/29 layers on GPU, Flash Attention,
+CUDA KV buffers and a realized 1280-token cache. The two vLLM cells fail during
+startup compilation; their telemetry is explicitly invalid. The private logs
+identify incompatible CUDA compiler/toolkit headers, rather than a failed
+quality or performance comparison. The compiler packages have subsequently been
+pinned to the CUDA 13.0 toolchain. That environment correction alone establishes
+no successful vLLM request. The fifth standalone retry was interrupted without
+a terminal result, so its outcome remains unknown.
+
+The three contribution reports' canonical identities, protocol hashes and raw
+hashes were rechecked. Their interpretation remains the one in checkpoint 4:
+exact additional-summary byte accounting and avoided materialization in the
+specified reference workload, with selection differences and no established
+scoring-latency advantage. Their public tensor hashes were subsequently exported
+as digest-first typed `tensor_fingerprints` entries to avoid security-scanner
+false positives on raw-key field names. Independent reconstruction of that
+allowlist transformation exactly matches all three public reports. Raw files,
+hashes, source identities and every measurement remain unchanged. No later commit
+should replace their saved dirty-source identity.
+
+The exact scoped producer/runtime sources are now preserved locally under ignored
+`artifacts/contrib/source-snapshots/<source-content-sha256>/`, with relative paths
+and a source manifest. All 46 file hashes independently match the measured
+fingerprint and the source recorded by all three reports, including the original
+measurement script and original `bench_common.py`. This preserves the actual
+dirty-source experiment independently of the later export-only revision.
+
+The corrected-toolchain
+[backend environment record](../benchmarks/validation/environment/5bb41d4781b0b83fdb9d55a010f75c837a293880b3f8ea0f615f6869b26d4480/backends.json)
+passes independent canonical-identity, protocol-hash and sanitized-export checks.
+The first export had a mismatched run identity because public file-list metadata
+was hashed before canonicalization. That metadata-only discrepancy was reported
+and corrected; its original invalid export remains an ignored setup artifact for
+traceability. No experiment measurement was changed. The accepted record's scope
+is package/compiler/binary preparation, rather than a successful GPU smoke or
+competitive measurement.
+
+The [implementation plan's current checklist](roadmap-implementation-plan.md#6-current-execution-status-and-decision-framework)
+and README correctly keep fresh confirmation, long-context competitor timings,
+matching competitor quality and actual 4 GB testing open. The refreshed
+[roadmap](../roadmap.md) now aligns its setup/component checkboxes with saved
+evidence and leaves the scientific gates open. Its relative evidence links,
+and the links in this audit and the decision document, resolve locally. A frozen
+protocol and working CPU validators do not complete an experimental endpoint.
+Partial fresh observations must remain incomplete and resumable under the same
+source/model/environment identity; they cannot support a confirmation verdict.
+
+The [current research decision](research-decision.md) is provisional: continue
+bounded validation and retain the implementation as useful engineering work.
+The available evidence justifies completing the comparison, but neither certifies
+novelty nor establishes a runtime advantage over optimized quantized dense
+engines. Failure or absence of confirmation is not proof of inferiority. Physical
+4 GB testing remains explicitly pending collaboration, as requested by the user.
+
+### Fresh-run source freeze
+
+The first fresh 4k run has started at local commit
+`05f64004dbfb3c33d42d60e68d3f6e5091de7d5d`, with clean measurement-source fingerprint
+`8dff99e32861785f33e334b3ccc33d04c410e7eb5817ce450f6e9bd74d0bc30f` and the
+saved nine-endpoint protocol. Its
+[public record](../benchmarks/validation/quality/0526a7546dbef2cb2e78c919423d65ab0b55e3457ea1aa845edc2cf5502bdb69/quality.json)
+is incomplete at this checkpoint. The budget is 300 input examples and 900 arm
+outcomes at 4k; the complete three-context protocol requires 2700 arm outcomes.
+Starting this run establishes no quality verdict.
+
+Continue the complete fixed budget across all three contexts. Preserve partial
+atomic records if interrupted and resume with the identical command/settings and
+`--resume`. Keep this Git HEAD and the source, model and both validation
+environments unchanged through all three contexts; even a documentation-only
+commit changes the recorded source commit. These document edits are intentionally
+left uncommitted until the frozen confirmation is finished. If the source or
+environment must change, preserve the incomplete run and start a new coherent
+confirmation identity.
+
+## Checkpoint 7 — Pinned native quality contracts before competitor runs
+
+An independent read-only review of llama.cpp commit
+`11fe02151f79c41d0d4af7da708755d73b9c0da6` confirms that `/detokenize` renders
+special/control tokens, including BOS, without an extra request flag: its handler
+uses `tokens_to_str`, whose `common_token_to_piece` call defaults to `special=true`.
+Pure integer completion prompts bypass tokenization and additional BOS insertion.
+The returned generated-token list includes the terminal EOG token, and native
+output counts include it; later decode steps still exclude the first output.
+Generated response text suppresses control-token spelling under the current
+server defaults. These findings follow the pinned
+[server handler](https://github.com/ggml-org/llama.cpp/blob/11fe02151f79c41d0d4af7da708755d73b9c0da6/tools/server/server-context.cpp),
+[token conversion](https://github.com/ggml-org/llama.cpp/blob/11fe02151f79c41d0d4af7da708755d73b9c0da6/tools/server/server-common.cpp), and
+[conversion defaults](https://github.com/ggml-org/llama.cpp/blob/11fe02151f79c41d0d4af7da708755d73b9c0da6/common/common.h).
+
+Installed vLLM 0.30 source also retains the stop token in output IDs and completion
+usage while omitting it from default text. Its neutral `generation-config=vllm`
+sampling defaults do not eliminate model EOS metadata. The explicit quality stop
+IDs match the pinned generation config's set `{128001,128008,128009}`; existing
+llama.cpp loader logs resolve the same EOG set. Actual quality smokes must still
+verify the complete request/response contract on GPU.
+
+Two forward quality gates need strengthening after the confirmation source freeze:
+
+- The pinned HF tokenizer has `clean_up_tokenization_spaces=True`, which the
+  FlashQuest answer decoder uses. Native server text is currently scored directly
+  by the competitor adapter, so punctuation/contraction cleanup can differ.
+  Decode returned generated IDs using the pinned tokenizer and the same HF
+  answer-decoding options, keeping the native text as separate private evidence.
+  Seven-digit retrieval substrings are insensitive to the observed cleanup
+  example, but that does not establish a general decoder-equivalence contract.
+- HF `all_special_ids` contains only two registered special-token IDs for this snapshot,
+  while 256 added tokens have their `special` flag set. The GGUF mapping gate
+  currently checks the former set. Include the latter and all generation EOS IDs
+  in the required mapping checks. The earlier full-vocabulary comparison of the
+  actual pinned GGUF found no mismatch; this is a forward-validator gap, rather
+  than evidence of wrong inputs in that artifact.
+
+Installed FlashInfer's `_get_num_workers` accepts numeric `MAX_JOBS`; `run_ninja`
+uses it as `-j`. Setting `MAX_JOBS=2` therefore bounds its compiler worker count
+without changing inference settings. Record that build setting with a future
+competitor identity. None of these findings requires changing the active fresh
+confirmation source or retuning its fixed experimental criteria.
+
+## Checkpoint 8 — Complete fresh 4k retrieval evidence
+
+The [fresh 4k record](../benchmarks/validation/quality/0526a7546dbef2cb2e78c919423d65ab0b55e3457ea1aa845edc2cf5502bdb69/quality.json)
+now contains all 45 cells and 900 arm outcomes. An independent reconstruction
+validated canonical identity, public/raw equality, raw SHA256, exact protocol,
+model and clean source, the 300-example ordered manifest, every input hash and
+length, capacity, scorer outcome, generated-text hash and hit count. All three
+arms share exactly paired example IDs, input hashes and token counts. Source and
+Git HEAD still match the frozen snapshot in checkpoint 6.
+
+Independent Clopper–Pearson inversion used direct binomial coefficient sums,
+rather than the implementation's log-tail calculation. Gain lower and loss upper
+bounds agree within 1e−12. The bound alpha remains `0.05/(2×9)`, even though only
+the first context is complete.
+
+| Task | Dense / all-pages / sparse hits, out of 100 | Sparse gains / losses against dense | Lower sparse-minus-dense difference | Frozen endpoint rule |
+| --- | ---: | ---: | ---: | --- |
+| Single | 100 / 100 / 100 | 0 / 0 | −0.057162 | Pass |
+| Multikey | 100 / 100 / 99 | 0 / 1 | −0.078127 | Pass |
+| Multivalue | 99 / 99 / 96 | 1 / 4 | −0.127912 | Fail |
+
+Observed dense and sparse rates exceed 0.80 in every endpoint. The multivalue
+endpoint fails because its lower bound does not exceed −0.10, despite an observed
+difference of only −0.03. This failure to establish the specified non-inferiority
+claim does not prove inferiority. The overall nine-endpoint verdict remains
+withheld until 8k and 32k complete. Continue the fixed budget without retuning
+retention, expanding the sample or changing the margin after this result.
+
+The user subsequently requested a workload checkpoint after the active 8k run
+and its independent audit, with 32k held for continuation. This scheduling pause
+does not replace the fixed confirmation budget or authorize a verdict on a
+selected subset. Preserve the current Git HEAD, source, environments and complete
+records; keep draft documents/results uncommitted until the three-context freeze
+ends. Resume 32k with the pinned protocol and unchanged settings. The remaining
+competitor/quality-adapter work begins after that confirmation group.
+
+## Checkpoint 9 — Deferred comparison and selection diagnostic review
+
+Ignored development drafts remain separate from the frozen measurement source.
+The competitor patch's six original-file hashes still match `05f6400`, and
+`git apply --check` passes without application. Independently run draft checks
+pass 118 CPU cases, with the loopback cleanup case excluded, and Ruff. Canonical
+answers are reconstructed from private returned IDs through the pinned HF
+decoder; native text remains separately hashed. An actual CPU comparison finds
+all 128,256 GGUF/HF vocabulary pieces equal, including output-only ordinary IDs;
+the added-special/EOS union contains 256 IDs. Extracted installed FlashInfer
+helpers, with the subprocess mocked, produce `ninja -j 2`. Schedule and child
+identities bind that effective compile policy. These checks establish neither
+vLLM startup success nor successful native quality requests.
+
+The revised bounded selection diagnostic passes 23 CPU checks and Ruff. Its scoped callback,
+actual score and selection implementations, GQA grouping, sink/window union and
+signed affine-endpoint perturbation agree with the runtime. Its source manifest
+binds the new producer and existing capture/runtime; Q/K, scale/minimum and
+prompt fingerprints allow a later comparison to the original contribution
+snapshots. Only matching recaptured Q/K establishes that an explanation applies
+to those exact earlier snapshots. No recapture has run during the freeze.
+
+The selection revision resolves all three review findings: metadata boundary ties
+are distinguished from strict score crossings; selection counts follow the
+selector's FP32 retention arithmetic and both masks are checked; epsilon-channel
+counts are explicitly an FP32 screen, rather than a BF16 quantizer clamp count.
+The fixed 0.20/0.25 default budgets were unaffected by the custom-budget rounding
+case. A shared competitor quality termination gate now checks the pinned terminal
+EOS, rejects earlier EOS and requires the exact cap for a length stop. Pinned
+vLLM and llama.cpp both give EOS precedence when it lands at the cap. Final patch
+refresh and focused tests must cover this added gate before application. Apply
+and commit either draft only after all three frozen contexts complete;
+historical records remain intact.
+
+The execution checkpoint correctly preserves Git HEAD and the source fingerprint
+across a pause, resumes the same fixed seeds/settings and keeps both deferred
+drafts unapplied. Its 32k command and protocol agree with the frozen experiment.
+The actual 4 GB target and optimized competitor comparisons remain pending.
+
+## Checkpoint 10 — Immediate workload pause; 8k audit deferred
+
+The user subsequently requested an immediate Codex workload checkpoint. At that
+request, 8k had saved 780 of 900 outcomes; the owned supervised child is allowed
+to finish and automatic 32k execution remains held. No terminal 8k evidence audit
+or endpoint-bound verdict has been issued by this independent agent. Check its
+saved status and independently reconstruct the complete 8k record on resume,
+before launching 32k with the unchanged frozen protocol. The prepared read-only
+audit requires both 4k and 8k complete and recomputes exact binomial bounds using
+direct coefficient sums. Partial saved outcomes establish no endpoint verdict.
+
+This scheduling change supersedes the earlier plan to finish the 8k audit before
+pausing. Preserve `05f6400`, the measurement source and both environments; keep
+documents/results uncommitted and development drafts unapplied. The 4k audit
+remains valid, the nine-endpoint confirmation remains incomplete, and optimized
+competitors, actual 4 GB testing and a final research decision remain pending.
+
+## Checkpoint 11 — Complete original 8k audit and coherent environment reexecution
+
+The [original 8k record](../benchmarks/validation/quality/7cec2647f00356ca86a526ff3bb2a16c28a20661d6dcf1fd8ba5d6e7c1427384/quality.json)
+is complete with all 45 cells and 900 arm outcomes. Independent reconstruction
+validates the canonical identity, public/raw equality and raw SHA256, pinned
+protocol/model/source, all 300 ordered manifest examples, every input hash/count,
+scorer outcome, output-text hash/count and exact paired inputs across arms.
+Original 4k and 8k recorded environments and realized runtimes match. The current
+clean source still exactly matches their frozen `05f6400` snapshot. The 8k
+inputs span 7935–8059 tokens and the bound cache capacity is 8187 tokens.
+
+Direct binomial-coefficient sums and 100-step bisection independently reproduce
+all bounds within 1e−12, retaining alpha `0.05/(2×9)`.
+
+| 8k task | Dense / all-pages / sparse hits, out of 100 | Gains / losses | Lower sparse-minus-dense difference | Frozen endpoint rule |
+| --- | ---: | ---: | ---: | --- |
+| Single | 100 / 100 / 100 | 0 / 0 | −0.057162 | Pass |
+| Multikey | 98 / 98 / 97 | 0 / 1 | −0.078127 | Pass |
+| Multivalue | 97 / 96 / 86 | 0 / 11 | −0.223272 | Fail |
+
+Every observed accuracy floor passes. Multivalue has an observed difference of
+−0.11 and fails the frozen non-inferiority rule; that does not establish
+population inferiority beyond the margin. The old six-endpoint summary remains
+inconclusive because 32k is absent. Preserve both old failed multivalue endpoints.
+
+The workload pause has ended. Before 32k, an independent current-environment check
+detected kernel `7.0.0-34-generic` changing to `7.0.0-38-generic`; ordinary-sandbox
+NVML was unavailable. The parent repeated the comparison through its approved
+read path and confirmed only the kernel changed, with GPU/driver, Python and
+packages identical. Mixing a new 32k record with the old pair would violate the
+existing same-environment summary contract. No historical metadata is rewritten.
+
+The resolution is a full, fixed-count same-seed three-context reexecution in the
+current environment, with the identical clean source, model, frozen protocol,
+seeds, retentions, generation/scorer and per-endpoint sample budget. It creates
+new environment-bound run IDs and preserves all original 1800 outcomes. Verify
+the new 4k/8k manifests equal the originals, freeze current provenance across all
+2700 outcomes, and independently audit before the final decision. This is not
+independent new confirmation data or post-hoc expansion. Do not pool groups,
+erase the original failures or choose whichever group has favorable outcomes.
+Tracked source and Git HEAD remain frozen; both development drafts stay deferred.
+
+## Checkpoint 12 — Final deferred quality patch and repeated input gate
+
+The refreshed competitor patch exactly equals the diff of all six reviewed
+baseline/draft files, and its SHA256 matches the saved validation metadata.
+Baseline hashes and `git apply --check` pass. Independent CPU checks pass 141
+cases, excluding only the loopback cleanup case; the author's saved full run
+reports 142. Ruff passes. The shared termination gate is exercised in both the
+producer and scheduler, rejects nonterminal/missing EOS and premature length
+stops, and preserves performance `ignore_eos` behavior. Its EOS-at-cap precedence
+agrees with the pinned native source. The prior decoder, full-vocabulary,
+public/private evidence and compile-worker gates remain active. No further
+substantive draft defect was found; application and native GPU smokes remain
+deferred until the coherent confirmation source freeze ends.
+
+The new [4k environment-reexecution record](../benchmarks/validation/quality/7d9921cb0d5b6167c5303932475ccb71402ece5ca9066d7e067f23dab4d9cdef/quality.json)
+binds exactly the original ordered 300 examples, settings, model, source and
+protocol. Independently comparing canonical identities finds only the kernel
+changed in provenance. Its immutable run ID validates. This is an input/identity
+gate for an active run, not a partial-outcome verdict.
+
+## Checkpoint 13 — Complete current 4k audit and active 8k input gate
+
+The [current 4k reexecution](../benchmarks/validation/quality/7d9921cb0d5b6167c5303932475ccb71402ece5ca9066d7e067f23dab4d9cdef/quality.json)
+now contains all 45 cells and 900 arm outcomes. Independent reconstruction
+validates raw/public equality and hashes, canonical model/source/protocol/run
+identity, every ordered manifest/input/scorer/output count and hash, exact paired
+arms and current clean source. Environment hash
+`ec59cde8cd845e4d60cff4f3a545c614a19ebae3fc28e26487ce108b554527f5`
+binds kernel `7.0.0-38-generic`. Direct binomial inversion reproduces the bounds
+within 1e−12, retaining alpha `0.05/(2×9)`.
+
+| Current 4k task | Dense / all-pages / sparse hits, out of 100 | Gains / losses | Lower sparse-minus-dense difference | Frozen endpoint rule |
+| --- | ---: | ---: | ---: | --- |
+| Single | 100 / 100 / 100 | 0 / 0 | −0.057162 | Pass |
+| Multikey | 100 / 100 / 100 | 0 / 0 | −0.057162 | Pass |
+| Multivalue | 99 / 99 / 97 | 1 / 3 | −0.112446 | Fail |
+
+Every observed accuracy floor passes; multivalue still fails the specified
+non-inferiority rule. The current family remains incomplete pending 8k/32k.
+Keep its retention, count and criterion unchanged and preserve the old failures.
+
+An exhaustive comparison of all 900 matched old/new outcomes confirms identical
+inputs, expected values, settings, model and source. Generated text/hash changes
+in 261 outcomes; output count changes in 71 and termination changes in 50.
+Changed text counts are 32 dense, 121 sparse and 108 all-pages. Exactly two hits
+change, both sparse miss-to-hit: `multikey:1:18` and `multivalue:5:18`. There are
+no hit losses across runs. This reexecution does not establish a causal kernel
+effect or bitwise reproducibility of greedy outputs. Neither pooling groups nor
+selecting a favorable group is permitted; both retain failed 4k multivalue rules.
+
+The [current 8k record](../benchmarks/validation/quality/6c938a6b4515ffaf0de9ed8bf833e521584887705e4665e43b51e9e94c3aafb1/quality.json)
+has started. Its canonical identity and all 300 ordered examples independently
+match the original 8k inputs/settings. Model, clean source, environment and
+realized runtime exactly match current 4k. Every input hash validates. This is an
+input gate only; no incomplete 8k outcome or endpoint verdict is interpreted.
+
+## Checkpoint 14 — Post-freeze comparison gates and deferred runtime fix
+
+The execution order remains coherent: finish and independently audit the fixed
+current-environment family; apply the reviewed deferred changes after the source
+freeze; verify fresh native performance and quality smokes; repeat the balanced
+internal 8k/32k performance blocks with matching current-environment quality;
+then complete optimized native comparisons and the final evidence decision.
+The internal performance prerequisite still requires the frozen pilot-ratio
+screen. A failed 32k screen must leave that current block gated. A passed screen
+with failed confirmation non-inferiority permits qualified engineering timings,
+but does not establish an advantage at comparable quality. Actual 4 GB hardware
+testing remains explicitly deferred to collaboration.
+
+A bounded review found that vLLM runtime verification accepted an empty
+attention-backend selection. The installed default-selection logger and
+preserved startup logs identify `FLASHINFER` or `FLASH_ATTN`; requested FP8
+precision alone does not identify this backend. Only the ignored competitor
+draft was revised to reject missing/empty selections, with five new cases for
+the missing field, empty list, missing log and two pinned log formats. All 147
+focused CPU cases pass, as do Ruff, six-file baseline integrity and patch
+applicability. The revised patch SHA256 is
+`0a64fcc74b0aae8c0f09b8c1a264c1eac244a86b9a225a8a1d950efe034e1836`;
+the preceding `d0376413` patch and validation are preserved privately. The parent
+independently reviewed and accepted the one-line guard and five new cases,
+verified the patch and all six draft hashes, and confirmed the frozen source is
+clean. Application remains deferred until the full family completes. No tracked source,
+tests, dependencies, Git HEAD or GPU execution changed during this work.
+
+Final evidence checks must also require every local raw memory series to exist,
+match its hash, and reproduce phase windows, peaks and coverage. The internal
+`checked_memory` helper checks a present series but returns false when absent;
+its consumers ignore that return. This is an evidence-consumption gap, not a
+demonstrated invalid measured result. Native memory checks already reconstruct
+the raw summary. Report FlashQuest synchronized forward, vLLM native scheduled,
+llama.cpp native and HTTP client timing boundaries separately, together with
+their different allocated cache capacities and weight formats. Treat diagnostic
+recaptures as explanations of original contribution snapshots only when their
+Q/K fingerprints match; a new valid snapshot alone does not establish that link.
+
+## Checkpoint 15 — Complete current 8k audit and preserved original summary
+
+The [current 8k reexecution](../benchmarks/validation/quality/6c938a6b4515ffaf0de9ed8bf833e521584887705e4665e43b51e9e94c3aafb1/quality.json)
+contains all 45 cells and 900 arm outcomes. Independent reconstruction validates
+the raw/public equality and hashes, all 300 ordered manifest examples and input
+hashes, substring scorer, output counts/termination labels and generated-text
+hashes, exact paired arms, protocol and immutable model/source/run identity.
+Current source remains exactly clean `05f6400`. Model, environment and realized
+runtime match current 4k, including environment hash `ec59cde8…` and kernel
+`7.0.0-38-generic`. Python/kernel/package versions match the actual CPU
+environment, and all six actual pinned local model files, including the weights,
+were rehashed successfully. Prompt lengths span 7935–8059 tokens with cache
+capacity 8187. Direct binomial-coefficient sums and 100-step bisection reproduce
+all primary bounds within 1e−12, with unchanged alpha `0.05/(2×9)`.
+
+| Current 8k task | Dense / all-pages / sparse hits, out of 100 | Gains / losses | Lower sparse-minus-dense difference | Frozen endpoint rule |
+| --- | ---: | ---: | ---: | --- |
+| Single | 100 / 100 / 100 | 0 / 0 | −0.057162 | Pass |
+| Multikey | 98 / 98 / 96 | 0 / 2 | −0.096053 | Pass |
+| Multivalue | 97 / 96 / 89 | 0 / 8 | −0.184352 | Fail |
+
+All observed accuracy floors pass. Multivalue's observed difference is −0.08;
+its conservative lower bound fails the specified non-inferiority rule, without
+establishing population inferiority. The current family is incomplete pending
+the fixed 32k endpoint budget. Do not change its retention, counts or criterion.
+
+Comparing every one of the 900 original/current 8k outcomes confirms exactly
+matching prompts, expected values, settings, model and source. There are 123
+changed texts/hashes: 18 dense, 56 sparse and 49 all-pages; output counts change
+in 47 cases and termination labels in 23. Four hits change, all sparse:
+`multikey:3:5` becomes a miss; `multivalue:1:5`, `multivalue:2:1` and
+`multivalue:3:17` become hits. The complete canonical comparison-list hash is
+`bc60314c9664a18c6a96d1df9f412fbdf54d0814e57fefe7a73ec1745bccd05c`.
+This does not identify a causal kernel effect or establish bitwise greedy-output
+reproducibility. Keep both groups, without pooling or selecting favorable runs.
+
+The separately saved [original-group summary](../benchmarks/validation/confirmation/699b3aecbca4be9cf65f52e08c2f3adc49fe6ea4b4a9eeb043109f79b3e7e2c7/summary.json)
+also passes independent reconstruction of its canonical hash, original evidence
+hashes and exact production summary. Direct binomial inversion verifies all 18
+primary/diagnostic paired bounds with maximum numerical difference below 1e−15.
+It references only the original 4k/8k records and retains both multivalue
+failures; its status remains inconclusive at six of nine endpoints. No reexecution
+outcomes are pooled into that original summary.
+
+The active [current 32k record](../benchmarks/validation/quality/07ce7aa457aa9070cae386a86c9bcd00fb501e2d29c99aca56410183f74c98c4/quality.json)
+passes its independent input/identity gate. All 300 ordered examples and their
+input hashes validate against manifest hash
+`6730a158f939256b9433e168bfb6055bce74c5d64dca120ef79c97a974ed2206`.
+Its clean source, model, environment and realized runtime exactly match current
+4k/8k; the frozen tasks, seeds, 20 examples per task/seed, retention 0.25 and
+all-pages arm, scorer/generation budgets and cache settings are unchanged.
+Inputs span 32511–32635 tokens, and capacity 32763 covers the actual maximum
+plus the 128-token output budget. This verifies its declared input/capacity
+contract; no partial 32k outcomes or physical 4 GB capacity verdict is interpreted.
+
+## Checkpoint 16 — Terminal 32k and complete nine-endpoint confirmation
+
+On 2026-10-05, the [current 32k record](../benchmarks/validation/quality/07ce7aa457aa9070cae386a86c9bcd00fb501e2d29c99aca56410183f74c98c4/quality.json)
+contains all 45 cells and 900 arm outcomes, with complete status and no error.
+The coherent family contains all 2700 fixed-budget outcomes. Independent
+reconstruction again checks every current 4k/8k/32k raw/public sample, private
+substring scorer, generated-text hash, output count/termination label, paired
+example/input ID, manifest hash and ordered 300-example context. It verifies
+every source-file hash and immutable model/protocol/run identity. At this audit
+snapshot, source remains clean `05f6400` with content hash
+`8dff99e32861785f33e334b3ccc33d04c410e7eb5817ce450f6e9bd74d0bc30f`.
+All three records have identical model/source/environment/realized runtime;
+environment hash remains `ec59cde8…`, kernel `7.0.0-38-generic`. Current CPU
+versions match and all six actual pinned model files were rehashed successfully.
+
+The [complete current-family summary](../benchmarks/validation/confirmation/9a279d05ca13c7038902ebd26fa9244b3b566240d91407c3a6261efef8d724d6/summary.json)
+passes its own canonical hash, saved evidence hashes and exact production
+reconstruction. It references only the three current-environment records and
+does not pool the original group. Direct binomial-coefficient sums with
+100-step inversion independently reproduce all nine primary and eighteen
+diagnostic paired bounds, with maximum discrepancy below 7e−16. Primary alpha
+remains `0.05/(2×9)`; diagnostic alpha remains 0.025.
+
+| Context / task | Dense / all-pages / sparse hits, out of 100 | Gains / losses | Simultaneous-family lower difference | Frozen endpoint rule |
+| --- | ---: | ---: | ---: | --- |
+| 4k single | 100 / 100 / 100 | 0 / 0 | −0.057162223505 | Pass |
+| 4k multikey | 100 / 100 / 100 | 0 / 0 | −0.057162223505 | Pass |
+| 4k multivalue | 99 / 99 / 97 | 1 / 3 | −0.112446092774 | Fail |
+| 8k single | 100 / 100 / 100 | 0 / 0 | −0.057162223505 | Pass |
+| 8k multikey | 98 / 98 / 96 | 0 / 2 | −0.096053295161 | Pass |
+| 8k multivalue | 97 / 96 / 89 | 0 / 8 | −0.184352439700 | Fail |
+| 32k single | 100 / 100 / 100 | 0 / 0 | −0.057162223505 | Pass |
+| 32k multikey | 91 / 90 / 88 | 2 / 5 | −0.141958404503 | Fail |
+| 32k multivalue | 91 / 90 / 89 | 4 / 6 | −0.151236037290 | Fail |
+
+The full family is **complete and fails the frozen non-inferiority rule**:
+five endpoints pass and four fail. All observed dense/sparse accuracy floors
+pass. Failure to establish non-inferiority does not prove population inferiority
+or that the true loss exceeds the 0.10 margin. At 32k the multikey/multivalue
+observed differences are −0.03/−0.02, with gains/losses 2/5 and 4/6; their
+conservative lower bounds fail the specified rule. Preserve the separately
+inconclusive original six-endpoint group and its failures without pooling,
+retuning retention, relaxing the margin or adding post-hoc samples.
+
+Independent reconstruction also verifies that the unchanged pilot-ratio screen
+passes at every context. At 32k sparse/dense ratios are 1.0, 88/91 and 89/91;
+all exceed 0.85. This permits the planned current-environment internal timing
+blocks under their existing screen prerequisite. Those measurements remain
+engineering characterization, without an established comparable-quality
+advantage. The terminal evidence audit passes, so the confirmation source freeze
+may close and the separately reviewed deferred work may proceed. No source,
+dependencies, GPU work or commits were changed during this audit.

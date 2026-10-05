@@ -1,0 +1,83 @@
+# Roadmap execution checkpoint
+
+Updated: 2026-10-05. The user resumed normal roadmap work after the supervised
+quality job finished. The earlier usage-based stopping instruction is removed.
+
+## Completed quality and released source freeze
+
+The [current-environment confirmation](../benchmarks/validation/confirmation/9a279d05ca13c7038902ebd26fa9244b3b566240d91407c3a6261efef8d724d6/summary.json)
+contains all 2700 outcomes and all nine endpoints. Independent reconstruction of
+raw/public records, manifests, source/model/environment, scorer and all 27
+primary/diagnostic bounds passed. Five endpoints pass; multivalue at every
+context and multikey at 32k fail. All observed accuracy floors and pilot-ratio
+screens pass. Failure to establish non-inferiority does not prove inferiority.
+
+These measurements retain source commit
+`05f64004dbfb3c33d42d60e68d3f6e5091de7d5d`, content fingerprint
+`8dff99e32861785f33e334b3ccc33d04c410e7eb5817ce450f6e9bd74d0bc30f`
+and environment `ec59cde8cd845e4d60cff4f3a545c614a19ebae3fc28e26487ce108b554527f5`
+(kernel `7.0.0-38-generic`). Their source freeze is now released. Do not relabel
+historical identities, retune this completed confirmation, or pool repeated
+same-seed groups. The original kernel-34 group remains
+[separately incomplete](../benchmarks/validation/confirmation/699b3aecbca4be9cf65f52e08c2f3adc49fe6ea4b4a9eeb043109f79b3e7e2c7/summary.json).
+Old/new answers differ despite identical prompts/settings; neither kernel
+causality nor bitwise greedy reproducibility is established.
+
+Current quality references:
+
+- [4k](../benchmarks/validation/quality/7d9921cb0d5b6167c5303932475ccb71402ece5ca9066d7e067f23dab4d9cdef/quality.json)
+- [8k](../benchmarks/validation/quality/6c938a6b4515ffaf0de9ed8bf833e521584887705e4665e43b51e9e94c3aafb1/quality.json)
+- [32k](../benchmarks/validation/quality/07ce7aa457aa9070cae386a86c9bcd00fb501e2d29c99aca56410183f74c98c4/quality.json)
+
+## Reviewed implementation ready for new measurements
+
+The accepted competitor patch
+`0a64fcc74b0aae8c0f09b8c1a264c1eac244a86b9a225a8a1d950efe034e1836`
+has been applied after the freeze. It binds canonical pinned-HF decoding,
+private generated IDs/native text, full GGUF vocabulary/special/EOS mapping,
+first-EOS-or-exact-cap validation, `MAX_JOBS=2` for vLLM compilation and nonempty
+realized attention-backend selection. Its six-file predecessor and validation
+remain ignored development provenance.
+
+The independently reviewed selection diagnostic and tests are installed at
+`scripts/diagnose_selection_flips.py` and `tests/test_selection_flips.py`.
+Together the real-path changes pass 170 focused CPU checks, Ruff and diff checks.
+Commit this source through the shared hooks before GPU evidence collection.
+The measured runtime, quantizer, kernels, retrieval generator and scorer are
+unchanged; fresh matching-environment quality can satisfy the internal timing
+runner's semantic prerequisite.
+
+## Remaining execution sequence
+
+1. Recapture all 18 representative selection snapshots (8k/0.20, 32k/0.25,
+   layers 0/13/27, steps 0/1/63, tuning seed 0). Compare Q/K fingerprints with
+   the original contribution reports; a mismatch cannot explain an old snapshot.
+2. Complete successful 1024-token native performance smokes and six-example
+   matching quality smokes for llama.cpp Q4/FP16 and vLLM FP8/FP16. Validate
+   actual devices, weight/attention kernels, cache precision, mapping, EOS and
+   owned cleanup. Preserve every failed or interrupted attempt.
+3. Repeat balanced four-seed, three-repetition internal 8k/0.20 and 32k/0.25
+   timing blocks under the current kernel, using their current quality records.
+   The existing pilot screen remains mandatory. Failed non-inferiority limits
+   these results to engineering characterization.
+4. Run the optimized 8k/32k performance matrix (32 cells, 96 samples) and matching
+   native quality matrix (8 cells, 2400 outcomes), with periodic independent audits.
+5. Require every local raw memory series to exist, match its hash and reproduce
+   windows, peaks and coverage before accepting the final comparison. Keep
+   FlashQuest forward, native server and HTTP client timing boundaries separate.
+   Record weight formats, allocated cache capacities, offload configuration and
+   unmeasured OS fallback explicitly.
+6. Save the comparison and evidence-linked research decision, update roadmap
+   checkboxes only for completed evidence, then commit the reviewed result.
+
+Check actual free VRAM and compute ownership before each GPU batch. Run one GPU
+job at a time, under `systemd-inhibit --what=sleep:idle:handle-lid-switch` plus
+`nohup` or `tmux`, with project-local logs. Keep source and environments fixed
+through each measured block; inspect owned workers before resuming an interrupted
+job. Keep raw evidence, model snapshots and environments.
+
+Actual 4 GB hardware testing is deferred for collaboration as authorized by the
+user. The available 12 GB device cannot establish target fit or a maximum capacity
+limit. Local commits are authorized; pushing, PRs and merges still require approval.
+See the [roadmap](../roadmap.md), [research decision](research-decision.md) and
+[independent audit](independent-roadmap-audit.md).

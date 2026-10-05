@@ -28,10 +28,56 @@ from competitor_backend import (
     UnsupportedConfiguration,
     add_backend_arguments,
     command_for,
+    compile_workers,
     completion_payload,
     marker,
     parse_completion,
 )
+
+ANSWER_DECODER = {"tokenizer": "same-pinned-HF-tokenizer", "input": "returned-output-token-IDs",
+                  "skip_special_tokens": True, "clean_up_tokenization_spaces": True}
+PRIVATE_SAMPLE_FIELDS = {"generated", "expected", "generated_ids", "native_text"}
+TOKEN_MAPPING_METHOD = "every-vocabulary-token-piece plus used/special-ID coverage and every full decoded prompt"
+QUALITY_STOP_POLICY = {"eos_source": "pinned-HF-generation-config",
+                       "stop_or_eos": "terminal EOS; no earlier EOS",
+                       "length": "exact output cap; no EOS",
+                       "precedence": "EOS overrides length in pinned vLLM0.30 and llama.cpp b11382"}
+
+
+def decode_answer(tokenizer, token_ids):
+    """Match FlashQuest's pinned HF answer decoder, independently of server text."""
+    if (not isinstance(token_ids, list) or not token_ids or
+            any(type(x) is not int or not 0 <= x < len(tokenizer) for x in token_ids)):
+        raise ValueError("invalid generated IDs for the pinned answer tokenizer")
+    return tokenizer.decode(token_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+
+
+def generation_eos_ids(tokenizer):
+    config = json.loads((Path(tokenizer.name_or_path) / "generation_config.json").read_text())
+    ids = config["eos_token_id"]
+    ids = ids if isinstance(ids, list) else [ids]
+    if not ids or any(type(x) is not int or not 0 <= x < len(tokenizer) for x in ids):
+        raise ValueError("invalid pinned generation EOS policy")
+    return set(ids)
+
+
+def validate_quality_stop(token_ids, termination, eos_ids, max_new_tokens):
+    """Verify quality's first-EOS-or-cap behavior from the returned sampled IDs."""
+    if (type(max_new_tokens) is not int or max_new_tokens < 1 or
+            not isinstance(token_ids, list) or not token_ids or len(token_ids) > max_new_tokens or
+            any(type(token) is not int or token < 0 for token in token_ids)):
+        raise ValueError("invalid quality output token count/IDs")
+    if any(token in eos_ids for token in token_ids[:-1]):
+        raise ValueError("quality output continued after an earlier EOS")
+    if termination in {"stop", "eos"}:
+        if token_ids[-1] not in eos_ids:
+            raise ValueError("quality stop lacks the pinned terminal EOS")
+    elif termination == "length":
+        # Both pinned backends give EOS precedence when EOS also lands at the cap.
+        if len(token_ids) != max_new_tokens or token_ids[-1] in eos_ids:
+            raise ValueError("quality length stop differs from the exact cap/no-EOS policy")
+    else:
+        raise ValueError("unsupported quality termination")
 
 
 def gguf_metadata(path):
@@ -80,10 +126,16 @@ def gguf_metadata(path):
 def validate_gguf_tokens(metadata, tokenizer, examples, server):
     vocabulary = metadata["tokenizer.ggml.tokens"]
     used = {x for e in examples for x in e["input_ids"]}
-    special = set(tokenizer.all_special_ids)
-    # Validate every used ID and every special ID, including BOS/EOS; no representative subset.
-    checked = used | special
-    mismatched = [x for x in checked if x >= len(vocabulary) or vocabulary[x] != tokenizer.convert_ids_to_tokens(x)]
+    expected_eos = generation_eos_ids(tokenizer)
+    # all_special_ids omits some added control tokens in this pinned HF artifact.
+    special = (set(tokenizer.all_special_ids) | expected_eos |
+               {index for index, token in tokenizer.added_tokens_decoder.items() if token.special})
+    # Generated ordinary IDs need the same vocabulary contract as prompt IDs.
+    if len(vocabulary) != len(tokenizer):
+        raise UnsupportedConfiguration("GGUF vocabulary size differs from the answer tokenizer")
+    checked = set(range(len(tokenizer))) | used | special
+    mismatched = [x for x in checked if type(x) is not int or not 0 <= x < len(vocabulary) or
+                  vocabulary[x] != tokenizer.convert_ids_to_tokens(x)]
     if mismatched:
         raise UnsupportedConfiguration("GGUF token-ID vocabulary differs from the manifest tokenizer")
     if metadata.get("tokenizer.ggml.bos_token_id") != tokenizer.bos_token_id:
@@ -92,9 +144,6 @@ def validate_gguf_tokens(metadata, tokenizer, examples, server):
     eos.discard(None)
     # Llama BPE also registers EOG tokens from vocabulary names; inspect resolved loader output.
     eos.update(map(int, re.findall(r"EOG token\s*=\s*(\d+)", (server.directory / "server.log").read_text())))
-    config = json.loads((Path(tokenizer.name_or_path) / "generation_config.json").read_text())
-    expected_eos = config["eos_token_id"]
-    expected_eos = set(expected_eos if isinstance(expected_eos, list) else [expected_eos])
     if eos != expected_eos:
         raise UnsupportedConfiguration("GGUF EOS policy differs from the quality model")
     for example in examples:
@@ -104,9 +153,10 @@ def validate_gguf_tokens(metadata, tokenizer, examples, server):
         if decoded != expected:
             raise UnsupportedConfiguration("GGUF full decoded prompt differs")
     return {"status": "complete", "checked_used_ids": len(used), "checked_special_ids": len(special),
+            "checked_vocabulary_ids": len(vocabulary),
             "checked_prompts": len(examples), "eos_ids": sorted(eos),
             "input_manifest_sha256": content_hash(examples),
-            "method": "every-used-and-special-token-piece plus every full decoded prompt"}
+            "method": TOKEN_MAPPING_METHOD}
 
 
 def load_manifest(quality_path):
@@ -183,13 +233,16 @@ def main():
         raise ValueError("competitor tokenizer differs from the quality manifest model")
     if args.limit_per_task:
         examples = [e for e in examples if e["index"] < args.limit_per_task]
-    protocol = {"version": 1, "quality_run": quality["run_identity"], "manifest": manifest_ref,
+    protocol = {"version": 2, "quality_run": quality["run_identity"], "manifest": manifest_ref,
                 "max_new_tokens": 128, "scorer": "all expected substrings in decoded answer",
+                "answer_decoder": ANSWER_DECODER,
+                "termination_validation": QUALITY_STOP_POLICY,
                 "generation": "greedy EOS or output limit; exact input IDs; no wrapping",
                 "timing": "native phases and client times; quality may stop at EOS"}
     config = {"backend": args.backend, "kv_dtype": args.kv_dtype,
               "ctx_len": original["config"]["ctx_len"], "capacity": original["config"]["cache_capacity"],
               "max_new_tokens": 128, "examples": len(examples), "limit_per_task": args.limit_per_task,
+              "compile_workers": compile_workers(args.backend),
               "backend_identity": backend_identity(args), "gpu_utilization": args.gpu_utilization if args.backend == "vllm" else None}
     model = original["model"]
     if args.backend == "llamacpp":
@@ -203,6 +256,7 @@ def main():
     try:
         from transformers import AutoTokenizer
         tokenizer = AutoTokenizer.from_pretrained(args.awq_model_path, local_files_only=True)
+        eos_ids = generation_eos_ids(tokenizer)
         with Server(command_for(args, capacity=config["capacity"]), directory, timeout=args.ready_timeout) as server:
             if args.backend == "llamacpp":
                 record["token_mapping"] = validate_gguf_tokens(gguf_metadata(args.gguf), tokenizer, examples, server)
@@ -218,13 +272,16 @@ def main():
                 elapsed = time.perf_counter() - start
                 marker("request_end", i)
                 sample = parse_completion(args.backend, response, len(ids), 128, performance=False)
-                answer = sample.pop("text")
-                sample.pop("tokens")
+                native_text, generated_ids = sample.pop("text"), sample.pop("tokens")
+                validate_quality_stop(generated_ids, sample["termination"], eos_ids, 128)
+                answer = decode_answer(tokenizer, generated_ids)
                 hit = all(value in answer for value in example["expected"])
                 sample.update(example_id=example["example_id"], task=example["task"], seed=example["seed"],
                               index=example["index"], input_sha256=example["input_sha256"], hit=hit,
-                              generated_sha256=content_hash(answer), client_request_s=elapsed)
-                record["samples"].append({**sample, "generated": answer, "expected": example["expected"]})
+                              generated_sha256=content_hash(answer), native_text_sha256=content_hash(native_text),
+                              generated_ids_sha256=content_hash(generated_ids), client_request_s=elapsed)
+                record["samples"].append({**sample, "generated": answer, "expected": example["expected"],
+                                          "native_text": native_text, "generated_ids": generated_ids})
                 write_record(directory / "raw.json", record)
             record["runtime"] = resolved_runtime(args.backend, (directory / "server.log").read_text())
             if args.backend == "vllm":
@@ -237,7 +294,7 @@ def main():
     raw_path = directory / "raw.json"
     write_record(raw_path, record)
     exported = {**record, "identity": export_identity(record["identity"]),
-                "samples": [{k: v for k, v in sample.items() if k not in {"generated", "expected"}} for sample in record["samples"]],
+                "samples": [{k: v for k, v in sample.items() if k not in PRIVATE_SAMPLE_FIELDS} for sample in record["samples"]],
                 "raw_evidence": {"path": raw_path.relative_to(REPO_ROOT).as_posix(), "sha256": file_hash(raw_path)}}
     validate_export(exported)
     write_record(args.out, exported)

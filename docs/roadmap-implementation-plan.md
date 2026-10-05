@@ -5,8 +5,8 @@ Updated: 2026-10-04. Implements [roadmap.md](../roadmap.md).
 The initial 4k milestone, longer retrieval pilots, balanced internal ablations,
 component profiling and bounded contribution ablations are complete. They support
 a 32k internal page-selection benefit and a metadata-storage saving. Fresh quality
-confirmation, optimized competitor comparisons and actual 4 GB capacity remain
-open. See the [current execution checklist and decision framework](#6-current-execution-status-and-decision-framework)
+collection is complete and fails its frozen rule. Optimized competitor comparisons
+and actual 4 GB capacity remain open. See the [current execution checklist and decision framework](#6-current-execution-status-and-decision-framework)
 and the [README evidence](../README.md#benchmarks-and-validation).
 
 **Sections 1–5 preserve the 2026-10-03 audited design snapshot.** Their findings,
@@ -491,7 +491,7 @@ historical files and all user work.
 
 ## 6. Current execution status and decision framework
 
-Status at this documentation checkpoint, 2026-10-04. Evidence remains conditional
+Status at this documentation checkpoint, 2026-10-05. Evidence remains conditional
 on its recorded source/model/environment and measurement boundaries. Historical
 records are preserved; a later clean commit must not replace the dirty-source
 fingerprints recorded by the completed pilots.
@@ -500,7 +500,7 @@ fingerprints recorded by the completed pilots.
 | --- | --- | --- |
 | WP0–WP2 | AWQ loading, safe immutable quality records/resume, cache restoration and matched three-arm pilots; 77 earlier CPU checks and two tiny-Llama GPU checks. | Recheck affected paths after changes; accept fresh confirmation only under its frozen source/protocol. |
 | WP3 | Pinned AWQ snapshot; matching-family Q4_K_M GGUF; external llama.cpp b11382 and isolated vLLM 0.30.0 environments prepared. | Valid intended-cache smokes and realized kernel/cache/EOS verification for every competitor configuration. |
-| WP4 | 4k/8k pass the existing screen at 0.20; 32k/0.20 fails and its prescribed 0.25 tuning fallback passes. A fresh protocol is saved. | Complete and audit all nine fresh task/context endpoints before a confirmatory claim. |
+| WP4 | Tuning screens and the fixed 2,700-outcome fresh confirmation are complete. Independent audit reproduces all nine endpoints: five pass, four fail, with all observed floors passing. | The failed frozen rule establishes no non-inferiority claim; preserve both environment groups without pooling or retuning. |
 | WP5 | Balanced four-seed, three-repetition sparse/all-pages blocks: 0.995× at 8k, 1.838× at 32k. Isolated score/top-k/packed/tail/merge timings at both contexts are saved. | Compare optimized competitors; component timings alone do not identify a whole-model causal bottleneck or competitive win. |
 | WP6 | Exact-ID native-server adapters, sanitized identities, request metrics and failure-preserving schedules implemented. llama.cpp Q4/FP16 short requests completed in the linked smoke. | Valid 8k/32k repeated comparisons and matching retrieval quality; the saved vLLM smoke cells are execution errors. |
 | WP7 | FlashQuest physical-device/process-tree sampling covers completed blocks. Competitor smoke telemetry includes load/warmup/request windows where validated. | Full competitor observations and hardware-specific capacity runs. Native prefill/decode memory windows remain unmeasured without aligned markers. |
@@ -530,7 +530,11 @@ are diagnostics outside that family. The accuracy floors are observed screens,
 not population confidence guarantees. One clean identical measurement-source
 snapshot, fixed sample counts and complete paired records are required.
 These choices are now recorded execution settings, rather than the earlier open
-threshold proposal. Results remain pending at this checkpoint. Failure to establish
+threshold proposal. The [complete current-environment summary](../benchmarks/validation/confirmation/9a279d05ca13c7038902ebd26fa9244b3b566240d91407c3a6261efef8d724d6/summary.json)
+has passed independent reconstruction and fails at four of nine endpoints:
+multivalue at 4k/8k/32k and multikey at 32k. All observed floors and pilot screens
+pass. The source freeze closed after this audit; the original earlier-environment
+4k/8k group is separately preserved and unpooled. Failure to establish
 non-inferiority does not establish inferiority; incomplete records or a weak dense
 baseline are inconclusive. Adjusting settings after seeing confirmation makes that
 analysis exploratory and requires fresh confirmation.
@@ -559,7 +563,7 @@ verified first-of-its-kind or publishable research claim.
 
 ### Remaining checklist and final decision
 
-- [ ] Accept a complete fresh confirmation record and its simultaneous-bound summary.
+- [x] Accept a complete fresh confirmation record and its simultaneous-bound summary, preserving the failed rule.
 - [ ] Complete valid competitor smokes, then 8k/32k repeated performance and matching
   quality with explicit weight/KV differences, timing boundaries, order limitations,
   realized kernels, residency settings and physical-device/process telemetry.
