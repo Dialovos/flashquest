@@ -934,3 +934,22 @@ coverage fails explicitly before compilation. The six-file patch passes
 environment passes dependency checks. Both FP16/E4M3 prefill modules pass CPU
 load and installed wheel-record hashes. Successful native execution still requires
 a fresh intended-precision smoke. Root AWQ dependencies are unchanged.
+
+## Checkpoint 19 — Contamination stop and explicit pause
+
+The independently reviewed eighth smoke is incomplete. Canonical schedule/child/
+protocol hashes, 88 scoped source files, actual GGUF hash, raw/public child
+records and both raw telemetry series pass reconstruction. llama.cpp Q4 has
+306 samples, 16 ownership checks, no foreign process, validated load/warmup/
+request windows, a 2282 MiB sampled peak and exactly 1024 input / 8 output tokens
+with seven later decode forwards. Logs verify 29/29 model layers offloaded;
+CPU-mapped embedding and CUDA-host buffers remain, so this does not claim every
+tensor resides on GPU or establish absence of OS fallback.
+
+vLLM FP8 has 561 samples and 29 ownership checks; a foreign process appears on
+three checks. Its owned group exits -15, with incomplete load markers and no
+completed request/child result. This is a contamination stop, not a backend/AOT
+failure or valid timing. The seventh attempt was separately refused before a
+child launch; its zero-cell saved progress and terminal private log are retained.
+No foreign process was stopped. The user explicitly requested pausing all work
+until they say to continue; audit agents and FlashQuest jobs are stopped.

@@ -1,7 +1,40 @@
 # Roadmap execution checkpoint
 
-Updated: 2026-10-05. The user resumed normal roadmap work after the supervised
-quality job finished. The earlier usage-based stopping instruction is removed.
+Updated: 2026-10-05. **Paused at the user's explicit request** while they work
+on another repository. Do not resume CPU audits, GPU jobs or roadmap work until
+the user says to continue. The earlier usage-based cutoff remains removed.
+
+## Paused handoff
+
+The reviewed implementation, dependency pins and selection evidence are locally
+committed as `3ee8192`. Matching FlashInfer precompiled FP16/E4M3 prefill modules
+pass CPU load and wheel-record hashes; the isolated 199-package environment passes
+dependency checks. This does not establish successful native vLLM requests.
+
+[Attempt 7](../benchmarks/validation/competitors/7254f9440ffd1190d7c1d4ce173953d5dc36c2b20976ed87b1dd3ac87e56641f/schedule.json)
+was refused by the foreign-GPU preflight before any backend launched. Its saved
+last-progress status remains `running` with zero cells; the terminal rejection is
+preserved in `artifacts/smoke/competitors-attempt7.log`. Do not interpret that saved
+status as an active job or overwrite its evidence.
+
+[Attempt 8](../benchmarks/validation/competitors/07bf3ec87d814404ca73b61a28dba977fd1d758061d849a46c2530f28069ce43/schedule.json)
+ended incomplete. llama.cpp Q4 completed with validated telemetry; vLLM FP8 stopped
+on a new foreign GPU process before any completed request, with invalid/incomplete
+telemetry. Independent review reconstructed both raw series and confirmed the
+contamination stop. This supplies no vLLM/AOT failure or performance verdict.
+Owned batch sessions finished with exit 1; foreign processes were left untouched.
+
+The ignored strict local evidence checker and its CPU regression fixtures are
+preserved under `artifacts/development/evidence-audit/`. Its author reconstructed
+all 16 historical ablation cells, 20,131 raw memory points and 48 timed samples,
+and passed 15 focused CPU cases. Root review/final verification remains pending;
+do not present that new utility as independently accepted source.
+
+After explicit continuation, first check actual GPU ownership. Start a fresh
+native attempt (next attempt number 9), preserving the refused/contaminated
+attempts. Finish all intended-precision performance/quality smokes before the
+matrices below. No GPU job is left running for FlashQuest.
+
 
 ## Completed quality and released source freeze
 
@@ -68,8 +101,8 @@ verified. Keep all setup/failed-attempt evidence.
 
 ## Remaining execution sequence
 
-1. Commit the independently reviewed AOT-only source through shared hooks.
-   Installation, 199-package compatibility and CPU module-load checks passed.
+1. Resume only after the user explicitly says to continue. The AOT-only source
+   is committed; dependency/load and independent policy checks passed.
 2. Complete successful 1024-token native performance smokes and six-example
    matching quality smokes for llama.cpp Q4/FP16 and vLLM FP8/FP16. Validate
    actual devices, weight/attention kernels, cache precision, mapping, EOS and

@@ -211,3 +211,10 @@ Actual 4 GB testing remains a separate pending endpoint;
 the user authorized deferring unavailable target hardware for collaboration.
 The work is on the local feature branch `refactor/benchmark-validation`. Check off
 tasks only when their evidence is saved.
+
+Work is now paused at the user's explicit request while another repository uses
+the machine. Reviewed source/setup/selection evidence is committed as `3ee8192`.
+Native attempt 7 was refused before launch; attempt 8 was stopped by foreign GPU
+activity after one valid llama.cpp Q4 cell. Neither supplies a vLLM verdict.
+Resume only when the user says to continue; use the updated
+[paused handoff](docs/execution-checkpoint.md).
