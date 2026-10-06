@@ -953,3 +953,29 @@ failure or valid timing. The seventh attempt was separately refused before a
 child launch; its zero-cell saved progress and terminal private log are retained.
 No foreign process was stopped. The user explicitly requested pausing all work
 until they say to continue; audit agents and FlashQuest jobs are stopped.
+
+## Checkpoint 20 — Readiness correction and complete non-slow regression check
+
+The user resumed work. The ninth native smoke loaded the intended vLLM FP8 GPU
+cache but did not complete requests: pinned vLLM returns an empty HTTP 200 health
+response, while the former adapter required JSON. The root interrupted its owned
+batch and preserved the partial schedule and terminal log. This gives no vLLM
+timing or backend-failure verdict.
+
+An independent agent checked the pinned health implementation and reviewed the
+correction: readiness requires HTTP 200 through the direct-loopback opener;
+completion and detokenize still require valid JSON. The 22 focused tests pass,
+including empty/JSON health, proxy bypass, HTTP 503 timeout, malformed API replies
+and owned cleanup. Ruff and diff checks pass. The local strict evidence checker
+also passed independent review and 31 CPU tests; it reconstructs saved raw series
+and rejects incomplete evidence, with realized kernels/cache placement audited
+separately.
+
+The full non-slow project suite finished exit 0 with 562 passed and 12 existing
+slow cases deselected. Earlier missing-Hypothesis and missing-fixture failures
+remain logged. Only declared development dependencies and pinned public test
+fixtures were restored; runtime packages and test assertions were unchanged.
+Independent fixture review verified all five tokenizer/config hashes, revision
+binding, absence of model weights, the Duo pattern hash/shape and relative legacy
+link. Slow end-to-end cases remain unverified by this check. A fresh native smoke
+must establish successful inference before the full matrices.

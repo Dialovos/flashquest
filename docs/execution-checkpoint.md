@@ -1,10 +1,10 @@
 # Roadmap execution checkpoint
 
-Updated: 2026-10-05. **Paused at the user's explicit request** while they work
-on another repository. Do not resume CPU audits, GPU jobs or roadmap work until
-the user says to continue. The earlier usage-based cutoff remains removed.
+Updated: 2026-10-05. The user explicitly resumed normal roadmap work. The GPU
+was free at the resume check; source and measured core environment match the
+saved checkpoint. The earlier usage-based cutoff remains removed.
 
-## Paused handoff
+## Previous pause and new resume
 
 The reviewed implementation, dependency pins and selection evidence are locally
 committed as `3ee8192`. Matching FlashInfer precompiled FP16/E4M3 prefill modules
@@ -27,13 +27,31 @@ Owned batch sessions finished with exit 1; foreign processes were left untouched
 The ignored strict local evidence checker and its CPU regression fixtures are
 preserved under `artifacts/development/evidence-audit/`. Its author reconstructed
 all 16 historical ablation cells, 20,131 raw memory points and 48 timed samples,
-and passed 15 focused CPU cases. Root review/final verification remains pending;
-do not present that new utility as independently accepted source.
+and passed 31 focused CPU cases plus Ruff. Independent review accepted its bounded
+checks, including the original ablations and native attempts 6–9. It reconstructs
+saved telemetry; actual kernel/cache placement and missing terminal evidence
+remain separate gates.
 
-After explicit continuation, first check actual GPU ownership. Start a fresh
-native attempt (next attempt number 9), preserving the refused/contaminated
-attempts. Finish all intended-precision performance/quality smokes before the
-matrices below. No GPU job is left running for FlashQuest.
+The fresh ninth smoke loaded vLLM FP8 and recorded its intended GPU cache, but
+its healthy HTTP 200 `/health` response has no body. The JSON-only adapter kept
+polling. The root stopped its owned batch, preserving its one-cell last-progress
+schedule and interruption log. It supplies no completed vLLM request or timing.
+The independent review confirms the pinned vLLM contract and the bounded fix:
+health requires HTTP 200, while completion/detokenize still require valid JSON.
+Focused tests pass. The required full non-slow project suite finished exit 0:
+562 passed, 12 existing slow cases deselected. Its first collection failed on
+missing declared Hypothesis; only
+Hypothesis 6.168.5 and sortedcontainers 2.4.0 were installed, leaving the core
+AWQ and isolated vLLM runtime packages unchanged. The next attempt failed on
+missing public DuoAttention pattern data and an uncached 1B tokenizer. Restoring
+pinned upstream test fixtures resolved those failures without changing assertions.
+Both failed logs, fixture hashes and the final successful log remain under
+`artifacts/setup/`. The slow end-to-end cases were not verified by this check.
+
+After checks and commit, start a fresh native attempt (next attempt number 10),
+preserving every earlier attempt. Finish all intended-precision performance/
+quality smokes before the matrices below. Do not resume partial smoke cells as
+if they completed a fixed batch.
 
 
 ## Completed quality and released source freeze
@@ -101,8 +119,8 @@ verified. Keep all setup/failed-attempt evidence.
 
 ## Remaining execution sequence
 
-1. Resume only after the user explicitly says to continue. The AOT-only source
-   is committed; dependency/load and independent policy checks passed.
+1. Finish the full project checks and commit the independently reviewed health
+   adapter correction through shared hooks before fresh GPU evidence.
 2. Complete successful 1024-token native performance smokes and six-example
    matching quality smokes for llama.cpp Q4/FP16 and vLLM FP8/FP16. Validate
    actual devices, weight/attention kernels, cache precision, mapping, EOS and

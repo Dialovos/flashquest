@@ -212,9 +212,12 @@ the user authorized deferring unavailable target hardware for collaboration.
 The work is on the local feature branch `refactor/benchmark-validation`. Check off
 tasks only when their evidence is saved.
 
-Work is now paused at the user's explicit request while another repository uses
-the machine. Reviewed source/setup/selection evidence is committed as `3ee8192`.
-Native attempt 7 was refused before launch; attempt 8 was stopped by foreign GPU
-activity after one valid llama.cpp Q4 cell. Neither supplies a vLLM verdict.
-Resume only when the user says to continue; use the updated
-[paused handoff](docs/execution-checkpoint.md).
+The user has explicitly resumed work after the pause. Reviewed source/setup/
+selection evidence is committed as `3ee8192`; the pause is recorded in `466d7a6`.
+Native attempts 7/8 remain preserved. Attempt 9 exposed a health adapter mismatch:
+vLLM returns empty HTTP 200, while readiness required JSON. Its owned batch was
+stopped before completed vLLM requests. The independently reviewed correction
+keeps JSON validation for completion/detokenize. Full non-slow checks finished
+exit 0 (562 passed, 12 existing slow cases deselected) after restoring declared
+development dependencies and pinned public test fixtures. Commit the correction
+before a fresh smoke. See the [resume checkpoint](docs/execution-checkpoint.md).

@@ -156,14 +156,23 @@ class Server:
         while not self.stop.wait(0.1):
             owned_processes(processes(), self.process.pid, self.start, self.known)
 
-    def request(self, route, payload=None, timeout=None):
+    def _open(self, route, payload=None, timeout=None):
         data = json.dumps(payload).encode() if payload is not None else None
         request = urllib.request.Request(f"http://127.0.0.1:{self.port}{route}", data=data,
                                          headers={"Content-Type": "application/json"})
         # Never route loopback traffic through a user's external proxy.
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        with opener.open(request, timeout=timeout or self.timeout) as f:
+        return opener.open(request, timeout=timeout or self.timeout)
+
+    def request(self, route, payload=None, timeout=None):
+        with self._open(route, payload, timeout) as f:
             return json.load(f)
+
+    def check_health(self, timeout=None):
+        """Native readiness is HTTP 200; vLLM's successful response has no JSON body."""
+        with self._open("/health", timeout=timeout) as f:
+            if f.status != 200:
+                raise urllib.error.URLError(f"backend health returned HTTP {f.status}")
 
     def __enter__(self):
         self.directory.mkdir(parents=True, exist_ok=True)
@@ -190,10 +199,10 @@ class Server:
                         raise RuntimeError("CUDA out of memory during server startup")
                     raise RuntimeError("server exited before readiness")
                 try:
-                    self.request("/health", timeout=1)
+                    self.check_health(timeout=1)
                     marker("load_end")
                     return self
-                except (OSError, urllib.error.URLError, ValueError):
+                except (OSError, urllib.error.URLError):
                     time.sleep(0.2)
             raise TimeoutError("server readiness timeout")
         except BaseException:

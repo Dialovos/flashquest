@@ -97,3 +97,10 @@ Local server/error logs, raw records and telemetry series remain under `artifact
 Never overwrite an attempt; identical completed schedules may be resumed, and a
 changed backend, source, model or setting requires a fresh identity. Independent audit
 is recorded in [independent-roadmap-audit.md](independent-roadmap-audit.md).
+
+Native readiness checks HTTP 200, through the same direct-loopback opener as
+requests. Pinned vLLM returns an empty successful health response; llama.cpp may
+return JSON. Completion and detokenize responses still require valid JSON.
+Transport errors and HTTP 503 keep readiness polling within its deadline, with
+owned-worker cleanup on timeout. The interrupted ninth attempt remains evidence
+of the former JSON-only readiness mismatch, not a failed native inference result.

@@ -9,6 +9,62 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from competitor_backend import Server, completion_payload, parse_completion
 
+LOOPBACK_SERVER = """
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import sys
+
+class Handler(BaseHTTPRequestHandler):
+    def respond(self):
+        health = self.path == "/health"
+        body = (sys.argv[3] if health else sys.argv[4]).encode()
+        self.send_response(int(sys.argv[2]) if health else 200)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    do_GET = respond
+    do_POST = respond
+
+HTTPServer(("127.0.0.1", int(sys.argv[1])), Handler).serve_forever()
+"""
+
+
+@pytest.fixture
+def loopback_server(tmp_path):
+    def make(status=200, health_body="", api_body="{}", timeout=2):
+        return Server([sys.executable, "-u", "-c", LOOPBACK_SERVER, "{port}", str(status),
+                       health_body, api_body], tmp_path, timeout=timeout)
+    return make
+
+
+@pytest.mark.parametrize("body", ["", '{"status":"ok"}'])
+def test_readiness_accepts_native_http_200_with_empty_or_json_body(loopback_server, monkeypatch, body):
+    # A bad inherited proxy would prevent readiness unless loopback stays direct.
+    monkeypatch.setenv("http_proxy", "http://127.0.0.1:9")
+    monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:9")
+    monkeypatch.setenv("no_proxy", "")
+    monkeypatch.setenv("NO_PROXY", "")
+    server = loopback_server(health_body=body)
+    with server:
+        assert server.process.poll() is None
+        server.check_health(timeout=.5)
+    assert server.process.poll() is not None
+
+
+def test_readiness_rejects_http_503_and_cleans_owned_server(loopback_server):
+    server = loopback_server(status=503, timeout=.8)
+    with pytest.raises(TimeoutError, match="server readiness timeout"), server:
+        pass
+    assert server.process.poll() is not None
+    assert "503" in (server.directory / "server.log").read_text()
+
+
+@pytest.mark.parametrize("route", ["/v1/completions", "/detokenize"])
+@pytest.mark.parametrize("body", ["", "invalid JSON"])
+def test_nonhealth_requests_still_require_json(loopback_server, route, body):
+    with loopback_server(api_body=body) as server, pytest.raises(json.JSONDecodeError):
+        server.request(route, {"tokens": [3]}, timeout=.5)
+
 
 @pytest.mark.parametrize("explicit_jit", [None, "0", "false", ""])
 def test_vllm_build_policy_overrides_inherited_and_explicit_environment(tmp_path, monkeypatch, explicit_jit):

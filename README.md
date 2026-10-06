@@ -24,6 +24,17 @@ The local working stack uses Torch 2.5.1 (CUDA 12.4), Triton 3.1.0,
 Transformers 4.57.6, AutoAWQ 0.2.9, and Accelerate 1.15.0. AutoAWQ's Triton
 GEMM path was verified; installing a separate CUDA extension was unnecessary.
 
+The full non-slow check is `HF_HUB_OFFLINE=1 HF_HUB_CACHE=artifacts/hf-cache
+PYTHONPATH=src python -m pytest -m 'not slow'`. On 2026-10-05 it finished exit 0
+with 562 passing tests and 12 existing slow cases deselected. Its local prerequisites
+include the public `unsloth/Llama-3.2-1B-Instruct` tokenizer/config files at revision
+`5a8abab4a5d6f164389b1079fb721cfab8d7126c` (no weights), and the DuoAttention
+32×8 full-attention pattern at revision `fe93c314ae87306ef6629dc16713250b4718ffe7`.
+The pinned pattern is stored under `artifacts/test-fixtures/` with a relative
+legacy fixture link under `vendor/duo-attention/`; local setup hashes are preserved
+in `artifacts/setup/full-check-fixtures.json`. This check does not verify the slow
+end-to-end model tests.
+
 Dependency ranges are in `pyproject.toml`. Historical working stack: Python 3.12, torch 2.5.1+cu121, triton 3.1.0, transformers 4.57.x, autoawq 0.2.9. Built and tested under WSL2 + CUDA 12.5.
 
 ## Quick start — CLI
