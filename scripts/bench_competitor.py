@@ -34,6 +34,7 @@ from competitor_backend import (
     llama_runtime_directory,
     marker,
     parse_completion,
+    read_native_log,
 )
 
 PROTOCOL = {"version": 1, "batch": 1, "concurrency": 1, "warmup": "one full request per seed",
@@ -177,7 +178,7 @@ def main():
                     sample.pop("tokens")
                     sample.update(seed=seed, repetition=repetition, input_sha256=content_hash(ids), client_request_s=elapsed)
                     record["samples"].append(sample)
-            record["runtime"] = resolved_runtime(args.backend, (directory / "server.log").read_text())
+            record["runtime"] = resolved_runtime(args.backend, read_native_log(directory / "server.log"))
             if args.backend == "vllm":
                 record["runtime"]["worker_observation"] = json.loads((directory / "runtime.json").read_text())
             verify_runtime(record["runtime"], args.backend, args.kv_dtype, config["capacity"])

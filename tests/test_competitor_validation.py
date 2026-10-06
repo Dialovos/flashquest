@@ -1161,3 +1161,146 @@ def test_performance_parser_retains_ignore_eos_policy():
     sample = N.parse_completion("vllm", response, 8192, 8, performance=True)
     assert sample["tokens"] == ids and sample["output_tokens"] == 8
     assert N.completion_payload("vllm", [128000, 3], 8, performance=True)["ignore_eos"] is True
+
+
+def native_runtime_log(backend, *, dtype="f16", capacity=24):
+    if backend == "llamacpp":
+        fields = ("offloaded 29/29 layers to GPU\n"
+                  "CUDA0 KV buffer size = 20.0 MiB\n"
+                  "Flash Attention enabled\n"
+                  f"llama_kv_cache: size = 20.0 MiB ({capacity} cells) K ({dtype}) V ({dtype})\n")
+    else:
+        fields = ("Using MarlinLinearKernel for AutoAWQMarlinLinearMethod\n"
+                  "Using FLASHINFER attention backend\n"
+                  f"GPU KV cache size: {capacity} tokens\n")
+    return b"raw generated piece \xdb\xff\r\n" + fields.encode("utf-8")
+
+
+def install_binary_log_performance(monkeypatch, root, *, backend, log=None, worker_bytes=None):
+    calls = []
+    log = native_runtime_log(backend) if log is None else log
+    for name, value in (("REPO_ROOT", root), ("provenance", lambda: copy.deepcopy(ENVIRONMENT)),
+                        ("backend_identity", lambda args: copy.deepcopy(BACKEND)),
+                        ("verified_awq_model", lambda path: copy.deepcopy(MODEL)),
+                        ("marker", lambda *args: None), ("command_for", lambda *args, **kwargs: ["mock-server"])):
+        monkeypatch.setattr(B, name, value)
+
+    class FakeServer:
+        def __init__(self, command, directory, **kwargs):
+            self.directory = directory
+
+        def __enter__(self):
+            (self.directory / "server.log").write_bytes(log)
+            observed = vllm_runtime(capacity=24)["worker_observation"]
+            (self.directory / "runtime.json").write_bytes(json.dumps(observed).encode("utf-8")
+                                                          if worker_bytes is None else worker_bytes)
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def request(self, route, payload):
+            calls.append((route, copy.deepcopy(payload)))
+            return native_response(backend, "answer", len(payload["prompt"]), 8, performance=True)
+
+    monkeypatch.setattr(B, "Server", FakeServer)
+    gguf = root / "fixture.gguf"
+    gguf.write_bytes(b"synthetic weights")
+    output = root / "performance.json"
+    monkeypatch.setattr(sys, "argv", ["bench_competitor", "--backend", backend,
+                                      "--kv-dtype", "f16" if backend == "llamacpp" else "auto",
+                                      "--awq-model-path", "unused-model", "--gguf", str(gguf),
+                                      "--ctx-len", "16", "--n-decode", "8", "--reps", "3", "--seeds", "1",
+                                      "--out", str(output)])
+    return calls, output
+
+
+@pytest.mark.parametrize("backend", ["llamacpp", "vllm"])
+def test_non_utf8_performance_log_accepts_verified_ascii_runtime(isolated, monkeypatch, backend):
+    calls, output = install_binary_log_performance(monkeypatch, isolated, backend=backend)
+    assert B.main() == 0
+    record = json.loads(output.read_text())
+    assert record["status"] == "complete" and len(record["samples"]) == 3 and len(calls) == 4
+    B.verify_runtime(record["runtime"], backend, "f16" if backend == "llamacpp" else "auto", 24)
+    log = next(isolated.glob("artifacts/competitors/*/server.log"))
+    assert log.read_bytes() == native_runtime_log(backend)
+
+
+@pytest.mark.parametrize("old,new", [
+    (b"29/29", b"28/29"), (b"Flash Attention enabled\n", b""),
+    (b"CUDA0 KV buffer size = 20.0 MiB\n", b""),
+    (b"K (f16)", b"K (q4_0)"), (b"V (f16)", b"V (f32)"),
+    (b"24 cells", b"23 cells"), (b"K (f16)", b"K (\xff16)"),
+])
+def test_non_utf8_log_does_not_relax_runtime_verification(isolated, monkeypatch, old, new):
+    log = native_runtime_log("llamacpp").replace(old, new)
+    _, output = install_binary_log_performance(monkeypatch, isolated, backend="llamacpp", log=log)
+    assert B.main() == 1
+    record = json.loads(output.read_text())
+    assert record["status"] == "execution_error" and len(record["samples"]) == 3
+    error = next(isolated.glob("artifacts/competitors/*/error.log"))
+    assert "ValueError: actual full GPU model/cache precision/FA not verified" in error.read_text()
+    assert next(isolated.glob("artifacts/competitors/*/server.log")).read_bytes() == log
+
+
+@pytest.mark.parametrize("worker_bytes,exception", [(b'{"cache_config_dtype":"\xff"}', "UnicodeDecodeError"),
+                                                     (b'{"cache_config_dtype":', "JSONDecodeError")])
+def test_native_log_codec_keeps_performance_worker_json_strict(isolated, monkeypatch, worker_bytes, exception):
+    _, output = install_binary_log_performance(monkeypatch, isolated, backend="vllm", worker_bytes=worker_bytes)
+    assert B.main() == 1
+    record = json.loads(output.read_text())
+    assert record["status"] == "execution_error" and record["runtime"]["weight_kernels"] == ["MarlinLinearKernel"]
+    assert exception in next(isolated.glob("artifacts/competitors/*/error.log")).read_text()
+    assert next(isolated.glob("artifacts/competitors/*/runtime.json")).read_bytes() == worker_bytes
+
+
+def test_non_utf8_gguf_log_preserves_exact_eos_and_prompt_checks(tmp_path):
+    metadata, tokenizer, examples, server, calls = mapping_fixture(tmp_path)
+    log = b"generated piece \xdb\xff\r\nEOG token = 2\n"
+    (tmp_path / "server.log").write_bytes(log)
+    result = N.validate_gguf_tokens(metadata, tokenizer, examples, server)
+    assert result["eos_ids"] == [1, 2] and result["checked_vocabulary_ids"] == len(tokenizer)
+    assert calls == [example["input_ids"] for example in examples]
+    assert (tmp_path / "server.log").read_bytes() == log
+
+
+def install_binary_log_quality(monkeypatch, root, *, worker_bytes=None):
+    path, _ = quality_fixture(root)
+    calls = install_quality_server(monkeypatch, Tokenizer(root))
+    original_server = N.Server
+
+    class BinaryLogServer(original_server):
+        def __enter__(self):
+            super().__enter__()
+            (self.directory / "server.log").write_bytes(native_runtime_log("vllm", capacity=131))
+            if worker_bytes is not None:
+                (self.directory / "runtime.json").write_bytes(worker_bytes)
+            return self
+
+    monkeypatch.setattr(N, "Server", BinaryLogServer)
+    monkeypatch.setattr(N, "resolved_runtime", B.resolved_runtime)
+    output = root / "quality-result.json"
+    monkeypatch.setattr(sys, "argv", ["competitor_niah", "--backend", "vllm", "--kv-dtype", "auto",
+                                      "--awq-model-path", "unused-model", "--quality", str(path),
+                                      "--out", str(output)])
+    return calls, output
+
+
+def test_non_utf8_quality_log_accepts_verified_ascii_runtime(isolated, monkeypatch):
+    calls, output = install_binary_log_quality(monkeypatch, isolated)
+    assert N.main() == 0
+    record = json.loads(output.read_text())
+    assert record["status"] == "complete" and len(record["samples"]) == len(calls) == 6
+    B.verify_runtime(record["runtime"], "vllm", "auto", 131)
+    assert next(isolated.glob("artifacts/competitor-quality/*/server.log")).read_bytes() == native_runtime_log("vllm", capacity=131)
+
+
+@pytest.mark.parametrize("worker_bytes,exception", [(b'{"cache_config_dtype":"\xff"}', "UnicodeDecodeError"),
+                                                     (b'{"cache_config_dtype":', "JSONDecodeError")])
+def test_native_log_codec_keeps_quality_worker_json_strict(isolated, monkeypatch, worker_bytes, exception):
+    _, output = install_binary_log_quality(monkeypatch, isolated, worker_bytes=worker_bytes)
+    assert N.main() == 1
+    record = json.loads(output.read_text())
+    assert record["status"] == "execution_error" and record["runtime"]["weight_kernels"] == ["MarlinLinearKernel"]
+    assert exception in next(isolated.glob("artifacts/competitor-quality/*/error.log")).read_text()
+    assert next(isolated.glob("artifacts/competitor-quality/*/runtime.json")).read_bytes() == worker_bytes

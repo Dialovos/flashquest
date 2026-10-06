@@ -1,6 +1,6 @@
 # FlashQuest research decision
 
-Updated: 2026-10-05. Provisional research decision after completed fresh
+Updated: 2026-10-06. Provisional research decision after completed fresh
 confirmation; optimized competitor comparisons remain pending. The new representative
 selection diagnostic has passed independent author review.
 
@@ -13,17 +13,18 @@ research as an established new contribution.
 
 | Question | Current evidence | Decision boundary |
 | --- | --- | --- |
-| Does page selection help this runtime? | Balanced four-seed internal blocks give a median paired decode ratio of 1.838× at 32k and 0.995× at 8k. | A repeatable internal signal exists at 32k. The all-pages control shares scoring/top-k and the packed kernel, so it is not an optimized dense competitor. |
+| Does page selection help this runtime? | Current independently audited four-seed blocks give median paired decode ratios of 1.811× at 32k and 1.014× at 8k; practical screens pass/fail. The original 1.838×/0.995× blocks remain preserved separately. | A repeatable internal signal exists at 32k. The all-pages control shares scoring/top-k and the packed kernel, so it is not an optimized dense competitor. |
 | Is retrieval quality comparable? | The complete current-environment confirmation has all 2700 outcomes and fails four of nine endpoint rules: 4k/8k multivalue and 32k multikey/multivalue. All observed accuracy floors and pilot-ratio screens pass. The original 4k/8k group remains separately inconclusive with both multivalue failures. | Comparable retrieval quality is not established by the frozen criterion. Preserve both groups without pooling, retuning, relaxing the rule or choosing a favorable group. Failure to establish non-inferiority is not proof of inferiority. Retrieval results do not establish general language quality. |
 | Is metadata reuse useful? | Representative captures avoid an additional BF16 min/max pair: 12.5% of packed INT4 K payload, or 6.25% of packed K+V payload. Scoring latency is similar and selections sometimes differ. | The storage accounting supports an engineering benefit. The independently reviewed new captures explain 28/216 changed heads at 8k and 102/216 at 32k. None of their Q/K fingerprints match the earlier captures; there is no old-snapshot replay, established scoring-speed or exact-equivalence claim. |
 | Does packed attention avoid materialization? | The exact FP32 packed-value oracle and separately timed BF16 reconstruction/SDPA reference are saved, with much smaller temporary increments for the packed path. | This supports avoided temporaries in that reference workload. It does not establish end-to-end superiority over a native quantized engine. |
-| Is the runtime competitive? | llama.cpp Q4/FP16 short performance requests work. Saved vLLM smoke cells fail during startup, including both cells in the terminal sixth attempt. The matching precompiled-kernel setup is being verified. | Full 8k/32k repeated performance, realized runtime checks and matching retrieval quality remain pending. Setup failures do not establish engine inferiority. |
+| Is the runtime competitive? | All four native settings pass independently audited short performance and exact-prompt quality smokes, including intended vLLM FP8/FP16 cache storage and actual kernels. Full performance attempt 1 finished with two adapter log-decoding errors; all failed/interrupted attempts remain preserved. | Fresh complete 8k/32k repeated performance, realized runtime checks and matching retrieval quality remain pending after the reviewed log repair. Short setup success does not establish competitive performance or general quality. |
 | Does it fit an actual 4 GB GPU? | The available device has 12 GB. FlashQuest sampled peaks are 3,442 MiB at 8k and 7,006 MiB at 32k; page selection retains the full persistent cache. | Actual 4 GB prefill, generation and quality tests remain pending collaboration. No physical-target fit or no-OS-fallback claim is supported. |
 | Is the contribution novel? | Closest prior work already combines sparse selection and low-bit KV, and compressed key representations already serve as retrieval indexes. | Broad novelty is unsupported. The affine-page-metadata specialization remains a precise engineering candidate; an implementation difference and byte saving alone do not establish research significance. |
 
 Evidence: [matched quality and internal performance](../README.md#benchmarks-and-validation),
 [component and contribution reports](../benchmarks/validation/contrib/summary.md),
-[sixth short smoke](../benchmarks/validation/competitors/8a9ef285ca15d9902c6dfccaf0d38212e0201a7fe5a9ef24a68c454929c46c8c/schedule.json),
+[successful performance smoke](../benchmarks/validation/competitors/81fc388e18a8943f09c53067b95ff3e0164b72d846219d76d4c780606cabb1c3/schedule.json),
+[successful native quality smoke](../benchmarks/validation/competitors/e7157add0ff588ca0c2e2b81726d30a1d06dbbc068085b5e627a4135be5615d2/schedule.json),
 [changed-page diagnostic](../benchmarks/validation/selection-flips/summary.md),
 [closest prior work](contribution-prior-work.md), and
 [independent audit checkpoints](independent-roadmap-audit.md).

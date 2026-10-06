@@ -104,3 +104,11 @@ return JSON. Completion and detokenize responses still require valid JSON.
 Transport errors and HTTP 503 keep readiness polling within its deadline, with
 owned-worker cleanup on timeout. The interrupted ninth attempt remains evidence
 of the former JSON-only readiness mismatch, not a failed native inference result.
+
+Native diagnostic logs may contain arbitrary generated token bytes. Read them
+with reversible UTF-8 `surrogateescape`; raw files stay unchanged, and re-encoding
+recovers every byte. Structured HTTP responses and worker JSON retain strict
+decoding, as do runtime precision, device, kernel and EOS checks. Full performance
+attempt 1 remains failed because two cells encountered the former strict log
+decoder after requests completed. A corrected source requires fresh complete
+measurements; historical failed cells remain ineligible.

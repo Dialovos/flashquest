@@ -8,7 +8,7 @@ The implementation includes persistent packed caches and fused Triton decode ker
 
 Run the CLI examples below, or use the quality harness for matched retrieval examples. CPU validation checks: `CUDA_VISIBLE_DEVICES="" python -m pytest tests/test_phase6_headtohead.py tests/test_quality_validation.py tests/test_gpu_memory.py tests/test_validation_ablation.py`. Contribution, statistics and competitor checks: `CUDA_VISIBLE_DEVICES="" python -m pytest tests/test_profile_contribution.py tests/test_validation_stats.py tests/test_competitor_backend.py tests/test_competitor_validation.py`. GPU checks: `python -m pytest tests/test_bench_flashquest.py tests/test_sparse_int4.py tests/test_persistent_int4.py tests/test_page_scores_int8.py -m 'not slow'`.
 
-2026-10-05 status: the complete 2,700-outcome retrieval confirmation fails its frozen non-inferiority rule at four of nine endpoints; all pilot screens pass. Historical balanced internal ablations show a 1.84× paired decode ratio at 32k and no practical gain at 8k. Component profiling and representative contribution ablations are complete; metadata reuse saves summary storage, with similar scoring latency and some selection disagreements. The reviewed native-output validation and selection diagnostic pass 170 focused CPU checks. The [changed-page diagnostic](benchmarks/validation/selection-flips/summary.md) is complete for 18 new representative captures; its tensors differ from the earlier captures. Optimized competitor comparisons, current-environment timing and actual 4 GB capacity remain pending; competitive speed and research novelty are unproven.
+2026-10-06 status: the complete 2,700-outcome retrieval confirmation fails its frozen non-inferiority rule at four of nine endpoints; all pilot screens pass. Independently audited current-environment internal repeats give a 1.811× paired decode ratio at 32k and 1.014× at 8k, passing/failing the practical-benefit screen respectively. Component profiling and representative contribution ablations are complete; metadata reuse saves summary storage, with similar scoring latency and some selection disagreements. All four native settings now pass performance and six-example quality setup smokes. Full performance attempt 1 remains ineligible after two diagnostic-log decoding errors; the independently reviewed byte-preserving repair passes 589 non-slow tests, with fresh complete measurements required. The [changed-page diagnostic](benchmarks/validation/selection-flips/summary.md) is complete for 18 new representative captures; its tensors differ from the earlier captures. Optimized competitor matrices and actual 4 GB capacity remain pending; competitive speed and research novelty are unproven.
 
 See the [research roadmap](roadmap.md) and the [dated execution checklist and decision framework](docs/roadmap-implementation-plan.md#6-current-execution-status-and-decision-framework) for remaining endpoints. The original plan is preserved alongside its current progress record.
 
@@ -165,7 +165,16 @@ errors return nonzero; `--require-screen-pass` also returns nonzero on a failed
 or inconclusive screen. Pilot seed 0 is reserved for tuning; confirmation uses
 fresh seeds after its protocol is frozen.
 
-### Current performance — balanced sparse/all-pages INT4 ablation
+### Historical performance — balanced sparse/all-pages INT4 ablation
+
+The original blocks below use kernel `7.0.0-34-generic`. Independently audited
+repeats under the current kernel/source are separately preserved:
+[8k / 0.20](benchmarks/validation/ablation/f22ba06c8c74dd6aa294fc69707404ead02002f9c3958ab4b0015af32acaf7cd/summary.json)
+has paired median/range 1.014242 / 0.955149–1.059477; the
+[32k / 0.25](benchmarks/validation/ablation/0b19179a04ffe455f53d821d4cb827c38958c6d2375e578db1c8f51ce5a78087/summary.json)
+repeat has 1.811117 / 1.620548–1.915303. Current practical screens fail/pass,
+with all 48 timings and raw telemetry reconstructed. These are within-runtime
+comparisons; the frozen quality failure limits them to engineering characterization.
 
 Same pinned AWQ weights, exact synthetic input IDs within each pair, four seeds
 (0–3), one warmup and three timed repetitions per arm. Order is balanced at the

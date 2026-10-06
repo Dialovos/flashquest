@@ -1,6 +1,6 @@
 # FlashQuest research roadmap
 
-Updated: 2026-10-05
+Updated: 2026-10-06
 
 Establish whether FlashQuest offers a reproducible speed, memory, or context-capacity advantage over dense quantized KV at comparable quality. Continue bounded validation of affine quantization metadata for page scoring. Broad sparse/low-bit and compressed-index novelty is unsupported by the closest prior work; the narrower implementation's research significance and competitive advantage remain unproven.
 
@@ -22,8 +22,9 @@ Establish whether FlashQuest offers a reproducible speed, memory, or context-cap
 - [x] Implement pinned competitor adapters, exact-input quality manifests, realized-runtime checks and resumable evidence validation; preserve failed smoke attempts.
 - [x] Complete and independently audit all 2,700 fresh-confirmation outcomes and the nine-endpoint simultaneous-bound summary; preserve its failed quality rule.
 - [x] Capture and independently audit changed-page IDs and score/error margins in 18 new representative snapshots; disclose their mismatch with earlier Q/K fingerprints.
+- [x] Complete and independently audit native performance/quality smokes for all four settings and current-environment internal timing repeats.
 
-The full confirmation fails at four of nine endpoints; its pilot screens pass. The historical internal performance screen passes at 32k (1.838× median paired ratio) and fails at 8k (0.995×). Current-environment timing, optimized competitor comparisons and actual 4 GB capacity remain pending. The [changed-page diagnostic](benchmarks/validation/selection-flips/summary.md) explains the new captures; it cannot reconstruct the earlier snapshots. See the [provisional research decision](docs/research-decision.md) and [independent audit](docs/independent-roadmap-audit.md).
+The full confirmation fails at four of nine endpoints; its pilot screens pass. Current-environment internal timing gives 1.811× at 32k (practical screen passes) and 1.014× at 8k (fails); the original 1.838×/0.995× blocks remain preserved. Optimized competitor comparisons and actual 4 GB capacity remain pending. The [changed-page diagnostic](benchmarks/validation/selection-flips/summary.md) explains the new captures; it cannot reconstruct the earlier snapshots. See the [provisional research decision](docs/research-decision.md) and [independent audit](docs/independent-roadmap-audit.md).
 
 ## 1. Prepare full-model experiments
 
@@ -31,16 +32,18 @@ The full confirmation fails at four of nine endpoints; its pilot screens pass. T
 - [x] Obtain the matching Llama-3.2-3B-Instruct Q4_K_M GGUF.
 - [x] Prepare an external llama.cpp build supporting context depth, quantized K/V, and Flash Attention.
 - [x] Prepare an isolated pinned vLLM environment with same-request metrics and declared compiler/precompiled-kernel dependencies.
-- [ ] Verify actual vLLM kernels and FP8/FP16 KV support in successful requests on the test GPU.
-- [ ] Run one short request with each backend before launching a matrix.
+- [x] Verify actual vLLM kernels and FP8/FP16 KV support in successful requests on the test GPU.
+- [x] Run one short request with each backend before launching a matrix.
 - [x] Record model revisions, backend versions, GPU, context length, cache settings, and seeds with the results.
 
 AWQ setup and its short-run record are complete. Quality records include source,
 model/tokenizer, protocol and environment identity. llama.cpp Q4/FP16 short requests
-complete on GPU. vLLM startup failures are preserved, including the terminal sixth attempt.
-A matching precompiled FlashInfer package and an immutable AOT-only policy are
-being verified after compiler-version and host-header failures. Successful
-performance/quality smokes and the full matrix remain pending. See [competitor setup and contracts](docs/competitor-validation.md).
+complete on GPU. All four native settings now pass independently audited
+performance and exact-prompt quality smokes, with verified intended kernels,
+cache storage/devices, mapping, EOS and telemetry. Failed/interrupted attempts
+remain preserved. The matching FlashInfer precompiled/AOT-only path works;
+host compilation remains unverified. Full optimized matrices remain pending.
+See [competitor setup and contracts](docs/competitor-validation.md).
 
 Done when every backend produces a valid short-run record with the intended model and cache precision. Unsupported configurations remain explicit failures.
 
@@ -202,9 +205,12 @@ group remains separate. The reviewed canonical decoder, EOS/cap, token mapping,
 compile-worker and attention-backend checks plus the selection diagnostic pass
 170 focused CPU tests and were committed as `a0100a5`. Changed-page evidence
 and its independent review are complete. The AOT-only native setup adds 160
-focused competitor checks; commit its reviewed source, verify native smokes,
-and repeat both internal timing
-blocks under the current environment before the full optimized comparison.
+focused competitor checks and is committed. Native setup smokes and current
+internal repeats pass independent evidence audits. Full native performance
+attempt 1 ends with two diagnostic-log decoding errors, so it remains ineligible.
+The independently reviewed byte-preserving log repair passes the integrated
+non-slow suite (589 passed, 12 existing slow cases deselected). Commit it, then
+repeat whole internal and native blocks under the new clean source.
 The earlier usage cutoff remains removed. See
 [exact continuation instructions](docs/execution-checkpoint.md).
 Actual 4 GB testing remains a separate pending endpoint;
@@ -219,5 +225,7 @@ vLLM returns empty HTTP 200, while readiness required JSON. Its owned batch was
 stopped before completed vLLM requests. The independently reviewed correction
 keeps JSON validation for completion/detokenize. Full non-slow checks finished
 exit 0 (562 passed, 12 existing slow cases deselected) after restoring declared
-development dependencies and pinned public test fixtures. Commit the correction
-before a fresh smoke. See the [resume checkpoint](docs/execution-checkpoint.md).
+development dependencies and pinned public test fixtures. The correction is
+committed as `76f00fe`; all four settings subsequently pass short performance and
+quality setup smokes. Fresh full matrices remain required after the log repair.
+See the [resume checkpoint](docs/execution-checkpoint.md).

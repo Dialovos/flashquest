@@ -1,6 +1,6 @@
 # Roadmap execution checkpoint
 
-Updated: 2026-10-05. The user explicitly resumed normal roadmap work. The GPU
+Updated: 2026-10-06. The user explicitly resumed normal roadmap work. The GPU
 was free at the resume check; source and measured core environment match the
 saved checkpoint. The earlier usage-based cutoff remains removed.
 
@@ -27,8 +27,9 @@ Owned batch sessions finished with exit 1; foreign processes were left untouched
 The ignored strict local evidence checker and its CPU regression fixtures are
 preserved under `artifacts/development/evidence-audit/`. Its author reconstructed
 all 16 historical ablation cells, 20,131 raw memory points and 48 timed samples,
-and passed 31 focused CPU cases plus Ruff. Independent review accepted its bounded
-checks, including the original ablations and native attempts 6–9. It reconstructs
+and passed 45 focused CPU cases plus Ruff after the quality-reference corrections.
+Independent review accepted its bounded checks, including original/current
+ablations and successful native smokes. It reconstructs
 saved telemetry; actual kernel/cache placement and missing terminal evidence
 remain separate gates.
 
@@ -48,10 +49,24 @@ pinned upstream test fixtures resolved those failures without changing assertion
 Both failed logs, fixture hashes and the final successful log remain under
 `artifacts/setup/`. The slow end-to-end cases were not verified by this check.
 
-After checks and commit, start a fresh native attempt (next attempt number 10),
-preserving every earlier attempt. Finish all intended-precision performance/
-quality smokes before the matrices below. Do not resume partial smoke cells as
-if they completed a fixed batch.
+The health correction is committed as `76f00fe`. The independently audited
+[performance smoke 10](../benchmarks/validation/competitors/81fc388e18a8943f09c53067b95ff3e0164b72d846219d76d4c780606cabb1c3/schedule.json)
+and [quality smoke 11](../benchmarks/validation/competitors/e7157add0ff588ca0c2e2b81726d30a1d06dbbc068085b5e627a4135be5615d2/schedule.json)
+complete every setting. Performance has exact 1024 inputs and eight outputs;
+quality has 24/24 hits on six matched setup examples. Intended native cache
+types, realized kernels, full GGUF vocabulary/prompt mapping, EOS, same-request
+timings and 5951 combined memory points pass reconstruction. These short setup
+checks do not establish general quality or a competitive advantage.
+
+Quality attempt 10 failed before loading backends because its legacy smoke
+export used filename-to-hash maps rather than typed file entries. Preserve its
+[failed schedule](../benchmarks/validation/competitors/7b78dae942e30efcb83ae24577ea4ec23f3459c9b266430e56b7dd253e137587/schedule.json).
+A fresh current-format AWQ smoke uses exactly the same six ordered examples;
+dense/all-pages score 6/6 and sparse 5/6, preserving the multivalue screen failure.
+Its ignored export is `artifacts/smoke/awq-ruler-1024-current.json`. The local
+checker corrections admit only intended smoke/canonical namespaces, reject path
+escapes and bind the frozen quality reference model/run plus pinned tokenizer.
+Earlier checker path failures remain separately preserved.
 
 
 ## Completed quality and released source freeze
@@ -117,27 +132,65 @@ checking, with 160 focused competitor CPU checks passing. Missing precompiled
 coverage remains failure; compilation and successful vLLM execution are not yet
 verified. Keep all setup/failed-attempt evidence.
 
+## Preserved internal timing and failed native collection
+
+The independently reviewed current-source blocks are complete:
+
+- [8k / 0.20](../benchmarks/validation/ablation/f22ba06c8c74dd6aa294fc69707404ead02002f9c3958ab4b0015af32acaf7cd/summary.json): median paired decode ratio 1.014242,
+  range 0.955149–1.059477; practical screen fails.
+- [32k / 0.25](../benchmarks/validation/ablation/0b19179a04ffe455f53d821d4cb827c38958c6d2375e578db1c8f51ce5a78087/summary.json): median 1.811117,
+  range 1.620548–1.915303; practical screen passes.
+
+All 16 cells, 48 timings, 12,919 memory points and 128 observed phase windows
+reconstruct, with no dropouts or foreign compute. Sampled device peaks remain
+3442/7006 MiB. Runtime/model and existing quality prerequisites match; failed
+confirmation limits the timings to engineering characterization. The original
+32k supervisor tool session disappeared on resume: its outer exit is unavailable,
+while every saved child exit is zero and terminal schedule/log plus independent
+data checks are verified. Do not claim that outer exit was read.
+
+The [full native performance attempt 1](../benchmarks/validation/competitors/a7fd1cdea28626b00fd9002b5fe62aa8e2351da8d6295d3767bf811742298c4f/schedule.json)
+finished with exit 1 and `complete-with-failures` from clean source `76f00fe`.
+All 32 cells retain 96 timings and 32,021 memory points. Independent review
+reconstructs all 160 telemetry windows without foreign compute or dropouts.
+Cells 21 and 23, llama.cpp F16/Q4 at 32k seed 1, failed strict UTF-8 decoding of
+generated token bytes in the diagnostic log after saving three requests each.
+Their runtime records remain absent and the matrix remains ineligible. The
+other 30 realized runtimes pass independent log/worker checks. Its preserved
+log is `artifacts/smoke/competitors-full-performance-attempt1.log`; this is an
+adapter error, without an inference or OOM verdict.
+
+The independently reviewed repair reads native diagnostic logs with reversible
+UTF-8 `surrogateescape`, preserving every raw byte. HTTP and worker JSON and
+runtime precision/kernel/device checks stay strict. Candidate checks pass all
+194 competitor CPU tests, including 27 new regressions. Root integration checks
+finish exit 0 with 589 non-slow tests passed and 12 existing slow cases deselected;
+Ruff passes. After a clean commit, repeat both complete internal timing blocks and both native
+matrices under the new source identity. Preserve the older groups separately;
+do not repair, relabel or pool their observations.
+
+Independent review found that the internal runner's completed-block `--resume`
+rewrites its status to `incomplete`. Do not resume either completed block; preserve
+them and fix/test that behavior after the frozen measurement blocks. The ignored
+comparison builder passes independent review and 61 CPU cases, including real
+export compatibility. Final report emission remains unverified until all four
+new schedules pass the strict raw-evidence and realized-runtime gates.
+
 ## Remaining execution sequence
 
-1. Finish the full project checks and commit the independently reviewed health
-   adapter correction through shared hooks before fresh GPU evidence.
-2. Complete successful 1024-token native performance smokes and six-example
-   matching quality smokes for llama.cpp Q4/FP16 and vLLM FP8/FP16. Validate
-   actual devices, weight/attention kernels, cache precision, mapping, EOS and
-   owned cleanup. Preserve every failed or interrupted attempt.
-3. Repeat balanced four-seed, three-repetition internal 8k/0.20 and 32k/0.25
-   timing blocks under the current kernel, using their current quality records.
-   The existing pilot screen remains mandatory. Failed non-inferiority limits
-   these results to engineering characterization.
-4. Run the optimized 8k/32k performance matrix (32 cells, 96 samples) and matching
-   native quality matrix (8 cells, 2400 outcomes), with periodic independent audits.
-5. Require every local raw memory series to exist, match its hash and reproduce
+1. Commit the reviewed log repair after required checks. Repeat both internal
+   blocks, then collect the optimized 8k/32k performance matrix (32 cells, 96
+   samples) and matching native quality matrix (8 cells, 2400 outcomes), with
+   periodic independent audits and a fixed source/environment throughout.
+2. Require every local raw memory series to exist, match its hash and reproduce
    windows, peaks and coverage before accepting the final comparison. Keep
    FlashQuest forward, native server and HTTP client timing boundaries separate.
    Record weight formats, allocated cache capacities, offload configuration and
    unmeasured OS fallback explicitly.
-6. Save the comparison and evidence-linked research decision, update roadmap
-   checkboxes only for completed evidence, then commit the reviewed result.
+3. Save the comparison and evidence-linked research decision, update roadmap
+   checkboxes only for completed evidence.
+4. Correct completed-block resume status, finish the appropriate project checks,
+   then commit the reviewed result through shared hooks.
 
 Check actual free VRAM and compute ownership before each GPU batch. Run one GPU
 job at a time, under `systemd-inhibit --what=sleep:idle:handle-lid-switch` plus

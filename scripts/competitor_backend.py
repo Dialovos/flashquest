@@ -18,6 +18,11 @@ from gpu_memory import owned_processes, processes
 VLLM_COMPILE_WORKERS = 2
 
 
+def read_native_log(path):
+    """Decode diagnostic bytes reversibly; structured JSON keeps strict decoding."""
+    return Path(path).read_bytes().decode("utf-8", errors="surrogateescape")
+
+
 def compile_workers(backend):
     """Bound FlashInfer/Torch extension ninja jobs in the vLLM subprocess."""
     return VLLM_COMPILE_WORKERS if backend == "vllm" else None
@@ -194,7 +199,7 @@ class Server:
             while time.monotonic() < deadline:
                 if self.process.poll() is not None:
                     self.log.flush()
-                    log = (self.directory / "server.log").read_text()
+                    log = read_native_log(self.directory / "server.log")
                     if "CUDA out of memory" in log or "torch.OutOfMemoryError" in log:
                         raise RuntimeError("CUDA out of memory during server startup")
                     raise RuntimeError("server exited before readiness")

@@ -33,6 +33,7 @@ from competitor_backend import (
     flashinfer_disable_jit,
     marker,
     parse_completion,
+    read_native_log,
 )
 
 ANSWER_DECODER = {"tokenizer": "same-pinned-HF-tokenizer", "input": "returned-output-token-IDs",
@@ -144,7 +145,7 @@ def validate_gguf_tokens(metadata, tokenizer, examples, server):
     eos = {metadata.get(f"tokenizer.ggml.{name}_token_id") for name in ("eos", "eot", "eom")}
     eos.discard(None)
     # Llama BPE also registers EOG tokens from vocabulary names; inspect resolved loader output.
-    eos.update(map(int, re.findall(r"EOG token\s*=\s*(\d+)", (server.directory / "server.log").read_text())))
+    eos.update(map(int, re.findall(r"EOG token\s*=\s*(\d+)", read_native_log(server.directory / "server.log"))))
     if eos != expected_eos:
         raise UnsupportedConfiguration("GGUF EOS policy differs from the quality model")
     for example in examples:
@@ -285,7 +286,7 @@ def main():
                 record["samples"].append({**sample, "generated": answer, "expected": example["expected"],
                                           "native_text": native_text, "generated_ids": generated_ids})
                 write_record(directory / "raw.json", record)
-            record["runtime"] = resolved_runtime(args.backend, (directory / "server.log").read_text())
+            record["runtime"] = resolved_runtime(args.backend, read_native_log(directory / "server.log"))
             if args.backend == "vllm":
                 record["runtime"]["worker_observation"] = json.loads((directory / "runtime.json").read_text())
             verify_runtime(record["runtime"], args.backend, args.kv_dtype, config["capacity"])

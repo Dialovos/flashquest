@@ -979,3 +979,72 @@ Independent fixture review verified all five tokenizer/config hashes, revision
 binding, absence of model weights, the Duo pattern hash/shape and relative legacy
 link. Slow end-to-end cases remain unverified by this check. A fresh native smoke
 must establish successful inference before the full matrices.
+
+## Checkpoint 21 — Successful native smokes and current internal repeats
+
+The native performance tenth attempt completes all four settings with exact
+1024 input / eight output tokens and seven later decode forwards. Independent
+review reconstructs all 2334 memory points, phase windows, ownership and timing
+arithmetic, with no foreign compute or dropouts. Actual llama.cpp layer/cache
+placement and vLLM Marlin/attention selection, FP8 uint8 or FP16 CUDA cache storage,
+unit scales and AOT policy are observed. Static GGUF mapping covers all 128256
+vocabulary IDs and special/EOS behavior. This establishes short-request setup,
+without host-compilation, general speed or capacity claims.
+
+Native quality attempt 10 fails before backend loading because its legacy public
+export is incompatible with the current typed export representation. Preserve
+that failed schedule and its nine memory points. A current-format AWQ smoke
+reuses exactly the same six examples, with dense/all-pages 6/6 and sparse 5/6.
+The eleventh native quality attempt completes all 24 outcomes with 24 hits;
+independent reconstruction verifies exact prompts, full observed detokenization,
+returned IDs, EOS, canonical scorer, runtime records and 3617 memory points.
+The bounded setup smoke does not repair the failed frozen confirmation.
+
+The ignored strict checker now admits only intended canonical/smoke namespaces,
+rejects traversal and symlink references, and binds the frozen quality reference
+model/run and pinned tokenizer. Failed path/relative-tokenizer audit reports are
+preserved. The final delta passes 45 CPU cases, Ruff and independent review.
+
+On resume, another independent agent reconstructs both current-source internal
+blocks: all 16 cells, 48 timings, 12919 memory points and 128 phase windows match,
+without foreign compute or dropouts. Paired medians/ranges are 1.014242
+(0.955149–1.059477) at 8k and 1.811117 (1.620548–1.915303) at 32k; the practical
+screens fail/pass respectively. The 32k supervisor tool session is unavailable,
+so its original outer exit cannot be recovered. All eight saved child exits are
+zero, and terminal schedule/log plus fresh strict data audits are verified.
+
+Independent inspection also identifies a completed-block `--resume` status
+regression. Preserve completed records and defer its source correction until
+frozen measurements finish. Full optimized performance and matching quality
+remain pending; source `76f00fe` and measured environments stay fixed. Actual
+4 GB fit, comparable-quality advantage and research novelty remain unestablished.
+
+## Checkpoint 22 — Failed full matrix and independently reviewed log repair
+
+Native performance attempt 1 finishes exit 1 with `complete-with-failures`.
+Independent reconstruction verifies all 32 raw/public records, 96 retained
+timings, 32,021 memory points and 160 observed windows, without dropouts or
+foreign compute. The prior 8k prefix remains unchanged. Cells 21/F16 and 23/Q4
+at 32k seed 1 saved three requests each, then failed strict UTF-8 decoding of
+arbitrary generated token bytes in llama.cpp diagnostic logs. Their absent
+runtime records and adapter errors remain unchanged. All 30 successful runtime
+records match native logs/worker JSON. Historical integrity checking passes;
+the final strict gate correctly rejects the failed matrix.
+
+A separate author prepared the bounded repair and an independent same-caliber
+agent accepted it. Only diagnostic-log reads use lossless UTF-8
+`surrogateescape`; every raw byte and CRLF survive roundtrip. HTTP/worker JSON,
+runtime precision/device/kernel/FA/capacity checks and timing/scoring policies
+stay strict. Both actual failing logs parse their valid startup fields without
+modifying the files. Baseline tests reproduce the defect; author and independent
+candidate runs each pass 194 competitor CPU tests, including 27 new regressions.
+Root integration completes exit 0 with 589 non-slow tests passed and 12 existing
+slow cases deselected; Ruff and diff checks pass. Those slow cases remain
+unverified by this check.
+
+The reviewed comparison builder passes 61 CPU cases including real export
+compatibility, but final report emission requires fresh complete accepted data.
+After committing the codec repair, repeat both whole internal timing blocks and
+both native matrices with fixed clean source/environment. Preserve previous
+groups unpooled. The independently reviewed completed-block resume patch remains
+deferred until final measurement and comparison acceptance.

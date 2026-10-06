@@ -1,0 +1,897 @@
+{
+  "run_identity": "f830808ae806df83077b5c8f3d4d372936cdf8d9bfc6587dee8f772d5b8685b9",
+  "identity": {
+    "schema_version": 3,
+    "config": {
+      "backend": "vllm",
+      "kv_dtype": "fp8",
+      "ctx_len": 8192,
+      "n_decode": 128,
+      "reps": 3,
+      "seeds": [
+        0
+      ],
+      "capacity": 8320,
+      "gpu_utilization": 0.7,
+      "max_batch_tokens": 2048,
+      "llama_ubatch": null,
+      "backend_identity": {
+        "packages": {
+          "shellingham": "1.5.4",
+          "truststore": "0.10.4",
+          "opentelemetry-exporter-otlp-common": "0.66b0",
+          "aiohappyeyeballs": "2.7.1",
+          "jsonschema-specifications": "2025.9.1",
+          "torch": "2.13.0",
+          "flashinfer-python": "0.6.18.post1",
+          "PyJWT": "2.15.1",
+          "opentelemetry-exporter-otlp-proto-grpc": "1.45.0",
+          "Pygments": "2.21.0",
+          "dill": "0.4.1",
+          "transformers": "5.18.0",
+          "torchvision": "0.28.0",
+          "openai-harmony": "0.0.8",
+          "tiktoken": "0.14.0",
+          "python-dotenv": "1.2.4",
+          "six": "1.17.0",
+          "python-json-logger": "4.2.0",
+          "xgrammar": "0.2.8",
+          "referencing": "0.37.0",
+          "pydantic-settings": "2.15.0",
+          "supervisor": "4.3.0",
+          "certifi": "2026.7.22",
+          "opentelemetry-exporter-http-transport": "0.66b0",
+          "detect-installer": "0.2.1",
+          "fastapi": "0.136.3",
+          "propcache": "0.5.4",
+          "sentencepiece": "0.2.2",
+          "apache-tvm-ffi": "0.1.11",
+          "httptools": "0.8.0",
+          "nvidia-ml-py": "13.615.71",
+          "hf-xet": "1.6.0",
+          "cuda-bindings": "13.4.3",
+          "nvidia-cusparse": "12.6.3.3",
+          "numba": "0.65.0",
+          "model-hosting-container-standards": "0.1.16",
+          "prometheus_client": "0.26.0",
+          "websockets": "17.2",
+          "quack-kernels": "0.6.5",
+          "setuptools": "80.10.2",
+          "torchcodec": "0.17.0",
+          "nvidia-cufile": "1.15.1.6",
+          "outlines_core": "0.2.14",
+          "uvicorn": "0.54.0",
+          "cuda-python": "13.4.1",
+          "jiter": "0.17.0",
+          "torch_c_dlpack_ext": "0.1.5",
+          "fastsafetensors": "0.4.0",
+          "lm-format-enforcer": "0.11.3",
+          "nccl4py": "0.6.0",
+          "nvidia-cublas": "13.1.1.3",
+          "watchfiles": "1.3.0",
+          "pybase64": "1.5.0",
+          "partial-json-parser": "0.2.1.1.post7",
+          "nvidia-cufft": "12.0.0.61",
+          "triton": "3.7.1",
+          "starlette": "1.7.0",
+          "ninja": "1.13.2",
+          "z3-solver": "4.15.4.0",
+          "ijson": "3.5.1",
+          "cuda-core": "1.2.1",
+          "annotated-types": "0.8.0",
+          "opentelemetry-exporter-otlp-proto-common": "1.45.0",
+          "llguidance": "1.7.6",
+          "psutil": "7.2.2",
+          "googleapis-common-protos": "1.75.5",
+          "ml_dtypes": "0.6.0",
+          "mcp-types": "2.3.0",
+          "nvidia-nvvm": "13.0.88",
+          "opentelemetry-proto": "1.45.0",
+          "nvtx": "0.2.15",
+          "compressed-tensors": "0.17.0",
+          "mcp": "2.3.0",
+          "nvidia-cusolver": "12.0.4.66",
+          "fsspec": "2026.9.0",
+          "tilelang": "0.1.12",
+          "Jinja2": "3.1.6",
+          "cuda-toolkit": "13.0.3.0",
+          "nvidia-cuda-cccl": "13.0.85",
+          "pydantic-extra-types": "2.11.1",
+          "nvidia-cusparselt-cu13": "0.8.1",
+          "agent-detector": "2.0.0",
+          "blake3": "1.0.10",
+          "tabulate": "0.10.0",
+          "rignore": "0.8.1",
+          "astor": "0.8.1",
+          "interegular": "0.3.3",
+          "rich-toolkit": "0.20.5",
+          "annotated-doc": "0.0.5",
+          "opentelemetry-semantic-conventions-ai": "0.5.1",
+          "nvidia-cuda-nvcc": "13.0.88",
+          "typer": "0.27.2",
+          "cffi": "2.1.1",
+          "nvidia-cutlass-dsl": "4.7.1",
+          "grpcio": "1.84.0",
+          "msgspec": "0.22.0",
+          "python-multipart": "0.0.32",
+          "PyYAML": "6.0.3",
+          "prometheus-fastapi-instrumentator": "8.1.0",
+          "opentelemetry-api": "1.45.0",
+          "nvidia-curand": "10.4.0.35",
+          "jsonschema": "4.26.0",
+          "multidict": "6.9.1",
+          "charset-normalizer": "3.5.2",
+          "nvidia-cutlass-dsl-libs-core": "4.7.1",
+          "idna": "3.20",
+          "sympy": "1.14.0",
+          "yarl": "1.25.1",
+          "pycountry": "26.2.16",
+          "torchaudio": "2.11.0",
+          "aiohttp": "3.14.3",
+          "mistral_common": "1.12.0",
+          "opencv-python-headless": "5.0.0.93",
+          "aiosignal": "1.4.0",
+          "h11": "0.16.0",
+          "typing_extensions": "4.16.0",
+          "regex": "2026.9.29",
+          "nvidia-cutlass-dsl-libs-cu12": "4.7.1",
+          "humming-kernels": "0.1.12",
+          "protobuf": "7.36.2",
+          "cloudpickle": "3.1.2",
+          "nvidia-cuda-runtime": "13.0.96",
+          "httpcore2": "2.13.1",
+          "fastapi-cloud-cli": "0.26.0",
+          "anthropic": "1.11.0",
+          "uvloop": "0.23.0",
+          "attrs": "26.1.0",
+          "tokenspeed-triton": "3.8.10.post20260920",
+          "frozenlist": "1.8.0",
+          "openai": "3.24.0",
+          "MarkupSafe": "3.0.4",
+          "sniffio": "1.3.1",
+          "instanttensor": "0.2.0",
+          "loguru": "0.7.3",
+          "nvidia-nccl-cu13": "2.29.7",
+          "urllib3": "2.8.0",
+          "nvidia-cuda-crt": "13.0.88",
+          "cuda-tile": "1.6.0",
+          "pynvvideocodec": "2.0.4",
+          "httpcore": "1.0.9",
+          "nvidia-nvjitlink": "13.4.92",
+          "opentelemetry-exporter-otlp": "1.45.0",
+          "safetensors": "0.8.0",
+          "nvidia-cutlass-dsl-libs-cu13": "4.7.1",
+          "httpx2": "2.13.1",
+          "nvidia-cuda-nvrtc": "13.0.88",
+          "pyzmq": "27.2.0",
+          "numpy": "2.3.5",
+          "depyf": "0.20.0",
+          "filelock": "4.0.10",
+          "click": "8.5.0",
+          "pycparser": "3.0",
+          "networkx": "3.7",
+          "llvmlite": "0.47.0",
+          "rich": "15.0.0",
+          "mdurl": "0.1.2",
+          "docstring_parser": "0.18.0",
+          "tokenspeed-mla": "0.1.8",
+          "mpmath": "1.3.0",
+          "jmespath": "1.1.0",
+          "nvidia-cudnn-frontend": "1.30.0",
+          "sse-starlette": "3.5.0",
+          "huggingface_hub": "1.33.0",
+          "vllm": "0.30.0",
+          "tokenizers": "0.23.2",
+          "markdown-it-py": "4.2.0",
+          "cryptography": "50.0.2",
+          "pydantic": "2.13.5",
+          "fastar": "0.12.0",
+          "httpx": "0.28.1",
+          "pillow": "12.3.0",
+          "packaging": "26.3",
+          "opentelemetry-exporter-otlp-proto-http": "1.45.0",
+          "anyio": "4.15.1",
+          "nvidia-cuda-cupti": "13.0.85",
+          "cachetools": "7.2.0",
+          "sentry-sdk": "2.71.0",
+          "cuda-pathfinder": "1.8.3",
+          "py-cpuinfo": "9.0.0",
+          "nvidia-cutlass-dsl-libs-base": "4.7.1",
+          "opentelemetry-semantic-conventions": "0.66b0",
+          "flashinfer-jit-cache": "0.6.18.post1+cu130",
+          "cbor2": "6.1.5",
+          "nvidia-nvshmem-cu13": "3.4.5",
+          "setproctitle": "1.3.8",
+          "nvidia-nvtx": "13.0.85",
+          "tqdm": "4.70.1",
+          "nvidia-cudnn-cu13": "9.20.0.48",
+          "einops": "0.8.2",
+          "email-validator": "2.3.0",
+          "requests": "2.34.2",
+          "pydantic_core": "2.46.5",
+          "lark": "1.2.2",
+          "typing-inspection": "0.4.4",
+          "nvidia-cuda-nvdisasm": "13.4.92",
+          "rpds-py": "2026.6.3",
+          "dnspython": "2.8.0",
+          "opentelemetry-sdk": "1.45.0",
+          "fastapi-cli": "0.0.32"
+        },
+        "cuda": "13.0",
+        "interpreter_sha256": "edffa803e5c4d73a1357f7f2c6c9fd38e9693712b2c06793e6a5e5cc1090d03a"
+      },
+      "generation": "greedy fixed output; first output from prefill",
+      "compile_workers": 2,
+      "flashinfer_disable_jit": true,
+      "ready_timeout_s": 600.0,
+      "request_timeout_s": 600.0,
+      "engine_settings": {
+        "offload_gb": 0,
+        "prefix_cache": false,
+        "batch": 1,
+        "temperature": 0,
+        "ignore_eos": true,
+        "speculation": false,
+        "vllm_worker_observation": "vllm0.30-after-first-worker-execution",
+        "llama_flash_attention": "on",
+        "llama_fit": "off"
+      }
+    },
+    "model": {
+      "model": "casperhansen/llama-3.2-3b-instruct-awq",
+      "revision": "272b3bde867b606760447deb9a4d2719fbdfd3ae",
+      "files": [
+        {
+          "sha256": "52dfd5138308712274f2cb801a12a80faeb9eeaa9a9e757cb47d2a503ec601ac",
+          "path": "config.json"
+        },
+        {
+          "sha256": "89c8864a358b71da10de929109451fc9ad6a6facfda6bf09918ea54c8dd64bf4",
+          "path": "generation_config.json"
+        },
+        {
+          "sha256": "ff74757ce5a7a2bdd8204fe5a1c79bf1979a5291fcd2e23957b2425c59e2e18f",
+          "path": "model.safetensors"
+        },
+        {
+          "sha256": "6f38c73729248f6c127296386e3cdde96e254636cc58b4169d3fd32328d9a8ec",
+          "path": "special_tokens_map.json"
+        },
+        {
+          "sha256": "6b9e4e7fb171f92fd137b777cc2714bf87d11576700a1dcd7a399e7bbe39537b",
+          "path": "tokenizer.json"
+        },
+        {
+          "sha256": "022d5ae3df4737998ab97d8f31ac2bcb4c06dd8ebe5a8aba2b4aceef1e5ea7d3",
+          "path": "tokenizer_config.json"
+        }
+      ],
+      "content_sha256": "9fb77b1a658472280fd64e03223f5e029e43a8c42ec0101ee5cde7012ea64c0c"
+    },
+    "protocol_sha256": "b44e2d73581a4db63b50a5236e0c724c35d6e864f4e0fa831c2e010fc6bedad2",
+    "environment": {
+      "python": "3.12.14",
+      "os": "Linux",
+      "kernel": "7.0.0-38-generic",
+      "wsl": false,
+      "packages": {
+        "torch": "2.5.1",
+        "triton": "3.1.0",
+        "transformers": "4.57.6",
+        "autoawq": "0.2.9",
+        "accelerate": "1.15.0",
+        "huggingface_hub": "0.36.2",
+        "vllm": null
+      },
+      "gpus": [
+        {
+          "name": "NVIDIA GeForce RTX 4080 Laptop GPU",
+          "total_mib": 12282.0,
+          "driver": "595.91.07",
+          "compute_capability": "8.9"
+        }
+      ]
+    },
+    "source": {
+      "commit": "76f00feba87847792333a506ee4d154f3341272c",
+      "dirty": false,
+      "files": [
+        {
+          "sha256": "4a759b62dd7c296197b214fde774dea6164448e8f9940d7d7a35e26fe1eaf685",
+          "path": "data/PaulGrahamEssays.json"
+        },
+        {
+          "sha256": "cb58befdbfcf1ef18fef1ad5c754e4af0902e454e3d78d5bd1da1959aacc25aa",
+          "path": "pyproject.toml"
+        },
+        {
+          "sha256": "91b0ef60d8d304ebe9f4ae227ebb3fcbc10f42715428920e646504699557ba5f",
+          "path": "requirements-validation.txt"
+        },
+        {
+          "sha256": "074b191e282235dbeda59ed1c1da01e597e8363b22da1c5072a60bde0fb26d78",
+          "path": "requirements-vllm.txt"
+        },
+        {
+          "sha256": "a200e1879dbf2b73f2bf66f4f317c9342c42187f155142b800eac423389de132",
+          "path": "scripts/bench_common.py"
+        },
+        {
+          "sha256": "28633549fa8aff047f33b1b219290afc737764eeb74353f0d11ad9760a763b63",
+          "path": "scripts/bench_competitor.py"
+        },
+        {
+          "sha256": "4c1174c28008867adfc28b86d7fe0b96ed402f9762ff96da9b51f9627550dc0d",
+          "path": "scripts/bench_flashquest.py"
+        },
+        {
+          "sha256": "8958c2923abf83b83ab982dfd0fada1eb7b5e84290edb8587f6f1f833112b175",
+          "path": "scripts/bench_llamacpp.sh"
+        },
+        {
+          "sha256": "da000577814954be5c946e0efc4ead5550ddd3c8ae8478f286926624bd617821",
+          "path": "scripts/bench_vllm.py"
+        },
+        {
+          "sha256": "299445cba2273832c461fe82f85c3ca20004b30de0658df33b61bc7835434a35",
+          "path": "scripts/competitor_backend.py"
+        },
+        {
+          "sha256": "0de11b2446393d9de0df1359d77a2a6447de1ef6534dd9eada7c5679df7f8d4e",
+          "path": "scripts/competitor_niah.py"
+        },
+        {
+          "sha256": "0e2788686e3f00ce1981d2eb0494e85bf9a2e00d68309c421746e6efcef5e0cc",
+          "path": "scripts/diagnose_selection_flips.py"
+        },
+        {
+          "sha256": "4bcc3cea85cdceb819cef05dc8ca0344d49d415cabd15a4c37e2f024bb2f81a1",
+          "path": "scripts/gpu_memory.py"
+        },
+        {
+          "sha256": "c53384ceee950cb8f2460357ccb36921044f43e798ecab186d29d4c79318cc43",
+          "path": "scripts/phase10_profile_decode_breakdown.py"
+        },
+        {
+          "sha256": "9395c82bba788ac1e0e4b8c148d79adb42e72cceaa4c7a4e88d4ca28bbc2f465",
+          "path": "scripts/phase10_retention_sweep_ruler.py"
+        },
+        {
+          "sha256": "b3427ca11747dea02e50bee95f396f4ac952b83fdafc112aa257ade6bbb039ea",
+          "path": "scripts/phase1_run_passkey.py"
+        },
+        {
+          "sha256": "308cecbf4f69708afdc451773bf4f09f7bc9cae6ccaa4482965f9a9302b91006",
+          "path": "scripts/phase1_run_perplexity.py"
+        },
+        {
+          "sha256": "0a0c43dac9f9ee79f8d5a8c12240fa8994dd729502b4b7f3e32a4f60da36f4be",
+          "path": "scripts/phase2_bench_attn.py"
+        },
+        {
+          "sha256": "220ae9448d3947520c2d2b53ac8a40c30331810f621921fbff81ad0933540a27",
+          "path": "scripts/phase3_bench_decode.py"
+        },
+        {
+          "sha256": "86670346ef400dca3dcabf1b733dad09a2eb9c939c77e81e37375f5acbc2e7f3",
+          "path": "scripts/phase4_run_passkey.py"
+        },
+        {
+          "sha256": "3d21acf26f8bcb2105bc1e55bc9a142085387bc3942ced1bf236a828d97c65f8",
+          "path": "scripts/phase5_bench_decode_32k.py"
+        },
+        {
+          "sha256": "f5bff48585180babdfa7068462e167468644e27a351fc3d54becaf6625003cbc",
+          "path": "scripts/phase5_run_8b_control.py"
+        },
+        {
+          "sha256": "b6c4af06bd77b2a460256480c402af450d841e1a503da389d91f3f0477b8e2f2",
+          "path": "scripts/phase5_run_passkey_32k.py"
+        },
+        {
+          "sha256": "cfb99a5f623d169bb8ea4fc9de4df881bd805170f25b4b839006468b2b1a8b64",
+          "path": "scripts/phase6_bench_decode_32k.py"
+        },
+        {
+          "sha256": "012c117908cfdd397ed52f1c101f4aee937c302c47321259229d184d5955eff8",
+          "path": "scripts/phase6_bench_decode_32k_v2.py"
+        },
+        {
+          "sha256": "3627dfb4afd0ec8917c357c7ab9509eb25f18699309521e631cc022d9b0e3c08",
+          "path": "scripts/phase6_diag_decode_logits.py"
+        },
+        {
+          "sha256": "f62aabef02ae0134b810854cae38fb04a44b9b9fb63062e51e9262d31b349d4a",
+          "path": "scripts/phase6_diag_passkey_3b.py"
+        },
+        {
+          "sha256": "b96c59a55128be4d8f3ed493b1cdf0f9b8308f59a63695a9b82b69ab414df4ff",
+          "path": "scripts/phase6_diag_passkey_small.py"
+        },
+        {
+          "sha256": "80cd9651880af8ac315c9ef58215384ad396cf0a1289af827d23a16d84911b3f",
+          "path": "scripts/phase6_diag_selection.py"
+        },
+        {
+          "sha256": "7efcc2a685e80878e9771b9e8a42486885d09a556d18b770784f6d2f9e9d92ad",
+          "path": "scripts/phase6_profile_after.py"
+        },
+        {
+          "sha256": "f4ef8e2faa89d8c52790de0c5bd289fab12f14c9e7e6be09b7b01e427c92b22e",
+          "path": "scripts/phase6_profile_decode.py"
+        },
+        {
+          "sha256": "6fd941d61d1ea65b49fbc5e3b679b55ac2f5493e15d0aaceb33e832ebdc7acbb",
+          "path": "scripts/phase6_run_headtohead.py"
+        },
+        {
+          "sha256": "30fad215369c51ff0527b7915c4d8c3e8b13b4fa971f246bd9bc6856b85ba16d",
+          "path": "scripts/phase6_run_passkey_32k.py"
+        },
+        {
+          "sha256": "1f3a031e530d85f9c9f466da63d6a67a34153e6d6f212d84071de9be78056185",
+          "path": "scripts/phase6_run_ruler_4k.py"
+        },
+        {
+          "sha256": "1d93cced3d8a4a4d977abc79356d9cec91369537b5ee1cd68b03c74ae37f7690",
+          "path": "scripts/phase6_run_ruler_4k_int4.py"
+        },
+        {
+          "sha256": "86fdb41b0abc5bfe7bde558efb3b13f8a7c500f61e951796834d68f76963f20d",
+          "path": "scripts/phase7_run_ruler_4k_turbo.py"
+        },
+        {
+          "sha256": "0793ebae866555b887f3e3fe5f1cfd16e683a326febdfe08b6af8bceb673a48c",
+          "path": "scripts/phase8a_audit_awq_layout.py"
+        },
+        {
+          "sha256": "a15ac847f4c7606ad70f90731ec776d096ab016d453bde77028598415a5a99c7",
+          "path": "scripts/phase8b_profile_decode.py"
+        },
+        {
+          "sha256": "3f247fdb41345609ee84a29e2b6912178d888ca1303bfaab2c8cf82b0b7dc010",
+          "path": "scripts/profile_contribution.py"
+        },
+        {
+          "sha256": "36cf0f2545eae93088b6e60544c463a92fb86943f96d3d270eb07f74f4229d7d",
+          "path": "scripts/profile_fa2.py"
+        },
+        {
+          "sha256": "a03be8536235e33088a7b0753602a1263d6955ee2e98a7b37f24d0ad185004bb",
+          "path": "scripts/run_competitors.py"
+        },
+        {
+          "sha256": "7c2dbb57318f76d350d8bf7bbce968fd3d37f7b88e13454c0ea03cb95aa30aef",
+          "path": "scripts/run_validation_ablation.py"
+        },
+        {
+          "sha256": "aaabcb4437e199d55ab0a045bf11aa9a2979382b1dcb687e07724d461e25b5cf",
+          "path": "scripts/summarize_validation.py"
+        },
+        {
+          "sha256": "5de2c8bbef8a1832dc750375f53a721482aa3a041ccbb9723ad0849799d4c0b3",
+          "path": "scripts/validation_stats.py"
+        },
+        {
+          "sha256": "4445bc0eb7a503eb54a06af0b5560a57011be384d0795cc3339d11c5df6cd1ad",
+          "path": "scripts/verify_env.py"
+        },
+        {
+          "sha256": "d8f512f9906f5a913029e9e661fe64b135397ae9fe82c8eb4a572cc2b35ee5b4",
+          "path": "scripts/verify_triton_int8.py"
+        },
+        {
+          "sha256": "a0e3593987ff26471e1c00c25b5275eef35401b690b9b8776353225213ede87c",
+          "path": "scripts/vllm_validation_worker.py"
+        },
+        {
+          "sha256": "cb5e6f9ceb4121c340a1da4dbc241eafcc77501f3f2c5916c23e5236eb2ff5a6",
+          "path": "src/flashquest/__init__.py"
+        },
+        {
+          "sha256": "0de1761f30c180888b853bc1114bf7271dbd47be02a3c03f32c71decf10d1f2c",
+          "path": "src/flashquest/cache/__init__.py"
+        },
+        {
+          "sha256": "f61f3c8dff451406fb4890dadd924984501156b65f8c2263d895ad74b4d2ec0b",
+          "path": "src/flashquest/cache/persistent_int4.py"
+        },
+        {
+          "sha256": "db5c6af5d0907c186e45899f4ad1605ce92694860353ae647c660b3b15302176",
+          "path": "src/flashquest/cache/persistent_int8.py"
+        },
+        {
+          "sha256": "d40daba2f0431eab68f44077e40673b8e570635b351be1f215a0284cf601c44e",
+          "path": "src/flashquest/cache/persistent_turbo.py"
+        },
+        {
+          "sha256": "b80e498404a8196406a23c94afe81a4db8112d15c956e3692653bf63ba1dc954",
+          "path": "src/flashquest/duo/__init__.py"
+        },
+        {
+          "sha256": "c21ce501d2e2b97f11960bb57ca0d411dfe6f98e008a6a9cece049103b0534d0",
+          "path": "src/flashquest/duo/dispatch.py"
+        },
+        {
+          "sha256": "d839caa7ed76665b849e3761611bc2459269e0fb0f4b361b19327949feb8e3ef",
+          "path": "src/flashquest/duo/fused_dispatch.py"
+        },
+        {
+          "sha256": "539c0a167b446d5a8cba8389dae9258ce7370126e341f3401b460af5a379e539",
+          "path": "src/flashquest/duo/pattern.py"
+        },
+        {
+          "sha256": "930d3f3df123103b5c16d14c21f96252405cd7d29a6de91121e3d61c18c4a576",
+          "path": "src/flashquest/eager/__init__.py"
+        },
+        {
+          "sha256": "53827c0458adceb7a589bdbac6aded3beb9a5280c83899688bf23ccfc559c49a",
+          "path": "src/flashquest/eager/attention.py"
+        },
+        {
+          "sha256": "9e9d0859a5bd0e3022e65e76bdbbe325420e03f59bc02e0f34b63d9f86f0b897",
+          "path": "src/flashquest/eager/criticality.py"
+        },
+        {
+          "sha256": "3b92bec5a4c69e598fe5f165d01c8eb92970ae2426118c3cbe809164d95f1708",
+          "path": "src/flashquest/eager/llama_duo_patch.py"
+        },
+        {
+          "sha256": "6145e51911c3d7cfdc84d098cc19adf527243aa73e20d8dc41d1a433fd2c8972",
+          "path": "src/flashquest/eager/llama_patch.py"
+        },
+        {
+          "sha256": "9eb6d002ef06c443ae1ee2db758b97709b72558b7d8e5dc69a5c2d5c30f54bab",
+          "path": "src/flashquest/eager/llama_persistent_patch.py"
+        },
+        {
+          "sha256": "5fe2db6922c1c6e23144aef6325934a78100e92962bba4db88b7e88c3f0cd12e",
+          "path": "src/flashquest/eager/page_summary.py"
+        },
+        {
+          "sha256": "0a39f38a40866c3de767147fa5ea25997599b0de43d24bd6c6ee80eb4293c6f2",
+          "path": "src/flashquest/eager/selection.py"
+        },
+        {
+          "sha256": "0437e2965f0448db34b8412172c368c8ef6357cd7ac3bfbff244daaf358b8b8a",
+          "path": "src/flashquest/eager/sparse_int4.py"
+        },
+        {
+          "sha256": "0c343e648783eb8c76dffe8af553da253ecbd008cf82f64d544c4eb6f94e7700",
+          "path": "src/flashquest/eager/sparse_int8.py"
+        },
+        {
+          "sha256": "d26baf26b967e705e942dd53922d17376d2217483166a3ccf7ccab79cf236d41",
+          "path": "src/flashquest/eager/streaming.py"
+        },
+        {
+          "sha256": "c2f37e0a97d806f35ec0c08cc362b91271718f5cbc074914529af40715c57c7d",
+          "path": "src/flashquest/eval/__init__.py"
+        },
+        {
+          "sha256": "adfa0fdaca2db5bd9c15ea913ae1a9d0a6eff499fac27207773a228f5f6f4a3b",
+          "path": "src/flashquest/eval/niah.py"
+        },
+        {
+          "sha256": "3f1df313d663a0edfa69e04747ad817c80b7663237adbea082787eec634b2416",
+          "path": "src/flashquest/eval/passkey.py"
+        },
+        {
+          "sha256": "a87f8f91aec242f2c2a340dcf52cbd8875f2ddfe417320012af5894b29bd0309",
+          "path": "src/flashquest/eval/perplexity.py"
+        },
+        {
+          "sha256": "6afbb631d460c3eb2837ddf6db193235ccaa0f2fea813861382026157f829644",
+          "path": "src/flashquest/eval/runner.py"
+        },
+        {
+          "sha256": "f104b67bc022292da04a1f02b1a7e58da0207dab27bdcdb21f4a02bdcf4a34db",
+          "path": "src/flashquest/kernel/__init__.py"
+        },
+        {
+          "sha256": "7e2a52902203b8dbd5d7b99f58ea119e774aa0c776b25145d3e8b2e5ae81d382",
+          "path": "src/flashquest/kernel/_autotune.py"
+        },
+        {
+          "sha256": "b7c9ea4a3e047488ffa02d20a6d40a58f96fc14b86d088dc64609d6a1ce08608",
+          "path": "src/flashquest/kernel/flash_fwd.py"
+        },
+        {
+          "sha256": "820af9f7306424f4797a811141da48aff5068150d05412a04785757cca3f0318",
+          "path": "src/flashquest/kernel/fused_proj.py"
+        },
+        {
+          "sha256": "1673b365742eb739e4631e54596d8efd5a44aa9f0ec1535c62cf2540c9349705",
+          "path": "src/flashquest/kernel/kv_quant.py"
+        },
+        {
+          "sha256": "3a6ba99933b43f300dc8853cd14ae7761cb9162d2f8552ef07b3f5f7fe83f22f",
+          "path": "src/flashquest/kernel/sparse_fwd.py"
+        },
+        {
+          "sha256": "3dfbcaf722f84a837ed9cfe5d1303bbc9edaa15494e276e0f6ec0902cbe7e83e",
+          "path": "src/flashquest/kernel/sparse_int4_fwd.py"
+        },
+        {
+          "sha256": "8ee93ab38f73b578c786aa37f8711adc8df963e9d3aa8fae4a9a737c3aa28591",
+          "path": "src/flashquest/kernel/sparse_int4_fwd_compact.py"
+        },
+        {
+          "sha256": "cedf344e285d82adff81ea64c1b00e6903e74017daa66328b12d2d4da3360f3e",
+          "path": "src/flashquest/kernel/sparse_turbo_fwd.py"
+        },
+        {
+          "sha256": "0b29876476aa0ec32a591a24cd3685dcbec4d2835d357d8a54c3289adb5d7d3c",
+          "path": "src/flashquest/kernel/wht.py"
+        },
+        {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "path": "src/flashquest/model/__init__.py"
+        },
+        {
+          "sha256": "dee7c68eb53f1df87d28faa599a159988c4140ef0b134bec4db75c929b2bae77",
+          "path": "src/flashquest/quant/__init__.py"
+        },
+        {
+          "sha256": "7c41e200ee755e909558566f2c34f471491ef1da36f811388599b3ba431b177f",
+          "path": "src/flashquest/quant/awq_layout.py"
+        },
+        {
+          "sha256": "3733c9463251e01c54e33dbacd71a217ae3af09d0d688a933cb5004c752a5a4c",
+          "path": "src/flashquest/runtime/__init__.py"
+        },
+        {
+          "sha256": "b066e57790358b30ceca5761032e65d15fc44c2513b91305f14574480967d9d0",
+          "path": "src/flashquest/runtime/awq_load.py"
+        },
+        {
+          "sha256": "7a74d9f6f978fb3d279a0b4abd3df73cfe5eafb36b0828967edf956051dba00a",
+          "path": "src/flashquest/runtime/chat.py"
+        }
+      ],
+      "content_sha256": "cdcc97fcb8316dff27c82b9476c9a3cb8babdf8af2956dbf543ff5cda47a9219"
+    }
+  },
+  "protocol": {
+    "version": 1,
+    "batch": 1,
+    "concurrency": 1,
+    "warmup": "one full request per seed",
+    "generation": "greedy fixed output; first output from prefill",
+    "input": "exact seeded IDs matching FlashQuest",
+    "timing": "native same-request phases; client wall clock separately",
+    "cache_reuse": false,
+    "offload_gb": 0
+  },
+  "status": "complete",
+  "samples": [
+    {
+      "input_tokens": 8192,
+      "output_tokens": 128,
+      "decode_steps": 127,
+      "prefill_s": 0.9701276470004814,
+      "decode_s": 0.971133959996223,
+      "prefill_tok_s": 8444.249605017118,
+      "decode_tok_s": 130.77495508497503,
+      "native_request_s": 1.9412616069967044,
+      "native_output_tok_s": 65.936502086407,
+      "queue_ms": 0.011686999641824514,
+      "native_numeric_metrics": {
+        "time_to_first_token_ms": 970.1276470004814,
+        "generation_time_ms": 971.133959996223,
+        "queue_time_ms": 0.011686999641824514
+      },
+      "timing_boundary": "scheduled-to-first / first-to-last-token",
+      "termination": "length",
+      "seed": 0,
+      "repetition": 0,
+      "input_sha256": "61a5468b85e1f2228a040033b43002338665df40dff7625371b75e56fb90597f",
+      "client_request_s": 1.9470141359997797
+    },
+    {
+      "input_tokens": 8192,
+      "output_tokens": 128,
+      "decode_steps": 127,
+      "prefill_s": 0.9708792849996826,
+      "decode_s": 0.9713667230025749,
+      "prefill_tok_s": 8437.712212597757,
+      "decode_tok_s": 130.7436182366146,
+      "native_request_s": 1.9422460080022574,
+      "native_output_tok_s": 65.90308306601047,
+      "queue_ms": 0.008513001375831664,
+      "native_numeric_metrics": {
+        "time_to_first_token_ms": 970.8792849996826,
+        "generation_time_ms": 971.3667230025749,
+        "queue_time_ms": 0.008513001375831664
+      },
+      "timing_boundary": "scheduled-to-first / first-to-last-token",
+      "termination": "length",
+      "seed": 0,
+      "repetition": 1,
+      "input_sha256": "61a5468b85e1f2228a040033b43002338665df40dff7625371b75e56fb90597f",
+      "client_request_s": 1.9556904190030764
+    },
+    {
+      "input_tokens": 8192,
+      "output_tokens": 128,
+      "decode_steps": 127,
+      "prefill_s": 0.9713935289983056,
+      "decode_s": 0.9723674730048515,
+      "prefill_tok_s": 8433.24538969035,
+      "decode_tok_s": 130.6090583301179,
+      "native_request_s": 1.943761002003157,
+      "native_output_tok_s": 65.85171729862296,
+      "queue_ms": 0.012452997907530516,
+      "native_numeric_metrics": {
+        "time_to_first_token_ms": 971.3935289983056,
+        "generation_time_ms": 972.3674730048515,
+        "queue_time_ms": 0.012452997907530516
+      },
+      "timing_boundary": "scheduled-to-first / first-to-last-token",
+      "termination": "length",
+      "seed": 0,
+      "repetition": 2,
+      "input_sha256": "61a5468b85e1f2228a040033b43002338665df40dff7625371b75e56fb90597f",
+      "client_request_s": 1.9497968569994555
+    }
+  ],
+  "runtime": {
+    "weight_kernels": [
+      "MarlinLinearKernel"
+    ],
+    "kernel_verification": "resolved-selection-log",
+    "attention_backend": [
+      "FLASHINFER"
+    ],
+    "allocated_kv_tokens": 94672,
+    "kv_scale_policy": "checkpoint-or-unit-default; values in worker observation",
+    "cpu_offload_gb": 0,
+    "os_fallback": "unmeasured",
+    "worker_observation": {
+      "method": "vllm0.30-after-first-worker-execution-v1",
+      "stage": "first-worker-execution; may be internal startup warmup",
+      "model_tensor_devices": [
+        "cuda:0"
+      ],
+      "model_parameter_devices": [
+        "cuda:0"
+      ],
+      "quantization_methods": [
+        "AutoAWQMarlinLinearMethod",
+        "UnquantizedEmbeddingMethod"
+      ],
+      "cache_config_dtype": "fp8",
+      "logical_cache_dtype": "torch.uint8",
+      "cache_tensor_devices": [
+        "cuda:0"
+      ],
+      "cache_storage_dtypes": [
+        "torch.uint8"
+      ],
+      "cache_tensor_bytes": 5428871168,
+      "kv_scales": [
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        },
+        {
+          "k": 1.0,
+          "v": 1.0
+        }
+      ],
+      "cpu_offload_gb": 0.0,
+      "offload_backend": "auto",
+      "offload_group_size": 0
+    }
+  },
+  "decode_tok_s": 130.7436182366146,
+  "prefill_tok_s": 8437.712212597757,
+  "raw_evidence": {
+    "path": "artifacts/competitors/502512e87677479f97ade5bfa5d5a538/raw.json",
+    "sha256": "7a908c09bb4a25a40ea3e26819fea7bb5d8a658fc254c3ee4af23cb3343b0015"
+  }
+}
