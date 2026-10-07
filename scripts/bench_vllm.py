@@ -1,104 +1,70 @@
-"""vLLM single-request decode bench, parametric over --max-model-len.
-
-Catches OOM during LLM(...) construction and llm.generate(...) and writes a
-per-cell JSON record so the orchestrator can keep going.
-"""
+"""Single-request vLLM bench using V0 RequestMetrics phase timestamps."""
 from __future__ import annotations
 
 import argparse
-import gc
-import json
+import os
 import time
-from pathlib import Path
+from importlib.metadata import version
+
+from bench_common import (
+    add_run_arguments,
+    is_oom,
+    new_record,
+    provenance,
+    run_config,
+    summarize_samples,
+    synthetic_token_ids,
+    validate_run_arguments,
+    vllm_sample,
+    write_benchmark_record,
+)
 
 
-def _record_skeleton(model_id: str, max_model_len: int) -> dict:
-    return {
-        "backend": "vLLM 0.7.3",
-        "quant": "AWQ-INT4, FP16 KV",
-        "ctx_len": max_model_len,
-        "decode_tok_s": None,
-        "prefill_tok_s": None,
-        "peak_vram_mib": None,
-        "wall_s": None,
-        "oom": False,
-        "error": None,
-    }
-
-
-def main() -> None:
-    p = argparse.ArgumentParser()
-    p.add_argument("--model", default="casperhansen/llama-3.2-3b-instruct-awq")
-    p.add_argument("--max-model-len", type=int, required=True)
-    p.add_argument("--out", type=str, required=True)
+def main() -> int:
+    p = argparse.ArgumentParser(description=__doc__)
+    add_run_arguments(p)
+    p.add_argument("--kv-cache-dtype", choices=["auto", "fp8"], default="fp8")
     args = p.parse_args()
-
-    record = _record_skeleton(args.model, args.max_model_len)
+    validate_run_arguments(p, args)
+    config = run_config(args.ctx_len, args.n_decode, args.reps, args.seed,
+                        model=args.model, kv_cache_dtype=args.kv_cache_dtype)
+    record = new_record("vLLM", f"AWQ-INT4, {args.kv_cache_dtype} KV", config)
+    record["provenance"] = provenance()
     t_start = time.perf_counter()
-
-    import torch  # imported here so OOM during import is caught below
-
     try:
+        # V1 releases can omit RequestMetrics. A missing timing API is an error,
+        # not permission to label end-to-end throughput as decode throughput.
+        os.environ.setdefault("VLLM_USE_V1", "0")
         from vllm import LLM, SamplingParams
 
-        torch.cuda.reset_peak_memory_stats()
-
+        record["versions"] = {"vllm": version("vllm")}
         llm = LLM(
-            model=args.model,
-            quantization="awq",
-            dtype="float16",
-            gpu_memory_utilization=0.95,
-            max_model_len=args.max_model_len,
-            enforce_eager=False,
-            swap_space=0,
+            model=args.model, quantization="awq", dtype="float16",
+            kv_cache_dtype=args.kv_cache_dtype, gpu_memory_utilization=0.95,
+            max_model_len=args.ctx_len + args.n_decode, swap_space=0,
+            enable_prefix_caching=False, disable_log_stats=False,
         )
-
-        target_in = max(64, int(args.max_model_len * 0.8))
-        prompt = ("The quick brown fox jumps over the lazy dog. " * (target_in // 8 + 1))
-        tok = llm.get_tokenizer()
-        ids = tok.encode(prompt)[:target_in]
-        prompt = tok.decode(ids, skip_special_tokens=True)
-
-        llm.generate([prompt], SamplingParams(max_tokens=4, temperature=0.0))
-        torch.cuda.synchronize()
-
-        t0 = time.perf_counter()
-        outputs = llm.generate([prompt], SamplingParams(max_tokens=128, temperature=0.0))
-        torch.cuda.synchronize()
-        t1 = time.perf_counter()
-
-        out = outputs[0]
-        n_in = len(out.prompt_token_ids)
-        n_out = len(out.outputs[0].token_ids)
-        elapsed = t1 - t0
-
-        record["decode_tok_s"] = n_out / elapsed if elapsed > 0 else None
-        record["prefill_tok_s"] = n_in / elapsed if elapsed > 0 else None
-        record["peak_vram_mib"] = int(torch.cuda.max_memory_allocated() / 1024 / 1024)
-
-    except Exception as exc:
-        msg = str(exc).lower()
-        if (
-            "out of memory" in msg
-            or "kv cache" in msg
-            or "no available" in msg
-            or "memory for the cache" in msg
-        ):
-            record["oom"] = True
+        ids = synthetic_token_ids(len(llm.get_tokenizer()), args.ctx_len, args.seed)
+        prompt = {"prompt_token_ids": ids}
+        params = SamplingParams(max_tokens=args.n_decode, temperature=0.0, ignore_eos=True)
+        llm.generate([prompt], params, use_tqdm=False)
+        for _ in range(args.reps):
+            t0 = time.perf_counter()
+            outputs = llm.generate([prompt], params, use_tqdm=False)
+            elapsed = time.perf_counter() - t0
+            record["samples"].append(vllm_sample(outputs[0], args.ctx_len,
+                                                args.n_decode, elapsed))
+        summarize_samples(record)
+        # GPU workers may be separate processes. Parent allocator counters cannot
+        # establish their memory usage, so leave those fields unmeasured.
+    except Exception as exc:  # noqa: BLE001 — record backend/import failures for the matrix
+        record["oom"] = is_oom(str(exc))
         record["error"] = f"{type(exc).__name__}: {exc}"
-    finally:
-        record["wall_s"] = time.perf_counter() - t_start
-        gc.collect()
-        try:
-            torch.cuda.empty_cache()
-        except Exception:
-            pass
-
-    out_path = Path(args.out)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(record, indent=2))
-    print(json.dumps(record, indent=2))
+    record["wall_s"] = time.perf_counter() - t_start
+    exported = write_benchmark_record(args.out, record)
+    print(exported)
+    return int(record["error"] is not None)
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

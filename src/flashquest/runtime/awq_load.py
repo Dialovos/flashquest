@@ -24,6 +24,8 @@ def load_awq_model(
     *,
     attn_implementation: str = "sdpa",
     device_map: str = "cuda",
+    revision: str | None = None,
+    cache_dir: str | None = None,
 ):
     """Load an AWQ-INT4 HF model. Returns (model, tokenizer)."""
     _ensure_autoawq_compat()
@@ -35,6 +37,9 @@ def load_awq_model(
         torch_dtype=torch.float16,
         attn_implementation=attn_implementation,
         device_map=device_map,
+        revision=revision,
+        cache_dir=cache_dir,
+        token=False,
     )
     qcfg = getattr(model.config, "quantization_config", None)
     if qcfg is None:
@@ -45,5 +50,5 @@ def load_awq_model(
             f"Model {name} is not AWQ-quantized (quant_method={quant_method})"
         )
     model.eval()
-    tok = AutoTokenizer.from_pretrained(name)
+    tok = AutoTokenizer.from_pretrained(name, revision=revision, cache_dir=cache_dir, token=False)
     return model, tok

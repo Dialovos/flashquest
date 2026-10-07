@@ -1,0 +1,471 @@
+{
+  "schema_version": 3,
+  "run_identity": "efd8bfe82549542f6cc7994414e6af11b0943c09404647a9457cf0e42ca4e559",
+  "schedule": {
+    "path": "benchmarks/validation/ablation/efd8bfe82549542f6cc7994414e6af11b0943c09404647a9457cf0e42ca4e559/schedule.json",
+    "sha256": "f5f0e14be8b045c2a154a81d2ddd220f96ea9b6bb4a4a7bb78bcb9a148624dc1"
+  },
+  "status": "complete",
+  "contexts": [
+    {
+      "ctx_len": 32768,
+      "pairs": [
+        {
+          "seed": 0,
+          "decode_ratio": 1.78298687482193,
+          "sparse": {
+            "decode_tok_s": 34.190251678618125,
+            "decode_sample_min_tok_s": 32.638383239521815,
+            "decode_sample_max_tok_s": 35.68057620896288,
+            "prefill_tok_s": 4563.530079397091,
+            "end_to_end_tok_s": 11.748599780905026,
+            "peak_allocated_mib": 5477.3,
+            "peak_reserved_mib": 6750.0,
+            "device_sampled_peak_mib": 7006.0,
+            "device_baseline_adjusted_peak_mib": 6992.0,
+            "process_tree_rss_sampled_peak_mib": 2639.51171875,
+            "actual_interval_median_ms": 50.121407,
+            "actual_interval_max_ms": 63.71456,
+            "device_dropouts": 0,
+            "phases": {
+              "load": {
+                "window_count": 1,
+                "sample_count": 83,
+                "device_sampled_peak_mib": 2384.0,
+                "process_tree_rss_sampled_peak_mib": 2639.51171875
+              },
+              "warmup": {
+                "window_count": 1,
+                "sample_count": 225,
+                "device_sampled_peak_mib": 7006.0,
+                "process_tree_rss_sampled_peak_mib": 1550.68359375
+              },
+              "prefill": {
+                "window_count": 3,
+                "sample_count": 427,
+                "device_sampled_peak_mib": 7006.0,
+                "process_tree_rss_sampled_peak_mib": 1550.68359375
+              },
+              "decode": {
+                "window_count": 3,
+                "sample_count": 221,
+                "device_sampled_peak_mib": 7006.0,
+                "process_tree_rss_sampled_peak_mib": 1550.68359375
+              }
+            },
+            "runtime": {
+              "cuda": "12.4",
+              "devices": [
+                "cuda:0"
+              ],
+              "dtype": "torch.float16",
+              "weight_kernel": "triton",
+              "weight_modules": [
+                "WQLinear_GEMM"
+              ],
+              "weight_storage_bytes": 2252691712,
+              "persistent_cache_storage_bytes": 1038958592
+            }
+          },
+          "all-pages": {
+            "decode_tok_s": 19.175829144582327,
+            "decode_sample_min_tok_s": 19.175234728370288,
+            "decode_sample_max_tok_s": 19.176826473077792,
+            "prefill_tok_s": 4566.076100832845,
+            "end_to_end_tok_s": 9.275817081232683,
+            "peak_allocated_mib": 5477.3,
+            "peak_reserved_mib": 6750.0,
+            "device_sampled_peak_mib": 7006.0,
+            "device_baseline_adjusted_peak_mib": 6992.0,
+            "process_tree_rss_sampled_peak_mib": 2718.98046875,
+            "actual_interval_median_ms": 50.155436,
+            "actual_interval_max_ms": 85.01486,
+            "device_dropouts": 0,
+            "phases": {
+              "load": {
+                "window_count": 1,
+                "sample_count": 75,
+                "device_sampled_peak_mib": 3410.0,
+                "process_tree_rss_sampled_peak_mib": 2718.98046875
+              },
+              "warmup": {
+                "window_count": 1,
+                "sample_count": 287,
+                "device_sampled_peak_mib": 7006.0,
+                "process_tree_rss_sampled_peak_mib": 1549.01171875
+              },
+              "prefill": {
+                "window_count": 3,
+                "sample_count": 424,
+                "device_sampled_peak_mib": 7006.0,
+                "process_tree_rss_sampled_peak_mib": 1549.01171875
+              },
+              "decode": {
+                "window_count": 3,
+                "sample_count": 394,
+                "device_sampled_peak_mib": 7006.0,
+                "process_tree_rss_sampled_peak_mib": 1549.01171875
+              }
+            },
+            "runtime": {
+              "cuda": "12.4",
+              "devices": [
+                "cuda:0"
+              ],
+              "dtype": "torch.float16",
+              "weight_kernel": "triton",
+              "weight_modules": [
+                "WQLinear_GEMM"
+              ],
+              "weight_storage_bytes": 2252691712,
+              "persistent_cache_storage_bytes": 1038958592
+            }
+          }
+        },
+        {
+          "seed": 1,
+          "decode_ratio": 1.7607705312656763,
+          "sparse": {
+            "decode_tok_s": 33.764276399443474,
+            "decode_sample_min_tok_s": 32.3903799091404,
+            "decode_sample_max_tok_s": 35.80224655838304,
+            "prefill_tok_s": 4564.80142545219,
+            "end_to_end_tok_s": 11.700190762716414,
+            "peak_allocated_mib": 5477.3,
+            "peak_reserved_mib": 6750.0,
+            "device_sampled_peak_mib": 7006.0,
+            "device_baseline_adjusted_peak_mib": 6992.0,
+            "process_tree_rss_sampled_peak_mib": 2740.4375,
+            "actual_interval_median_ms": 50.135817,
+            "actual_interval_max_ms": 88.989723,
+            "device_dropouts": 0,
+            "phases": {
+              "load": {
+                "window_count": 1,
+                "sample_count": 92,
+                "device_sampled_peak_mib": 3410.0,
+                "process_tree_rss_sampled_peak_mib": 2740.4375
+              },
+              "warmup": {
+                "window_count": 1,
+                "sample_count": 234,
+                "device_sampled_peak_mib": 7006.0,
+                "process_tree_rss_sampled_peak_mib": 1551.04296875
+              },
+              "prefill": {
+                "window_count": 3,
+                "sample_count": 427,
+                "device_sampled_peak_mib": 7006.0,
+                "process_tree_rss_sampled_peak_mib": 1551.04296875
+              },
+              "decode": {
+                "window_count": 3,
+                "sample_count": 220,
+                "device_sampled_peak_mib": 7006.0,
+                "process_tree_rss_sampled_peak_mib": 1551.04296875
+              }
+            },
+            "runtime": {
+              "cuda": "12.4",
+              "devices": [
+                "cuda:0"
+              ],
+              "dtype": "torch.float16",
+              "weight_kernel": "triton",
+              "weight_modules": [
+                "WQLinear_GEMM"
+              ],
+              "weight_storage_bytes": 2252691712,
+              "persistent_cache_storage_bytes": 1038958592
+            }
+          },
+          "all-pages": {
+            "decode_tok_s": 19.175852730323157,
+            "decode_sample_min_tok_s": 19.171314788795446,
+            "decode_sample_max_tok_s": 19.176793401635276,
+            "prefill_tok_s": 4565.676019646923,
+            "end_to_end_tok_s": 9.275399864046117,
+            "peak_allocated_mib": 5477.3,
+            "peak_reserved_mib": 6750.0,
+            "device_sampled_peak_mib": 7006.0,
+            "device_baseline_adjusted_peak_mib": 6992.0,
+            "process_tree_rss_sampled_peak_mib": 2703.359375,
+            "actual_interval_median_ms": 50.152992,
+            "actual_interval_max_ms": 66.516852,
+            "device_dropouts": 0,
+            "phases": {
+              "load": {
+                "window_count": 1,
+                "sample_count": 85,
+                "device_sampled_peak_mib": 2864.0,
+                "process_tree_rss_sampled_peak_mib": 2703.359375
+              },
+              "warmup": {
+                "window_count": 1,
+                "sample_count": 291,
+                "device_sampled_peak_mib": 7006.0,
+                "process_tree_rss_sampled_peak_mib": 1548.51953125
+              },
+              "prefill": {
+                "window_count": 3,
+                "sample_count": 426,
+                "device_sampled_peak_mib": 7006.0,
+                "process_tree_rss_sampled_peak_mib": 1548.51953125
+              },
+              "decode": {
+                "window_count": 3,
+                "sample_count": 396,
+                "device_sampled_peak_mib": 7006.0,
+                "process_tree_rss_sampled_peak_mib": 1548.51953125
+              }
+            },
+            "runtime": {
+              "cuda": "12.4",
+              "devices": [
+                "cuda:0"
+              ],
+              "dtype": "torch.float16",
+              "weight_kernel": "triton",
+              "weight_modules": [
+                "WQLinear_GEMM"
+              ],
+              "weight_storage_bytes": 2252691712,
+              "persistent_cache_storage_bytes": 1038958592
+            }
+          }
+        },
+        {
+          "seed": 2,
+          "decode_ratio": 1.89473999682719,
+          "sparse": {
+            "decode_tok_s": 36.33681159813506,
+            "decode_sample_min_tok_s": 34.16551750477755,
+            "decode_sample_max_tok_s": 36.36732471323828,
+            "prefill_tok_s": 4561.116936593536,
+            "end_to_end_tok_s": 11.97788959661333,
+            "peak_allocated_mib": 5477.3,
+            "peak_reserved_mib": 6750.0,
+            "device_sampled_peak_mib": 7006.0,
+            "device_baseline_adjusted_peak_mib": 6992.0,
+            "process_tree_rss_sampled_peak_mib": 2821.46875,
+            "actual_interval_median_ms": 50.153908,
+            "actual_interval_max_ms": 72.355804,
+            "device_dropouts": 0,
+            "phases": {
+              "load": {
+                "window_count": 1,
+                "sample_count": 84,
+                "device_sampled_peak_mib": 3410.0,
+                "process_tree_rss_sampled_peak_mib": 2821.46875
+              },
+              "warmup": {
+                "window_count": 1,
+                "sample_count": 231,
+                "device_sampled_peak_mib": 7006.0,
+                "process_tree_rss_sampled_peak_mib": 1546.49609375
+              },
+              "prefill": {
+                "window_count": 3,
+                "sample_count": 427,
+                "device_sampled_peak_mib": 7006.0,
+                "process_tree_rss_sampled_peak_mib": 1546.49609375
+              },
+              "decode": {
+                "window_count": 3,
+                "sample_count": 212,
+                "device_sampled_peak_mib": 7006.0,
+                "process_tree_rss_sampled_peak_mib": 1546.49609375
+              }
+            },
+            "runtime": {
+              "cuda": "12.4",
+              "devices": [
+                "cuda:0"
+              ],
+              "dtype": "torch.float16",
+              "weight_kernel": "triton",
+              "weight_modules": [
+                "WQLinear_GEMM"
+              ],
+              "weight_storage_bytes": 2252691712,
+              "persistent_cache_storage_bytes": 1038958592
+            }
+          },
+          "all-pages": {
+            "decode_tok_s": 19.17772974602444,
+            "decode_sample_min_tok_s": 19.176825230833472,
+            "decode_sample_max_tok_s": 19.180824918575556,
+            "prefill_tok_s": 4568.111518949964,
+            "end_to_end_tok_s": 9.278198337318356,
+            "peak_allocated_mib": 5477.3,
+            "peak_reserved_mib": 6750.0,
+            "device_sampled_peak_mib": 7006.0,
+            "device_baseline_adjusted_peak_mib": 6992.0,
+            "process_tree_rss_sampled_peak_mib": 2815.34375,
+            "actual_interval_median_ms": 50.15361,
+            "actual_interval_max_ms": 77.051694,
+            "device_dropouts": 0,
+            "phases": {
+              "load": {
+                "window_count": 1,
+                "sample_count": 84,
+                "device_sampled_peak_mib": 2864.0,
+                "process_tree_rss_sampled_peak_mib": 2815.34375
+              },
+              "warmup": {
+                "window_count": 1,
+                "sample_count": 284,
+                "device_sampled_peak_mib": 7006.0,
+                "process_tree_rss_sampled_peak_mib": 1546.9140625
+              },
+              "prefill": {
+                "window_count": 3,
+                "sample_count": 425,
+                "device_sampled_peak_mib": 7006.0,
+                "process_tree_rss_sampled_peak_mib": 1546.9140625
+              },
+              "decode": {
+                "window_count": 3,
+                "sample_count": 393,
+                "device_sampled_peak_mib": 7006.0,
+                "process_tree_rss_sampled_peak_mib": 1546.9140625
+              }
+            },
+            "runtime": {
+              "cuda": "12.4",
+              "devices": [
+                "cuda:0"
+              ],
+              "dtype": "torch.float16",
+              "weight_kernel": "triton",
+              "weight_modules": [
+                "WQLinear_GEMM"
+              ],
+              "weight_storage_bytes": 2252691712,
+              "persistent_cache_storage_bytes": 1038958592
+            }
+          }
+        },
+        {
+          "seed": 3,
+          "decode_ratio": 1.8662562120790451,
+          "sparse": {
+            "decode_tok_s": 35.78989411000998,
+            "decode_sample_min_tok_s": 33.93370502653651,
+            "decode_sample_max_tok_s": 36.13192079854625,
+            "prefill_tok_s": 4566.021088963775,
+            "end_to_end_tok_s": 11.937666557110036,
+            "peak_allocated_mib": 5477.3,
+            "peak_reserved_mib": 6750.0,
+            "device_sampled_peak_mib": 7006.0,
+            "device_baseline_adjusted_peak_mib": 6992.0,
+            "process_tree_rss_sampled_peak_mib": 2757.16015625,
+            "actual_interval_median_ms": 50.112386,
+            "actual_interval_max_ms": 86.576556,
+            "device_dropouts": 0,
+            "phases": {
+              "load": {
+                "window_count": 1,
+                "sample_count": 80,
+                "device_sampled_peak_mib": 3410.0,
+                "process_tree_rss_sampled_peak_mib": 2757.16015625
+              },
+              "warmup": {
+                "window_count": 1,
+                "sample_count": 226,
+                "device_sampled_peak_mib": 7006.0,
+                "process_tree_rss_sampled_peak_mib": 1549.34765625
+              },
+              "prefill": {
+                "window_count": 3,
+                "sample_count": 427,
+                "device_sampled_peak_mib": 7006.0,
+                "process_tree_rss_sampled_peak_mib": 1549.34765625
+              },
+              "decode": {
+                "window_count": 3,
+                "sample_count": 213,
+                "device_sampled_peak_mib": 7006.0,
+                "process_tree_rss_sampled_peak_mib": 1549.34765625
+              }
+            },
+            "runtime": {
+              "cuda": "12.4",
+              "devices": [
+                "cuda:0"
+              ],
+              "dtype": "torch.float16",
+              "weight_kernel": "triton",
+              "weight_modules": [
+                "WQLinear_GEMM"
+              ],
+              "weight_storage_bytes": 2252691712,
+              "persistent_cache_storage_bytes": 1038958592
+            }
+          },
+          "all-pages": {
+            "decode_tok_s": 19.17737440248858,
+            "decode_sample_min_tok_s": 19.17641761254228,
+            "decode_sample_max_tok_s": 19.189980810324414,
+            "prefill_tok_s": 4566.239637615687,
+            "end_to_end_tok_s": 9.276348597700666,
+            "peak_allocated_mib": 5477.3,
+            "peak_reserved_mib": 6750.0,
+            "device_sampled_peak_mib": 7006.0,
+            "device_baseline_adjusted_peak_mib": 6992.0,
+            "process_tree_rss_sampled_peak_mib": 2741.63671875,
+            "actual_interval_median_ms": 50.155119,
+            "actual_interval_max_ms": 74.041302,
+            "device_dropouts": 0,
+            "phases": {
+              "load": {
+                "window_count": 1,
+                "sample_count": 79,
+                "device_sampled_peak_mib": 2864.0,
+                "process_tree_rss_sampled_peak_mib": 2741.63671875
+              },
+              "warmup": {
+                "window_count": 1,
+                "sample_count": 287,
+                "device_sampled_peak_mib": 7006.0,
+                "process_tree_rss_sampled_peak_mib": 1549.48046875
+              },
+              "prefill": {
+                "window_count": 3,
+                "sample_count": 426,
+                "device_sampled_peak_mib": 7006.0,
+                "process_tree_rss_sampled_peak_mib": 1549.48046875
+              },
+              "decode": {
+                "window_count": 3,
+                "sample_count": 395,
+                "device_sampled_peak_mib": 7006.0,
+                "process_tree_rss_sampled_peak_mib": 1549.48046875
+              }
+            },
+            "runtime": {
+              "cuda": "12.4",
+              "devices": [
+                "cuda:0"
+              ],
+              "dtype": "torch.float16",
+              "weight_kernel": "triton",
+              "weight_modules": [
+                "WQLinear_GEMM"
+              ],
+              "weight_storage_bytes": 2252691712,
+              "persistent_cache_storage_bytes": 1038958592
+            }
+          }
+        }
+      ],
+      "paired_seed_count": 4,
+      "median_decode_ratio": 1.8246215434504875,
+      "min_decode_ratio": 1.7607705312656763,
+      "max_decode_ratio": 1.89473999682719,
+      "practical_screen_pass": true
+    }
+  ],
+  "control": "all-pages INT4 uses the same scoring/top-k/attention path",
+  "claims": "pilot ablation only; competitor performance, novelty and 4 GB capacity unproven"
+}

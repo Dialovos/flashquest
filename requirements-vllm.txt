@@ -1,0 +1,13 @@
+# Isolated competitor environment; never install into the AWQ validation environment.
+# Exact full environment fingerprints are saved with every competitor record.
+vllm==0.30.0
+torch==2.13.0
+# Match the CUDA 13.0 runtime headers; newer compiler wheels are incompatible.
+nvidia-cuda-nvcc==13.0.88
+nvidia-nvvm==13.0.88
+nvidia-cuda-crt==13.0.88
+nvidia-cuda-cccl==13.0.85
+# Matching CUDA-specific precompiled kernels; host JIT is disabled by the adapters.
+--extra-index-url https://flashinfer.ai/whl/cu130
+flashinfer-python==0.6.18.post1
+flashinfer-jit-cache==0.6.18.post1+cu130

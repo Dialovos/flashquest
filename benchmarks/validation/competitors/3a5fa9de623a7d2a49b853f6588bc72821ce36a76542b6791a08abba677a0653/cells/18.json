@@ -1,0 +1,714 @@
+{
+  "run_identity": "59930dd389e93f065efd6b901f07e07da5fc032a734078921aef3549f07afde3",
+  "identity": {
+    "schema_version": 3,
+    "config": {
+      "backend": "llamacpp",
+      "kv_dtype": "f16",
+      "ctx_len": 32768,
+      "n_decode": 128,
+      "reps": 3,
+      "seeds": [
+        0
+      ],
+      "capacity": 32896,
+      "gpu_utilization": null,
+      "max_batch_tokens": 2048,
+      "llama_ubatch": 512,
+      "backend_identity": {
+        "server_sha256": "278e405fa4edb80585783309614a6a5b2b15f8eee00484950fecbb10f624a8d4",
+        "build": "build 11382, commit 11fe02151",
+        "cuda_runtime_sha256": [
+          {
+            "sha256": "18a5df540d156e9aff0363776fefab7884b614f122847b51c3eb1da772048e5c",
+            "name": "libcublas.so.12"
+          },
+          {
+            "sha256": "974927b9af78cadc0412ea3ab296da791af02c2dd0de5a35b5f0fbb8dc5d0a4d",
+            "name": "libcublasLt.so.12"
+          },
+          {
+            "sha256": "c3a75b33af334a3486d197dbd1584a2985183ba4688d237a2be5f2f679329920",
+            "name": "libcudart.so.12"
+          }
+        ],
+        "library_sha256": [
+          {
+            "sha256": "00c04d83a2353cc8eecacded1b55c30741b668bb8d19f3accc06c0551cca66ed",
+            "name": "libggml-base.so"
+          },
+          {
+            "sha256": "00c04d83a2353cc8eecacded1b55c30741b668bb8d19f3accc06c0551cca66ed",
+            "name": "libggml-base.so.0"
+          },
+          {
+            "sha256": "00c04d83a2353cc8eecacded1b55c30741b668bb8d19f3accc06c0551cca66ed",
+            "name": "libggml-base.so.0.25.3"
+          },
+          {
+            "sha256": "da40ac5853fcd990801388e1064cb3e929101b670c455f4f0e2d5e3564068596",
+            "name": "libggml-cpu-alderlake.so"
+          },
+          {
+            "sha256": "356904dac525c701da39b3b8c8586f3c39e36f8c5b10ca3b3097227b8f487bfa",
+            "name": "libggml-cpu-cannonlake.so"
+          },
+          {
+            "sha256": "8eed7cabc539152bc931b7a146479bf3c98eee35385c3067a3de2865f6ca5aae",
+            "name": "libggml-cpu-cascadelake.so"
+          },
+          {
+            "sha256": "6a93a866a7e9fc874e490f94258a4856928dde7c4db9c88e891895169ac9ae28",
+            "name": "libggml-cpu-cooperlake.so"
+          },
+          {
+            "sha256": "e423908053d789f1eb2932a681744e5dc77837c0e17713914ee0d71aa17c60f4",
+            "name": "libggml-cpu-haswell.so"
+          },
+          {
+            "sha256": "1d242a73e4a4f7a033d45297b0cafa0af7ce0ad995806765fccf8f5eceac9a8d",
+            "name": "libggml-cpu-icelake.so"
+          },
+          {
+            "sha256": "812bc97fcb22e19d29c4dd3e9e99311decfb5b8834023202821bea043dbc7f4f",
+            "name": "libggml-cpu-ivybridge.so"
+          },
+          {
+            "sha256": "dd7091ff918349e72f7f7f0e1245ac8c68334262a010fcddec9caa5214c400ba",
+            "name": "libggml-cpu-piledriver.so"
+          },
+          {
+            "sha256": "20111b16955de69987ef2eca4f7475586a3069258dd0d24bafb0fed7cfd47290",
+            "name": "libggml-cpu-sandybridge.so"
+          },
+          {
+            "sha256": "b66298a5b16a002116619f02cb79e391101dc0809f061d0da62611b3eabd73cd",
+            "name": "libggml-cpu-sapphirerapids.so"
+          },
+          {
+            "sha256": "0750f44381dc4a620481677af91c89d447a64770f4ce4313fd7d38e963f831d6",
+            "name": "libggml-cpu-skylakex.so"
+          },
+          {
+            "sha256": "0ad3c07e9fd66794d57b41773998b4d9bd9c3a241aad2cd902b889f1bee24bf5",
+            "name": "libggml-cpu-sse42.so"
+          },
+          {
+            "sha256": "95a3c54aa08ab6d2f9007b7957c0b0382f4170dbdac463be0d7a47c6b97cb2ea",
+            "name": "libggml-cpu-x64.so"
+          },
+          {
+            "sha256": "1934427f5ae6edf830edee972134aae303a8923a37775d4f963a5a8e88d4820a",
+            "name": "libggml-cpu-zen4.so"
+          },
+          {
+            "sha256": "e6f97aa7ad49fd50695375d2967337a5a5ecc631c524f53e55dd21e80c3f30d5",
+            "name": "libggml-cuda.so"
+          },
+          {
+            "sha256": "52914cc9c82a25cc784035556095aaefc49abf0ed7d422e4734f3c0bb3e3cd48",
+            "name": "libggml-rpc.so"
+          },
+          {
+            "sha256": "6fe347469e77a19024f3ec2b1d949cf8221f014495318af3758af0df3a646bc1",
+            "name": "libggml.so"
+          },
+          {
+            "sha256": "6fe347469e77a19024f3ec2b1d949cf8221f014495318af3758af0df3a646bc1",
+            "name": "libggml.so.0"
+          },
+          {
+            "sha256": "6fe347469e77a19024f3ec2b1d949cf8221f014495318af3758af0df3a646bc1",
+            "name": "libggml.so.0.25.3"
+          },
+          {
+            "sha256": "3efd00d58d13c502fa9d8cd7819c9f45d6e8a2e8f2ef3f337a0554c743bcfaae",
+            "name": "libllama-batched-bench-impl.so"
+          },
+          {
+            "sha256": "33d0a7a958294a19ccac999a47283e040e4b369ca86fba39675c82dc89f4b7ec",
+            "name": "libllama-bench-impl.so"
+          },
+          {
+            "sha256": "2e2f59835857baf5c8dd71997d765508c3374bcb27924279af24035d92d4bacd",
+            "name": "libllama-cli-impl.so"
+          },
+          {
+            "sha256": "d9286a57a24340ad646eb5ed49d9646917823a6fe81bfa42ecda33f3bd7bf17d",
+            "name": "libllama-common.so"
+          },
+          {
+            "sha256": "d9286a57a24340ad646eb5ed49d9646917823a6fe81bfa42ecda33f3bd7bf17d",
+            "name": "libllama-common.so.0"
+          },
+          {
+            "sha256": "d9286a57a24340ad646eb5ed49d9646917823a6fe81bfa42ecda33f3bd7bf17d",
+            "name": "libllama-common.so.0.5.0"
+          },
+          {
+            "sha256": "e8a689439cc6de5c0f588a7fec470f4b75beebc0b3e8e3a533320d82f99a61e6",
+            "name": "libllama-completion-impl.so"
+          },
+          {
+            "sha256": "81ad3eee608fae39399b6ced0a2690beb0409732479707822eebcb59e4984084",
+            "name": "libllama-fit-params-impl.so"
+          },
+          {
+            "sha256": "b76d354ef4df5cb56e26d5070f51c5d8eed6d71d22af30793c173998915fa99c",
+            "name": "libllama-perplexity-impl.so"
+          },
+          {
+            "sha256": "d410a2ca89fd4cc69727afe5e50a49e7bcb708bc530f5041bb2efaa430e264c6",
+            "name": "libllama-quantize-impl.so"
+          },
+          {
+            "sha256": "71e81cf3985089d11e82791df7294b69cc31b61a7fc612e1b1dc212dfc369e38",
+            "name": "libllama-server-impl.so"
+          },
+          {
+            "sha256": "9f9c5d70bc0e8e3eac387b8e5065c97f6ccd06d536fd47b5da782270b354e7d5",
+            "name": "libllama.so"
+          },
+          {
+            "sha256": "9f9c5d70bc0e8e3eac387b8e5065c97f6ccd06d536fd47b5da782270b354e7d5",
+            "name": "libllama.so.0"
+          },
+          {
+            "sha256": "9f9c5d70bc0e8e3eac387b8e5065c97f6ccd06d536fd47b5da782270b354e7d5",
+            "name": "libllama.so.0.5.0"
+          },
+          {
+            "sha256": "e65002335e4162f8a63791c59c1b47300dde677b2a4534d1b26f24b8155d8403",
+            "name": "libmtmd.so"
+          },
+          {
+            "sha256": "e65002335e4162f8a63791c59c1b47300dde677b2a4534d1b26f24b8155d8403",
+            "name": "libmtmd.so.0"
+          },
+          {
+            "sha256": "e65002335e4162f8a63791c59c1b47300dde677b2a4534d1b26f24b8155d8403",
+            "name": "libmtmd.so.0.5.0"
+          }
+        ]
+      },
+      "generation": "greedy fixed output; first output from prefill",
+      "compile_workers": null,
+      "flashinfer_disable_jit": null,
+      "ready_timeout_s": 600.0,
+      "request_timeout_s": 600.0,
+      "engine_settings": {
+        "offload_gb": 0,
+        "prefix_cache": false,
+        "batch": 1,
+        "temperature": 0,
+        "ignore_eos": true,
+        "speculation": false,
+        "vllm_worker_observation": "vllm0.30-after-first-worker-execution",
+        "llama_flash_attention": "on",
+        "llama_fit": "off"
+      }
+    },
+    "model": {
+      "model": "bartowski/Llama-3.2-3B-Instruct-GGUF",
+      "revision": "5ab33fa94d1d04e903623ae72c95d1696f09f9e8",
+      "files": [
+        {
+          "sha256": "6c1a2b41161032677be168d354123594c0e6e67d2b9227c84f296ad037c728ff",
+          "path": "Llama-3.2-3B-Instruct-Q4_K_M.gguf"
+        }
+      ],
+      "content_sha256": "ce83cc2f33a4af7fb9741fab923327b5b0974302735f61d70137cdbbfd771a3a"
+    },
+    "protocol_sha256": "b44e2d73581a4db63b50a5236e0c724c35d6e864f4e0fa831c2e010fc6bedad2",
+    "environment": {
+      "python": "3.12.14",
+      "os": "Linux",
+      "kernel": "7.0.0-38-generic",
+      "wsl": false,
+      "packages": {
+        "torch": "2.5.1",
+        "triton": "3.1.0",
+        "transformers": "4.57.6",
+        "autoawq": "0.2.9",
+        "accelerate": "1.15.0",
+        "huggingface_hub": "0.36.2",
+        "vllm": null
+      },
+      "gpus": [
+        {
+          "name": "NVIDIA GeForce RTX 4080 Laptop GPU",
+          "total_mib": 12282.0,
+          "driver": "595.91.07",
+          "compute_capability": "8.9"
+        }
+      ]
+    },
+    "source": {
+      "commit": "5e22bf5c4c97b28bcdb46a030f75b269856ca622",
+      "dirty": false,
+      "files": [
+        {
+          "sha256": "4a759b62dd7c296197b214fde774dea6164448e8f9940d7d7a35e26fe1eaf685",
+          "path": "data/PaulGrahamEssays.json"
+        },
+        {
+          "sha256": "cb58befdbfcf1ef18fef1ad5c754e4af0902e454e3d78d5bd1da1959aacc25aa",
+          "path": "pyproject.toml"
+        },
+        {
+          "sha256": "91b0ef60d8d304ebe9f4ae227ebb3fcbc10f42715428920e646504699557ba5f",
+          "path": "requirements-validation.txt"
+        },
+        {
+          "sha256": "074b191e282235dbeda59ed1c1da01e597e8363b22da1c5072a60bde0fb26d78",
+          "path": "requirements-vllm.txt"
+        },
+        {
+          "sha256": "a200e1879dbf2b73f2bf66f4f317c9342c42187f155142b800eac423389de132",
+          "path": "scripts/bench_common.py"
+        },
+        {
+          "sha256": "3252e28a33845a264f08630817265d9c49140a8b8d42aa75c982561f9acae543",
+          "path": "scripts/bench_competitor.py"
+        },
+        {
+          "sha256": "4c1174c28008867adfc28b86d7fe0b96ed402f9762ff96da9b51f9627550dc0d",
+          "path": "scripts/bench_flashquest.py"
+        },
+        {
+          "sha256": "8958c2923abf83b83ab982dfd0fada1eb7b5e84290edb8587f6f1f833112b175",
+          "path": "scripts/bench_llamacpp.sh"
+        },
+        {
+          "sha256": "da000577814954be5c946e0efc4ead5550ddd3c8ae8478f286926624bd617821",
+          "path": "scripts/bench_vllm.py"
+        },
+        {
+          "sha256": "6e40e22db1b5b678e73be330bb212126b6d82b8864aebe312c7faa314789b898",
+          "path": "scripts/competitor_backend.py"
+        },
+        {
+          "sha256": "1b7ef6f2aed2f72c90c3e9580ff9163252d9e13c016fee5d2ce011cbf94dab78",
+          "path": "scripts/competitor_niah.py"
+        },
+        {
+          "sha256": "0e2788686e3f00ce1981d2eb0494e85bf9a2e00d68309c421746e6efcef5e0cc",
+          "path": "scripts/diagnose_selection_flips.py"
+        },
+        {
+          "sha256": "4bcc3cea85cdceb819cef05dc8ca0344d49d415cabd15a4c37e2f024bb2f81a1",
+          "path": "scripts/gpu_memory.py"
+        },
+        {
+          "sha256": "c53384ceee950cb8f2460357ccb36921044f43e798ecab186d29d4c79318cc43",
+          "path": "scripts/phase10_profile_decode_breakdown.py"
+        },
+        {
+          "sha256": "9395c82bba788ac1e0e4b8c148d79adb42e72cceaa4c7a4e88d4ca28bbc2f465",
+          "path": "scripts/phase10_retention_sweep_ruler.py"
+        },
+        {
+          "sha256": "b3427ca11747dea02e50bee95f396f4ac952b83fdafc112aa257ade6bbb039ea",
+          "path": "scripts/phase1_run_passkey.py"
+        },
+        {
+          "sha256": "308cecbf4f69708afdc451773bf4f09f7bc9cae6ccaa4482965f9a9302b91006",
+          "path": "scripts/phase1_run_perplexity.py"
+        },
+        {
+          "sha256": "0a0c43dac9f9ee79f8d5a8c12240fa8994dd729502b4b7f3e32a4f60da36f4be",
+          "path": "scripts/phase2_bench_attn.py"
+        },
+        {
+          "sha256": "220ae9448d3947520c2d2b53ac8a40c30331810f621921fbff81ad0933540a27",
+          "path": "scripts/phase3_bench_decode.py"
+        },
+        {
+          "sha256": "86670346ef400dca3dcabf1b733dad09a2eb9c939c77e81e37375f5acbc2e7f3",
+          "path": "scripts/phase4_run_passkey.py"
+        },
+        {
+          "sha256": "3d21acf26f8bcb2105bc1e55bc9a142085387bc3942ced1bf236a828d97c65f8",
+          "path": "scripts/phase5_bench_decode_32k.py"
+        },
+        {
+          "sha256": "f5bff48585180babdfa7068462e167468644e27a351fc3d54becaf6625003cbc",
+          "path": "scripts/phase5_run_8b_control.py"
+        },
+        {
+          "sha256": "b6c4af06bd77b2a460256480c402af450d841e1a503da389d91f3f0477b8e2f2",
+          "path": "scripts/phase5_run_passkey_32k.py"
+        },
+        {
+          "sha256": "cfb99a5f623d169bb8ea4fc9de4df881bd805170f25b4b839006468b2b1a8b64",
+          "path": "scripts/phase6_bench_decode_32k.py"
+        },
+        {
+          "sha256": "012c117908cfdd397ed52f1c101f4aee937c302c47321259229d184d5955eff8",
+          "path": "scripts/phase6_bench_decode_32k_v2.py"
+        },
+        {
+          "sha256": "3627dfb4afd0ec8917c357c7ab9509eb25f18699309521e631cc022d9b0e3c08",
+          "path": "scripts/phase6_diag_decode_logits.py"
+        },
+        {
+          "sha256": "f62aabef02ae0134b810854cae38fb04a44b9b9fb63062e51e9262d31b349d4a",
+          "path": "scripts/phase6_diag_passkey_3b.py"
+        },
+        {
+          "sha256": "b96c59a55128be4d8f3ed493b1cdf0f9b8308f59a63695a9b82b69ab414df4ff",
+          "path": "scripts/phase6_diag_passkey_small.py"
+        },
+        {
+          "sha256": "80cd9651880af8ac315c9ef58215384ad396cf0a1289af827d23a16d84911b3f",
+          "path": "scripts/phase6_diag_selection.py"
+        },
+        {
+          "sha256": "7efcc2a685e80878e9771b9e8a42486885d09a556d18b770784f6d2f9e9d92ad",
+          "path": "scripts/phase6_profile_after.py"
+        },
+        {
+          "sha256": "f4ef8e2faa89d8c52790de0c5bd289fab12f14c9e7e6be09b7b01e427c92b22e",
+          "path": "scripts/phase6_profile_decode.py"
+        },
+        {
+          "sha256": "6fd941d61d1ea65b49fbc5e3b679b55ac2f5493e15d0aaceb33e832ebdc7acbb",
+          "path": "scripts/phase6_run_headtohead.py"
+        },
+        {
+          "sha256": "30fad215369c51ff0527b7915c4d8c3e8b13b4fa971f246bd9bc6856b85ba16d",
+          "path": "scripts/phase6_run_passkey_32k.py"
+        },
+        {
+          "sha256": "1f3a031e530d85f9c9f466da63d6a67a34153e6d6f212d84071de9be78056185",
+          "path": "scripts/phase6_run_ruler_4k.py"
+        },
+        {
+          "sha256": "1d93cced3d8a4a4d977abc79356d9cec91369537b5ee1cd68b03c74ae37f7690",
+          "path": "scripts/phase6_run_ruler_4k_int4.py"
+        },
+        {
+          "sha256": "86fdb41b0abc5bfe7bde558efb3b13f8a7c500f61e951796834d68f76963f20d",
+          "path": "scripts/phase7_run_ruler_4k_turbo.py"
+        },
+        {
+          "sha256": "0793ebae866555b887f3e3fe5f1cfd16e683a326febdfe08b6af8bceb673a48c",
+          "path": "scripts/phase8a_audit_awq_layout.py"
+        },
+        {
+          "sha256": "a15ac847f4c7606ad70f90731ec776d096ab016d453bde77028598415a5a99c7",
+          "path": "scripts/phase8b_profile_decode.py"
+        },
+        {
+          "sha256": "3f247fdb41345609ee84a29e2b6912178d888ca1303bfaab2c8cf82b0b7dc010",
+          "path": "scripts/profile_contribution.py"
+        },
+        {
+          "sha256": "36cf0f2545eae93088b6e60544c463a92fb86943f96d3d270eb07f74f4229d7d",
+          "path": "scripts/profile_fa2.py"
+        },
+        {
+          "sha256": "a03be8536235e33088a7b0753602a1263d6955ee2e98a7b37f24d0ad185004bb",
+          "path": "scripts/run_competitors.py"
+        },
+        {
+          "sha256": "7c2dbb57318f76d350d8bf7bbce968fd3d37f7b88e13454c0ea03cb95aa30aef",
+          "path": "scripts/run_validation_ablation.py"
+        },
+        {
+          "sha256": "aaabcb4437e199d55ab0a045bf11aa9a2979382b1dcb687e07724d461e25b5cf",
+          "path": "scripts/summarize_validation.py"
+        },
+        {
+          "sha256": "5de2c8bbef8a1832dc750375f53a721482aa3a041ccbb9723ad0849799d4c0b3",
+          "path": "scripts/validation_stats.py"
+        },
+        {
+          "sha256": "4445bc0eb7a503eb54a06af0b5560a57011be384d0795cc3339d11c5df6cd1ad",
+          "path": "scripts/verify_env.py"
+        },
+        {
+          "sha256": "d8f512f9906f5a913029e9e661fe64b135397ae9fe82c8eb4a572cc2b35ee5b4",
+          "path": "scripts/verify_triton_int8.py"
+        },
+        {
+          "sha256": "a0e3593987ff26471e1c00c25b5275eef35401b690b9b8776353225213ede87c",
+          "path": "scripts/vllm_validation_worker.py"
+        },
+        {
+          "sha256": "cb5e6f9ceb4121c340a1da4dbc241eafcc77501f3f2c5916c23e5236eb2ff5a6",
+          "path": "src/flashquest/__init__.py"
+        },
+        {
+          "sha256": "0de1761f30c180888b853bc1114bf7271dbd47be02a3c03f32c71decf10d1f2c",
+          "path": "src/flashquest/cache/__init__.py"
+        },
+        {
+          "sha256": "f61f3c8dff451406fb4890dadd924984501156b65f8c2263d895ad74b4d2ec0b",
+          "path": "src/flashquest/cache/persistent_int4.py"
+        },
+        {
+          "sha256": "db5c6af5d0907c186e45899f4ad1605ce92694860353ae647c660b3b15302176",
+          "path": "src/flashquest/cache/persistent_int8.py"
+        },
+        {
+          "sha256": "d40daba2f0431eab68f44077e40673b8e570635b351be1f215a0284cf601c44e",
+          "path": "src/flashquest/cache/persistent_turbo.py"
+        },
+        {
+          "sha256": "b80e498404a8196406a23c94afe81a4db8112d15c956e3692653bf63ba1dc954",
+          "path": "src/flashquest/duo/__init__.py"
+        },
+        {
+          "sha256": "c21ce501d2e2b97f11960bb57ca0d411dfe6f98e008a6a9cece049103b0534d0",
+          "path": "src/flashquest/duo/dispatch.py"
+        },
+        {
+          "sha256": "d839caa7ed76665b849e3761611bc2459269e0fb0f4b361b19327949feb8e3ef",
+          "path": "src/flashquest/duo/fused_dispatch.py"
+        },
+        {
+          "sha256": "539c0a167b446d5a8cba8389dae9258ce7370126e341f3401b460af5a379e539",
+          "path": "src/flashquest/duo/pattern.py"
+        },
+        {
+          "sha256": "930d3f3df123103b5c16d14c21f96252405cd7d29a6de91121e3d61c18c4a576",
+          "path": "src/flashquest/eager/__init__.py"
+        },
+        {
+          "sha256": "53827c0458adceb7a589bdbac6aded3beb9a5280c83899688bf23ccfc559c49a",
+          "path": "src/flashquest/eager/attention.py"
+        },
+        {
+          "sha256": "9e9d0859a5bd0e3022e65e76bdbbe325420e03f59bc02e0f34b63d9f86f0b897",
+          "path": "src/flashquest/eager/criticality.py"
+        },
+        {
+          "sha256": "3b92bec5a4c69e598fe5f165d01c8eb92970ae2426118c3cbe809164d95f1708",
+          "path": "src/flashquest/eager/llama_duo_patch.py"
+        },
+        {
+          "sha256": "6145e51911c3d7cfdc84d098cc19adf527243aa73e20d8dc41d1a433fd2c8972",
+          "path": "src/flashquest/eager/llama_patch.py"
+        },
+        {
+          "sha256": "9eb6d002ef06c443ae1ee2db758b97709b72558b7d8e5dc69a5c2d5c30f54bab",
+          "path": "src/flashquest/eager/llama_persistent_patch.py"
+        },
+        {
+          "sha256": "5fe2db6922c1c6e23144aef6325934a78100e92962bba4db88b7e88c3f0cd12e",
+          "path": "src/flashquest/eager/page_summary.py"
+        },
+        {
+          "sha256": "0a39f38a40866c3de767147fa5ea25997599b0de43d24bd6c6ee80eb4293c6f2",
+          "path": "src/flashquest/eager/selection.py"
+        },
+        {
+          "sha256": "0437e2965f0448db34b8412172c368c8ef6357cd7ac3bfbff244daaf358b8b8a",
+          "path": "src/flashquest/eager/sparse_int4.py"
+        },
+        {
+          "sha256": "0c343e648783eb8c76dffe8af553da253ecbd008cf82f64d544c4eb6f94e7700",
+          "path": "src/flashquest/eager/sparse_int8.py"
+        },
+        {
+          "sha256": "d26baf26b967e705e942dd53922d17376d2217483166a3ccf7ccab79cf236d41",
+          "path": "src/flashquest/eager/streaming.py"
+        },
+        {
+          "sha256": "c2f37e0a97d806f35ec0c08cc362b91271718f5cbc074914529af40715c57c7d",
+          "path": "src/flashquest/eval/__init__.py"
+        },
+        {
+          "sha256": "adfa0fdaca2db5bd9c15ea913ae1a9d0a6eff499fac27207773a228f5f6f4a3b",
+          "path": "src/flashquest/eval/niah.py"
+        },
+        {
+          "sha256": "3f1df313d663a0edfa69e04747ad817c80b7663237adbea082787eec634b2416",
+          "path": "src/flashquest/eval/passkey.py"
+        },
+        {
+          "sha256": "a87f8f91aec242f2c2a340dcf52cbd8875f2ddfe417320012af5894b29bd0309",
+          "path": "src/flashquest/eval/perplexity.py"
+        },
+        {
+          "sha256": "6afbb631d460c3eb2837ddf6db193235ccaa0f2fea813861382026157f829644",
+          "path": "src/flashquest/eval/runner.py"
+        },
+        {
+          "sha256": "f104b67bc022292da04a1f02b1a7e58da0207dab27bdcdb21f4a02bdcf4a34db",
+          "path": "src/flashquest/kernel/__init__.py"
+        },
+        {
+          "sha256": "7e2a52902203b8dbd5d7b99f58ea119e774aa0c776b25145d3e8b2e5ae81d382",
+          "path": "src/flashquest/kernel/_autotune.py"
+        },
+        {
+          "sha256": "b7c9ea4a3e047488ffa02d20a6d40a58f96fc14b86d088dc64609d6a1ce08608",
+          "path": "src/flashquest/kernel/flash_fwd.py"
+        },
+        {
+          "sha256": "820af9f7306424f4797a811141da48aff5068150d05412a04785757cca3f0318",
+          "path": "src/flashquest/kernel/fused_proj.py"
+        },
+        {
+          "sha256": "1673b365742eb739e4631e54596d8efd5a44aa9f0ec1535c62cf2540c9349705",
+          "path": "src/flashquest/kernel/kv_quant.py"
+        },
+        {
+          "sha256": "3a6ba99933b43f300dc8853cd14ae7761cb9162d2f8552ef07b3f5f7fe83f22f",
+          "path": "src/flashquest/kernel/sparse_fwd.py"
+        },
+        {
+          "sha256": "3dfbcaf722f84a837ed9cfe5d1303bbc9edaa15494e276e0f6ec0902cbe7e83e",
+          "path": "src/flashquest/kernel/sparse_int4_fwd.py"
+        },
+        {
+          "sha256": "8ee93ab38f73b578c786aa37f8711adc8df963e9d3aa8fae4a9a737c3aa28591",
+          "path": "src/flashquest/kernel/sparse_int4_fwd_compact.py"
+        },
+        {
+          "sha256": "cedf344e285d82adff81ea64c1b00e6903e74017daa66328b12d2d4da3360f3e",
+          "path": "src/flashquest/kernel/sparse_turbo_fwd.py"
+        },
+        {
+          "sha256": "0b29876476aa0ec32a591a24cd3685dcbec4d2835d357d8a54c3289adb5d7d3c",
+          "path": "src/flashquest/kernel/wht.py"
+        },
+        {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "path": "src/flashquest/model/__init__.py"
+        },
+        {
+          "sha256": "dee7c68eb53f1df87d28faa599a159988c4140ef0b134bec4db75c929b2bae77",
+          "path": "src/flashquest/quant/__init__.py"
+        },
+        {
+          "sha256": "7c41e200ee755e909558566f2c34f471491ef1da36f811388599b3ba431b177f",
+          "path": "src/flashquest/quant/awq_layout.py"
+        },
+        {
+          "sha256": "3733c9463251e01c54e33dbacd71a217ae3af09d0d688a933cb5004c752a5a4c",
+          "path": "src/flashquest/runtime/__init__.py"
+        },
+        {
+          "sha256": "b066e57790358b30ceca5761032e65d15fc44c2513b91305f14574480967d9d0",
+          "path": "src/flashquest/runtime/awq_load.py"
+        },
+        {
+          "sha256": "7a74d9f6f978fb3d279a0b4abd3df73cfe5eafb36b0828967edf956051dba00a",
+          "path": "src/flashquest/runtime/chat.py"
+        }
+      ],
+      "content_sha256": "5807705f47e4eccd8e1eb6bc380202de5f05a9b0259037e5bd22798af9124c90"
+    }
+  },
+  "protocol": {
+    "version": 1,
+    "batch": 1,
+    "concurrency": 1,
+    "warmup": "one full request per seed",
+    "generation": "greedy fixed output; first output from prefill",
+    "input": "exact seeded IDs matching FlashQuest",
+    "timing": "native same-request phases; client wall clock separately",
+    "cache_reuse": false,
+    "offload_gb": 0
+  },
+  "status": "complete",
+  "samples": [
+    {
+      "input_tokens": 32768,
+      "output_tokens": 128,
+      "decode_steps": 127,
+      "prefill_s": 7.227427,
+      "decode_s": 1.923155,
+      "prefill_tok_s": 4533.840327961805,
+      "decode_tok_s": 66.03731888485328,
+      "native_request_s": 9.150582,
+      "native_output_tok_s": 13.988181298195022,
+      "queue_ms": null,
+      "native_numeric_metrics": {
+        "prompt_n": 32768,
+        "prompt_ms": 7227.427,
+        "predicted_n": 128,
+        "predicted_ms": 1923.155
+      },
+      "timing_boundary": "native prompt eval / native generation forwards",
+      "termination": "length",
+      "seed": 0,
+      "repetition": 0,
+      "input_sha256": "4959291556e42e02723d6126c8155ad4bd7fd7daa6643cb1d70249fced321604",
+      "client_request_s": 9.17279253200104
+    },
+    {
+      "input_tokens": 32768,
+      "output_tokens": 128,
+      "decode_steps": 127,
+      "prefill_s": 7.169443,
+      "decode_s": 1.916519,
+      "prefill_tok_s": 4570.508476042002,
+      "decode_tok_s": 66.26597492641606,
+      "native_request_s": 9.085962,
+      "native_output_tok_s": 14.087666226206977,
+      "queue_ms": null,
+      "native_numeric_metrics": {
+        "prompt_n": 32768,
+        "prompt_ms": 7169.443,
+        "predicted_n": 128,
+        "predicted_ms": 1916.519
+      },
+      "timing_boundary": "native prompt eval / native generation forwards",
+      "termination": "length",
+      "seed": 0,
+      "repetition": 1,
+      "input_sha256": "4959291556e42e02723d6126c8155ad4bd7fd7daa6643cb1d70249fced321604",
+      "client_request_s": 9.11009763799666
+    },
+    {
+      "input_tokens": 32768,
+      "output_tokens": 128,
+      "decode_steps": 127,
+      "prefill_s": 7.190281,
+      "decode_s": 1.909279,
+      "prefill_tok_s": 4557.262782914882,
+      "decode_tok_s": 66.5172559903503,
+      "native_request_s": 9.09956,
+      "native_output_tok_s": 14.06661420991784,
+      "queue_ms": null,
+      "native_numeric_metrics": {
+        "prompt_n": 32768,
+        "prompt_ms": 7190.281,
+        "predicted_n": 128,
+        "predicted_ms": 1909.279
+      },
+      "timing_boundary": "native prompt eval / native generation forwards",
+      "termination": "length",
+      "seed": 0,
+      "repetition": 2,
+      "input_sha256": "4959291556e42e02723d6126c8155ad4bd7fd7daa6643cb1d70249fced321604",
+      "client_request_s": 9.117787531999056
+    }
+  ],
+  "runtime": {
+    "weight_placement": "all-model-layers-GPU",
+    "offloaded_layers": 29,
+    "total_layers": 29,
+    "gpu_kv_buffers_mib": [
+      {
+        "device": "CUDA0",
+        "mib": 3612.0
+      }
+    ],
+    "flash_attention_enabled": true,
+    "cache_capacity_tokens": 33024,
+    "cache_k_dtype": "f16",
+    "cache_v_dtype": "f16",
+    "os_fallback": "unmeasured"
+  },
+  "decode_tok_s": 66.26597492641606,
+  "prefill_tok_s": 4557.262782914882,
+  "raw_evidence": {
+    "path": "artifacts/competitors/809447dd072c483db7550cc4ac847203/raw.json",
+    "sha256": "00731ceb6556741cac310f94662fe22724724a355c91e1140e58f5fce846c014"
+  }
+}

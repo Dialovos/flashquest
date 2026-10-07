@@ -1,0 +1,8 @@
+# Validated core stack for the initial AWQ retrieval screen.
+# Install with: uv pip install --python .venv/bin/python -r requirements-validation.txt
+torch==2.5.1
+triton==3.1.0
+transformers==4.57.6
+autoawq==0.2.9
+accelerate==1.15.0
+numpy>=1.26,<2

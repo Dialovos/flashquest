@@ -2,6 +2,34 @@
 
 All notable changes are recorded here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version numbers are simple semver. Per-release benchmark numbers reference the **Llama-3.2-3B-Instruct-AWQ** + **RTX 3050 Ti Laptop (4 GB VRAM, sm_86, WSL2 + CUDA 12.5)** target.
 
+## [Unreleased] — 2026-10-06
+
+Validation release; the research direction is now closed. See the
+[research decision](docs/research-decision.md).
+
+### Findings
+
+- Compared FlashQuest with llama.cpp and vLLM on one GPU (RTX 4080 Laptop, 12 GB), using matching
+  8k/32k inputs and the same retrieval prompts. FlashQuest decoded 2.4–3.5× slower; timing spans
+  differ by engine, so the gap is approximate.
+- At 32k, page selection makes FlashQuest's own decode 1.82× faster than reading every page. At
+  8k it gives no gain.
+- The frozen retrieval-quality confirmation passed 5 of 9 endpoints, so comparable quality to dense
+  wasn't established.
+
+### Withdrawn
+
+- The v1.0 claims below about 32k decoding on a 4 GB GPU and a capability gap over vLLM and
+  llama.cpp are withdrawn. The 32k runs allocated more than 4 GB, and the competitor timings were
+  mis-measured. The original files stay under `benchmarks/phase*` for provenance.
+
+### Added
+
+- Validation tooling: a matched-prompt quality harness with frozen statistics, balanced timing
+  blocks, competitor runners for llama.cpp and vLLM, a GPU memory sampler and operator profiling.
+- Evidence under `benchmarks/validation/`, indexed in `benchmarks/README.md`, plus a script index in
+  `scripts/README.md`.
+
 ## [v1.0] — 2026-05-13
 
 First tagged release. flashquest decodes Llama-3.2-3B at 32 k context on a 4 GB consumer GPU — a capability gap with both **vLLM 0.7.3** (OOMs above ~4 k) and **llama.cpp `-ngl 999`** (aborts at 32 k). Quality holds at RULER NIAH 4 k 100/100/95 (single/multikey/multivalue) at the default settings.

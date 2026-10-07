@@ -1,6 +1,8 @@
 
 
 # Local files previously excluded by the containing workspace.
+# Reference clones from scripts/vendor_clone.sh.
+vendor/
 # Local environments, credentials, and generated output (all projects).
 .tools/
 .venv/
