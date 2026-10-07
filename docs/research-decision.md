@@ -3,6 +3,28 @@
 Updated: 2026-10-06. Reviewed final decision after completed measurement audits
 and accepted descriptive comparison; post-measurement integration is recorded below.
 
+## In brief
+
+- **Decision:** keep FlashQuest as an engineering reference and stop this research direction.
+- **Speed:** page selection makes FlashQuest's own decode 1.82× faster at 32k, with no gain at
+  8k. On the same GPU, llama.cpp and vLLM decode 2.4–3.5× faster than FlashQuest. Each engine's
+  timer covers a slightly different span, so that gap is approximate. The measurements also don't
+  isolate which FlashQuest components cause it.
+- **Quality:** the frozen non-inferiority test passed 5 of 9 endpoints. Multivalue at 4k, 8k and
+  32k and multikey at 32k failed, with observed drops of 2–8 points. Comparable quality isn't
+  established, but a loss larger than 10 points isn't proven either.
+- **Memory:** at 32k, FlashQuest's KV cache is about the size of llama.cpp's Q4_0 cache (991 vs.
+  1,016 MiB). Its sampled total peak, though, is 7,006 MiB against 3,368 MiB. Testing on 4 GB
+  hardware was not pursued.
+- **Contribution:** metadata reuse saves 12.5% of the packed INT4 K payload at similar scoring
+  latency, and the packed kernel avoids large temporary buffers. Given prior work, neither is a
+  novel research result.
+
+The [README](../README.md#results-at-a-glance) has the results tables. The rest of this page is
+the detailed decision record.
+
+## Detailed decision
+
 Retain FlashQuest as an engineering reference and redirect the current research
 effort. Page selection repeatedly improves its own all-pages path at 32k and
 fails the practical-benefit screen at 8k. The fixed retrieval experiment does
@@ -18,7 +40,7 @@ verdict. A narrower metadata/kernel pivot is not established as novel.
 | Is the runtime competitive? | Full native performance: 32 cells, 96 timings, complete strict/independent runtime and telemetry acceptance. Full native quality is terminal; final acceptance is recorded below. | The descriptive timing boundaries differ, so no FlashQuest/native or cross-native speed ratio is supported. An established comparable-quality competitive advantage is absent. |
 | Is metadata reuse useful? | An extra BF16 min/max pair is avoided: 12.5% of packed INT4 K payload, or 6.25% of packed K+V. Scoring latency is similar and selections sometimes differ. | Preserve the byte-saving engineering benefit without claiming scoring-speed advantage, exact original-key extrema or research significance. |
 | Does the packed kernel avoid materialization? | Exact FP32 packed-value oracle and BF16 reconstruction/SDPA reference, with much smaller temporary increments for packed attention. | This establishes avoided reference-path temporaries in those captures, not superiority over a native quantized engine. |
-| Does it fit actual 4 GB hardware? | Available device is 12 GB. Internal sampled peaks are 3,442/7,006 MiB at 8k/32k, with full-cache retention. Native allocation policies differ. | Actual 4 GB tests are deferred for collaboration. Native aligned phase memory, no OS fallback and true maximum contexts remain unverified; 32k is a successful tested lower bound. |
+| Does it fit actual 4 GB hardware? | Available device is 12 GB. Internal sampled peaks are 3,442/7,006 MiB at 8k/32k, with full-cache retention. Native allocation policies differ. | Not pursued (2026-10-06): the current 32k peak already exceeds a 4 GB budget, so this is a decision, not a hardware-tested failure; 8k remains untested on 4 GB hardware. Native aligned phase memory, no OS fallback and true maximum contexts remain unverified; 32k is a successful tested lower bound. |
 | Is the contribution novel? | Closest prior work combines sparse/low-bit KV and uses compressed keys as retrieval indexes. New diagnostics explain 28/216 and 102/216 changed heads, but no Q/K fingerprints match older captures. | Broad novelty is unsupported; affine metadata specialization remains an engineering candidate. Byte accounting and an implementation difference do not establish a novel pivot. |
 
 The [final descriptive comparison](../benchmarks/validation/comparison/652ab6a300eb34fedfc0a5ccb2769032aef8d1947f8a7561523e04cd8e752b6b/summary.md) binds the two
@@ -47,7 +69,7 @@ selection. The current family verdict is fail: multivalue at 4k/8k/32k and
 multikey at 32k do not pass.
 
 Evidence: [confirmation summary](../benchmarks/validation/confirmation/9a279d05ca13c7038902ebd26fa9244b3b566240d91407c3a6261efef8d724d6/summary.json),
-[current internal evidence](../README.md#current-internal-performance--sparseall-pages-int4-ablation),
+[results summary](../README.md#results-at-a-glance),
 [component/contribution reports](../benchmarks/validation/contrib/summary.md),
 [new selection diagnostic](../benchmarks/validation/selection-flips/summary.md),
 [closest prior work](contribution-prior-work.md) and
@@ -57,7 +79,7 @@ Future work should begin only from a separately stated contribution question
 with applicable quality and matched cost/measurement evidence against closest
 prior work. The completed roadmap does not justify further runtime optimization
 as the current research direction or a metadata/kernel novelty claim. The actual
-4 GB endpoint may proceed through collaboration with its claim withheld.
+4 GB endpoint and the optional extra validation were dropped on 2026-10-06.
 Both reviewed post-measurement fixes are applied and validated: 190 focused
 tests and 606 full non-slow tests pass; 12 existing slow cases are deselected
 and remain unverified. Changed-file Ruff and `git diff --check` pass. These checks

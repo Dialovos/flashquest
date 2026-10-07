@@ -7,7 +7,7 @@ component profiling and bounded contribution ablations are complete. They suppor
 a 32k internal page-selection benefit and a metadata-storage saving. Fresh quality
 collection is complete and fails its frozen rule. Optimized competitor comparisons
 and actual 4 GB capacity remain open. See the [current execution checklist and decision framework](#6-current-execution-status-and-decision-framework)
-and the [README evidence](../README.md#benchmarks-and-validation).
+and the [README evidence](../README.md#results-at-a-glance).
 
 **Sections 1–5 preserve the 2026-10-03 audited design snapshot.** Their findings,
 candidate versions, planned interfaces and proposed thresholds describe that
@@ -508,7 +508,7 @@ groups, dirty-source fingerprints and failed attempts remain unchanged/unpooled.
 | WP7 | Internal aligned phases and continuous native load/performance-warmup/request device/process sampling; configured placement and source-specific memory preserved. | Aligned native prefill/decode memory, absence of OS fallback and actual 4 GB capacity remain unverified. |
 | WP8 | Closest-prior-work map, representative contribution ablations and independent review of all 18 new diagnostics. | Retain engineering reference and redirect current research; broad novelty and a novel metadata/kernel pivot remain unsupported. |
 
-Evidence: [current internal and native results](../README.md#benchmarks-and-validation),
+Evidence: [current internal and native results](../README.md#results-at-a-glance),
 [descriptive comparison](../benchmarks/validation/comparison/652ab6a300eb34fedfc0a5ccb2769032aef8d1947f8a7561523e04cd8e752b6b/summary.md),
 [contribution reports](../benchmarks/validation/contrib/summary.md),
 [competitor contracts](competitor-validation.md),

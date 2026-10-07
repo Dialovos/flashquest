@@ -62,7 +62,7 @@
       "peak_vram_mib": null,
       "wall_s": 1284.7937899430035,
       "oom": false,
-      "error": "rc=134: bc_start_main+0x8b)[0x7ba7cb22a28b]\n/home/hoang/code/personal/active/flashquest/vendor/llama.cpp/build/bin/llama-bench(+0x14365)[0x5f4ac403a365]\n/home/hoang/code/personal/active/flashquest/scripts/bench_llamacpp.sh: line 31: 204724 Aborted                 (core dumped) \"$LLAMA_BIN\" -m \"$MODEL\" -p \"$CTX\" -n 128 -ngl \"$NGL\" -t 6 -r \"${REPS:-1}\" -o md\n     204725 Done                    | tee \"$OUT\"\n"
+      "error": "rc=134: bc_start_main+0x8b)[0x7ba7cb22a28b]\n<repo>/vendor/llama.cpp/build/bin/llama-bench(+0x14365)[0x5f4ac403a365]\n<repo>/scripts/bench_llamacpp.sh: line 31: 204724 Aborted                 (core dumped) \"$LLAMA_BIN\" -m \"$MODEL\" -p \"$CTX\" -n 128 -ngl \"$NGL\" -t 6 -r \"${REPS:-1}\" -o md\n     204725 Done                    | tee \"$OUT\"\n"
     },
     {
       "backend": "llama.cpp",
@@ -73,7 +73,7 @@
       "peak_vram_mib": null,
       "wall_s": 104.11572912200063,
       "oom": true,
-      "error": "rc=1: ggml_cuda_init: found 1 CUDA devices (Total VRAM: 4095 MiB):\n  Device 0: NVIDIA GeForce RTX 3050 Ti Laptop GPU, compute capability 8.6, VMM: yes, VRAM: 4095 MiB\nmain: error: failed to create context with model '/home/hoang/models/llama-3.2-3b/Llama-3.2-3B-Instruct-Q4_K_M.gguf'\n"
+      "error": "rc=1: ggml_cuda_init: found 1 CUDA devices (Total VRAM: 4095 MiB):\n  Device 0: NVIDIA GeForce RTX 3050 Ti Laptop GPU, compute capability 8.6, VMM: yes, VRAM: 4095 MiB\nmain: error: failed to create context with model '~/models/llama-3.2-3b/Llama-3.2-3B-Instruct-Q4_K_M.gguf'\n"
     },
     {
       "backend": "vLLM 0.7.3",
