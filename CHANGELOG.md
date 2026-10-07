@@ -24,6 +24,10 @@ Validation release; the research direction is now closed. See the
   llama.cpp are withdrawn. The 32k runs allocated more than 4 GB, and the competitor timings were
   mis-measured. The original files stay under `benchmarks/phase*` for provenance.
 
+### Tests
+
+- All 12 slow end-to-end tests pass (2026-10-07), on top of the 606 non-slow tests.
+
 ### Added
 
 - Validation tooling: a matched-prompt quality harness with frozen statistics, balanced timing

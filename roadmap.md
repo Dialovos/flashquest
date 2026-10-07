@@ -8,9 +8,9 @@ research direction. See the [research decision](docs/research-decision.md) and t
 dense quantized KV caches at comparable quality?
 
 **Answer:** not on the tested workload. Page selection speeds up FlashQuest's own decode at 32k,
-but llama.cpp Q4_0 KV and vLLM FP8 KV record roughly 2.4–3.5× its decode rate, and they match
-or exceed its retrieval quality. Including FP16 KV gives a range of roughly 1.8–3.5×. At
-32k, llama.cpp also uses less total memory. Comparable quality to dense wasn't established either.
+but llama.cpp (Q4_0 KV) and vLLM (FP8 KV) decode at roughly 2.4–3.5× its rate, or about 1.8–3.5×
+with FP16 KV. Both match or beat its retrieval, and at 32k llama.cpp also uses less total memory.
+Comparable quality to dense wasn't established either.
 
 This page records each phase's outcome and links its evidence. The detailed run-by-run history is
 in [docs/execution-checkpoint.md](docs/execution-checkpoint.md),
@@ -105,9 +105,9 @@ Evidence: [component reports](benchmarks/validation/contrib/summary.md),
 [selection diagnostic](benchmarks/validation/selection-flips/summary.md),
 [prior work](docs/contribution-prior-work.md), [decision](docs/research-decision.md).
 
-## Open item
+## Software checks — done
 
-- The 12 `slow` end-to-end tests haven't been run. The Llama-3.2-1B-Instruct weights they need
-  are now cached at the pinned revision for a later authorized run. The offline launcher
-  and readiness command are described in [Tests](README.md#tests). These tests cover software
-  reliability, not the research question. Raw-evidence backup follows test review; no PR yet.
+- [x] All 12 `slow` end-to-end tests passed on 2026-10-07 (commit `3fc9097`), on top of the 606
+      non-slow tests. They cover software reliability, not the research question.
+- [x] Raw evidence (prompts, answers, memory traces, report builder and audit scripts) is archived
+      outside the repository.
