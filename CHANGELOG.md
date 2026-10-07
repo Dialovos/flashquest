@@ -10,8 +10,9 @@ Validation release; the research direction is now closed. See the
 ### Findings
 
 - Compared FlashQuest with llama.cpp and vLLM on one GPU (RTX 4080 Laptop, 12 GB), using matching
-  8k/32k inputs and the same retrieval prompts. FlashQuest decoded 2.4–3.5× slower; timing spans
-  differ by engine, so the gap is approximate.
+  8k/32k inputs and the same retrieval prompts. llama.cpp Q4_0 KV and vLLM FP8 KV recorded
+  roughly 2.4–3.5× FlashQuest's decode rate; including FP16 KV gives roughly 1.8–3.5×.
+  Timing spans differ by engine, so the gap is approximate.
 - At 32k, page selection makes FlashQuest's own decode 1.82× faster than reading every page. At
   8k it gives no gain.
 - The frozen retrieval-quality confirmation passed 5 of 9 endpoints, so comparable quality to dense
@@ -22,6 +23,10 @@ Validation release; the research direction is now closed. See the
 - The v1.0 claims below about 32k decoding on a 4 GB GPU and a capability gap over vLLM and
   llama.cpp are withdrawn. The 32k runs allocated more than 4 GB, and the competitor timings were
   mis-measured. The original files stay under `benchmarks/phase*` for provenance.
+
+### Tests
+
+- All 12 slow end-to-end tests pass (2026-10-07), on top of the 606 non-slow tests.
 
 ### Added
 

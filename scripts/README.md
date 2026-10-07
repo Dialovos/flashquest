@@ -38,6 +38,7 @@ replaces it. These scripts are kept because their tests document the timing fixe
 | `vendor_clone.sh` | Clones reference repositories into the ignored `vendor/` folder, including the DuoAttention pattern used by tests. |
 | `verify_env.py` | Prints the Python, CUDA and GPU environment. |
 | `verify_triton_int8.py` | Checks that Triton accepts INT8 matrix operands on the GPU. |
+| `run_slow_tests.sh` | Checks the prepared local offline model cache and collects slow tests with `--check`; runs them with `--run`, sleep inhibition and saved logs/exit status. See [Tests](../README.md#tests). |
 
 ## Historical v1.0 experiments
 
