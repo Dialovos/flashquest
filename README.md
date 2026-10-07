@@ -5,8 +5,8 @@ packed INT4 (or 3-bit TurboQuant) KV cache, and Quest-style page selection with 
 kernels.
 
 - **Status:** research concluded on 2026-10-06; kept as an engineering reference. In a
-  validation on one GPU, FlashQuest did not beat llama.cpp or vLLM on speed, memory
-  or retrieval quality, so this direction is no longer being developed.
+  validation on one GPU, FlashQuest did not demonstrate an overall competitive advantage
+  over llama.cpp or vLLM, so this direction is no longer being developed.
   See the [research decision](docs/research-decision.md).
 - **Run:** `pip install -e ".[bench,dev]"`, then `flashquest --model casperhansen/llama-3.2-3b-instruct-awq --context 8192 -i`
   ([details](#quick-start--cli)).
@@ -16,6 +16,7 @@ kernels.
 ## Results at a glance
 
 These measurements come from an RTX 4080 Laptop GPU (12 GB) running Llama-3.2-3B-Instruct.
+The [validation device](#validation-device) and software versions are listed below.
 Each run decodes 127 tokens after the prompt. Values are medians over four input seeds with three
 timed runs each. Full report: [descriptive comparison](benchmarks/validation/comparison/652ab6a300eb34fedfc0a5ccb2769032aef8d1947f8a7561523e04cd8e752b6b/summary.md).
 
@@ -45,7 +46,8 @@ prompts for every configuration)
 
 What this shows:
 
-- **Speed.** FlashQuest decoded 2.4–3.5× slower than llama.cpp and vLLM. Each engine's timer
+- **Speed.** llama.cpp Q4_0 KV and vLLM FP8 KV recorded roughly 2.4–3.5× FlashQuest's decode
+  rate. Including their FP16 KV configurations gives a range of roughly 1.8–3.5×. Each engine's timer
   covers a slightly different span (synchronized forward passes, native evaluation, scheduler token
   timestamps), so treat the gap as approximate rather than a precise speedup. The measurements also
   don't isolate which parts of FlashQuest cause it.
@@ -58,8 +60,9 @@ What this shows:
   at all three contexts and multikey at 32k fail, with observed drops of 2–8 points. So this
   failure means comparable quality isn't established; it doesn't prove a loss larger than 10 points.
 - **Memory.** The KV caches are about the same size (991 MiB vs. llama.cpp's 1,016 MiB). The
-  difference is in total runtime memory: FlashQuest's 32k prefill alone exceeds 4 GB. vLLM
-  preallocates a cache pool sized to its memory budget, so its peak reflects that budget.
+  difference is in total runtime memory: FlashQuest's 32k prefill alone exceeds 4 GB. Its sampled
+  peak is lower than vLLM's and higher than llama.cpp's. vLLM preallocates a cache pool sized
+  to its memory budget, so its peak reflects that budget.
 - **Metadata reuse.** Scoring pages from the INT4 quantization metadata avoids storing separate
   min/max summaries. That saves 12.5% of the packed INT4 K payload (6.25% of K+V) at similar scoring
   latency, though selections sometimes differ from exact summaries.
@@ -73,6 +76,25 @@ same AWQ checkpoint. FlashQuest used retention 0.20 at 8k and 0.25 at 32k.
 is withdrawn: those runs allocated about 5.5 GB, and the current implementation's 32k peak also
 exceeds 4 GB. Testing on 4 GB hardware was not pursued. This is a decision, not a hardware-tested
 failure, and the 8k case (3.4 GB sampled peak) remains untested there.
+
+## Validation device
+
+The device checked for this validation and test setup is an Alienware m16 R1 laptop running
+Linux directly. The historical WSL2 / RTX 3050 Ti description applies to the withdrawn v1.0
+results, not the current tables.
+
+| Component | Verified specification |
+| --- | --- |
+| GPU | NVIDIA GeForce RTX 4080 **Laptop** GPU; Ada, compute capability 8.9 |
+| GPU memory | 12 GB class; `nvidia-smi` reports 12,282 MiB |
+| CPU | Intel Core i9-13900HX; 24 cores, 32 logical threads |
+| RAM reported by Linux | About 6.9 GiB usable; 4 GiB swap |
+| OS | Ubuntu 26.04.1 LTS, x86-64; Linux `7.0.0-38-generic` |
+| NVIDIA driver | `595.91.07` |
+| FlashQuest Python stack | Python 3.12.14; Torch 2.5.1+cu124 (CUDA 12.4); Triton 3.1.0 |
+
+The separate vLLM environment uses its recorded CUDA 13 runtime and dependency pins; it is
+not the FlashQuest test environment. See [competitor validation](docs/competitor-validation.md).
 
 ## Install
 
@@ -191,6 +213,27 @@ The non-slow suite expects two local fixtures:
 
 The 12 tests marked `slow` load real model weights (AWQ 3B and Llama-3.2-1B-Instruct). They were
 not run in the 2026-10-06 validation. CI runs `tests/test_chat.py` on CPU.
+
+For the prepared local workspace, `scripts/run_slow_tests.sh` checks the pinned offline model
+cache recorded in `artifacts/setup/slow-test-models.json`. Check readiness without executing tests:
+
+```bash
+bash scripts/run_slow_tests.sh --check
+```
+
+Readiness collection needs a free CUDA GPU because some test modules allocate GPU constants
+when imported; it does not execute the selected tests.
+
+After authorizing the run, launch it in a persistent session:
+
+```bash
+tmux new-session -d -s flashquest-slow-tests -c "$PWD" 'bash scripts/run_slow_tests.sh --run'
+```
+
+The runner checks free GPU memory and refuses to start if compute jobs are already running.
+It inhibits sleep during pytest and saves `pytest.log`, `results.xml`, source metadata and the
+actual `exit-code` under a new `artifacts/tests/slow-*` folder. Review those files when returning;
+starting a background job does not establish a test result.
 
 ## Reproducing the validation
 

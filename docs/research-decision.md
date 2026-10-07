@@ -7,7 +7,8 @@ and accepted descriptive comparison; post-measurement integration is recorded be
 
 - **Decision:** keep FlashQuest as an engineering reference and stop this research direction.
 - **Speed:** page selection makes FlashQuest's own decode 1.82× faster at 32k, with no gain at
-  8k. On the same GPU, llama.cpp and vLLM decode 2.4–3.5× faster than FlashQuest. Each engine's
+  8k. On the same GPU, llama.cpp Q4_0 KV and vLLM FP8 KV record roughly 2.4–3.5× FlashQuest's
+  decode rate; including FP16 KV gives roughly 1.8–3.5×. Each engine's
   timer covers a slightly different span, so that gap is approximate. The measurements also don't
   isolate which FlashQuest components cause it.
 - **Quality:** the frozen non-inferiority test passed 5 of 9 endpoints. Multivalue at 4k, 8k and

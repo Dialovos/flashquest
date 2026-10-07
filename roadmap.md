@@ -8,7 +8,8 @@ research direction. See the [research decision](docs/research-decision.md) and t
 dense quantized KV caches at comparable quality?
 
 **Answer:** not on the tested workload. Page selection speeds up FlashQuest's own decode at 32k,
-but llama.cpp and vLLM decode 2.4–3.5× faster, and they match or exceed its retrieval quality. At
+but llama.cpp Q4_0 KV and vLLM FP8 KV record roughly 2.4–3.5× its decode rate, and they match
+or exceed its retrieval quality. Including FP16 KV gives a range of roughly 1.8–3.5×. At
 32k, llama.cpp also uses less total memory. Comparable quality to dense wasn't established either.
 
 This page records each phase's outcome and links its evidence. The detailed run-by-run history is
@@ -67,7 +68,8 @@ Evidence: [8k block](benchmarks/validation/ablation/bd5a7ab68ed2ec69e8e916c27968
       outcomes.
 - [x] Weight, cache and backend differences recorded. Failures, timeouts and unsupported settings
       preserved separately.
-- [x] Result: FlashQuest decodes 2.4–3.5× slower. Each engine's timer covers a slightly different
+- [x] Result: llama.cpp Q4_0 KV and vLLM FP8 KV record roughly 2.4–3.5× FlashQuest's decode
+      rate; including FP16 KV gives roughly 1.8–3.5×. Each engine's timer covers a slightly different
       span, so this is an approximate gap rather than a precise ratio.
 
 Evidence: [descriptive comparison](benchmarks/validation/comparison/652ab6a300eb34fedfc0a5ccb2769032aef8d1947f8a7561523e04cd8e752b6b/summary.md).
@@ -106,4 +108,6 @@ Evidence: [component reports](benchmarks/validation/contrib/summary.md),
 ## Open item
 
 - The 12 `slow` end-to-end tests haven't been run. The Llama-3.2-1B-Instruct weights they need
-  aren't cached locally. They cover software reliability, not the research question.
+  are now cached at the pinned revision for a later authorized run. The offline launcher
+  and readiness command are described in [Tests](README.md#tests). These tests cover software
+  reliability, not the research question. Raw-evidence backup follows test review; no PR yet.
