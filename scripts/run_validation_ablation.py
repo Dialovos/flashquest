@@ -202,9 +202,13 @@ def main(argv=None) -> int:
     result = {"protocol": protocol, "status": "incomplete", "cells": []}
     if out.exists():
         previous = json.loads(out.read_text())
-        if not args.resume or canonical_identity(previous["identity"]) != run["identity"]:
+        if (not args.resume or canonical_identity(previous["identity"]) != run["identity"] or
+                previous["run_identity"] != run["run_identity"] or previous["protocol"] != protocol):
             raise ValueError("existing schedule requires an identical --resume")
         result["cells"] = previous["cells"]
+        if (previous["status"] not in {"incomplete", "complete"} or
+                (previous["status"] == "complete") != (len(result["cells"]) == len(cells))):
+            raise ValueError("resume completion status differs from its cells")
         if [entry["cell"] for entry in result["cells"]] != cells[:len(result["cells"])]:
             raise ValueError("resume cells do not preserve the frozen order")
         for entry in result["cells"]:
@@ -214,7 +218,11 @@ def main(argv=None) -> int:
             if file_hash(path) != entry["result"]["sha256"]:
                 raise ValueError("resume cell changed")
             checked_cell(path, entry["cell"], run, args.reps, args.n_decode)
-            checked_memory(entry["memory"], REPO_ROOT, args.reps)
+            if not checked_memory(entry["memory"], REPO_ROOT, args.reps):
+                raise ValueError("resume requires local raw memory series")
+        if previous["status"] == "complete":
+            print(f"Schedule: {out.relative_to(REPO_ROOT)}", flush=True)
+            return 0
     write_record(REPO_ROOT / "benchmarks" / "validation" / "protocols" /
                  f"{content_hash(protocol)}.json", protocol)
     write_record(out, export_schedule(run, result))

@@ -1,8 +1,119 @@
 # Roadmap execution checkpoint
 
-Updated: 2026-10-06. The user explicitly resumed normal roadmap work. The GPU
-was free at the resume check; source and measured core environment match the
-saved checkpoint. The earlier usage-based cutoff remains removed.
+Updated: 2026-10-06. Final measured source is
+`5e22bf5c4c97b28bcdb46a030f75b269856ca622`, fingerprint
+`5807705f47e4eccd8e1eb6bc380202de5f05a9b0259037e5bd22798af9124c90`.
+All four measured groups and the emitted comparison pass their final audits;
+the source freeze is released. Both post-measurement corrections are integrated
+and checked, completing the locally executable bounded roadmap. These later
+engineering corrections do not relabel the measured evidence.
+
+## Final measured-evidence checkpoint
+
+Both whole internal blocks finish outer exit 0 with strict and independent acceptance:
+
+- [8k / 0.20](../benchmarks/validation/ablation/bd5a7ab68ed2ec69e8e916c27968c57c68783cb3f4514293621fa0c542960f40/summary.json): paired median 0.975674, range 0.933246–1.046596; practical screen fails. Eight cells, 24 timings, 4,015 memory points, 64 phase windows; sampled peak 3,442 MiB.
+- [32k / 0.25](../benchmarks/validation/ablation/efd8bfe82549542f6cc7994414e6af11b0943c09404647a9457cf0e42ca4e559/summary.json): paired median 1.824622, range 1.760771–1.894740; practical screen passes. Eight cells, 24 timings, 8,740 memory points, 64 phase windows; sampled peak 7,006 MiB.
+
+The [full native performance matrix](../benchmarks/validation/competitors/3a5fa9de623a7d2a49b853f6588bc72821ce36a76542b6791a08abba677a0653/schedule.json)
+finishes outer exit 0 with all 32 cells, 96 timings and 30,280 memory points.
+Strict and independent manual gates accept source/model/backend identities,
+server logs and worker JSON, exact inputs/counts, timings and raw telemetry.
+Both previously failing llama.cpp cells preserve 248 non-UTF-8 bytes in their
+new logs and pass reversible decoding/runtime checks; old failed records remain
+unchanged. Actual terminal log/exit files are
+`artifacts/smoke/competitors-full-performance-attempt2.log` and `.exit-code`.
+
+The [full native quality matrix](../benchmarks/validation/competitors/ee7c318de630e7cdbd3e9b7859134df60a611e761c750bd2fb32fa7cf3133ed9/schedule.json)
+finishes outer exit 0 with all eight cells and 2,400 outcomes. The actual exit
+was persisted and read in
+`artifacts/smoke/competitors-full-quality-attempt2.exit-code`; the associated
+`.log` remains preserved. Uniform outer timeout 7,200 seconds and readiness
+600 seconds were declared before launch. Final strict and independent audits accept all 2,400 ordered outcomes
+(2,322 hits), 250,671 raw memory points and exact manifest/mapping/EOS/scorer/runtime
+contracts.
+
+Quality has 300 scored requests per cell and no separate excluded warmup; the
+schedule's warmup field describes performance policy. llama.cpp strictly performs
+300 full-prompt `/detokenize` checks per cell and records aggregate mapping
+coverage, but individual HTTP response bodies are not retained. Static
+full-vocabulary/special/EOS mapping, manifest and returned-output-ID/scorer
+reconstruction, and separately audited saved slot views are different evidence.
+Up to 299 prior requests may have slot views in each separately audited llama.cpp
+cell; never extrapolate that observation to another cell or a missing final view.
+vLLM uses pinned HF tokenizer artifacts, exact token-ID payloads and server
+token-count checks. FP8 uses FLASHINFER, E4M3 in uint8 storage and unit/default
+uncalibrated scales; auto uses FLASH_ATTN and FP16 storage. The within-backend
+ratio therefore compares realized configurations rather than isolated dtype effects.
+
+The strict checker caches the full 128,256-token bound once; base `vocab_size`
+128,000 would omit added/special tokens. Predicates remain unchanged. Author,
+independent and root CPU suites each pass 51 cases; root integration finishes
+exit 0 in 8.85 seconds. Older helpers and reports remain preserved.
+The final descriptive report passes independent raw/public reconstruction and
+Markdown review; its accepted builder retains measured source `5e22bf5`. The accepted
+[public descriptive comparison](../benchmarks/validation/comparison/652ab6a300eb34fedfc0a5ccb2769032aef8d1947f8a7561523e04cd8e752b6b/summary.md) retains source `5e22bf5`
+and separates the original builder identity from the lossless public derivative.
+It does not establish scientific comparability. FlashQuest forward, native
+server and HTTP timing boundaries remain separate; only within-backend ratios
+are supported. Physical cache bytes differ from backend capacity estimates.
+Aligned native phase peaks, absence of OS fallback, true maxima and actual 4 GB
+fit remain unverified.
+
+The [decision](research-decision.md) retains the engineering reference and
+redirects current research: comparable-quality competitive advantage and broad
+novelty remain unestablished, as does a novel narrower metadata/kernel pivot.
+The completed fixed confirmation still has five pass/four fail; failure to
+establish non-inferiority does not prove inferiority.
+
+Exact report bindings are preserved separately from later production source:
+local builder identity `b3a6a24125136414e14345fc20a8ded6f18806b75b14d9445b7cc984ec46e863`,
+raw-file SHA256 `de91f81ac17356e5d1f8f0acbc59e7059b4aab1713515a7149f3b70b70c538fd`;
+builder SHA256 `54050c0b9e710dbf9e2241f985b12d62b11f3bf69d7fb79d7a449829d16d554e`
+and checker SHA256 `67cd7432837adbc56b32307667390b86d5fb0abd6373c1701db21d3a19e0e583`.
+The public wrapper identity is
+`652ab6a300eb34fedfc0a5ccb2769032aef8d1947f8a7561523e04cd8e752b6b`;
+JSON SHA256 `8641819358341af486d02afbe76494f0febccd272fb1d2ccd604a43f5bb5150d`
+and Markdown SHA256 `7903132866bab66cca41ee4d0ecdc16093c6da3a8d83c2d61b1e171fb1ea90d4`.
+Independent acceptance checks the exact lossless inverse conversion and Markdown
+bytes, preserving the accepted local raw identity separately from the public one.
+
+## Post-measurement fixes and reproduction
+
+After all four final groups and the emitted report passed independent audit,
+both reviewed source corrections were applied:
+`artifacts/development/resume-fix/resume-validation.patch` and
+`artifacts/development/tokenizer-bound-fix/production-full-tokenizer-bound.patch`.
+The completed-block resume candidate passes 26 checks; full tokenizer-bound
+caching in `decode_answer` passes 164. Both reviewed post-measurement fixes are applied and validated: 190 focused
+tests and 606 full non-slow tests pass; 12 existing slow cases are deselected
+and remain unverified. Changed-file Ruff and `git diff --check` pass. These checks
+validate later source without relabeling measured `5e22bf5` evidence.
+
+The checked post-measurement code snapshot has content SHA256
+`4065a1b2a064c4720c2b1c2f4adfdd9d41a8eee140d322ad5bed662138f0c97b`
+across 88 source files, separate from the measured fingerprint above.
+Actual focused/full log and exit receipts are
+`artifacts/setup/final-source-fixes-focused.log` / `.exit-code` and
+`artifacts/setup/final-source-fixes-full-non-slow.log` / `.exit-code`.
+Both terminal tool and persisted exits are zero. These are content/check bindings,
+not a claim of a later committed source identity.
+
+Reproduce the measured comparison from a clean checkout of `5e22bf5`, using the
+pinned environments, model snapshots and preserved ignored raw evidence. The
+reviewed checker/builder must match the hashes bound by the accepted report.
+Public JSON alone cannot reconstruct private raw prompts, answers or telemetry.
+Build against the measured source before either deferred fix. Later source
+changes do not authorize weakening the current-source gate or relabeling earlier
+measurements. Preserve model snapshots, installed environments, raw evidence,
+helper versions and historical audit reports; no project-folder copies between
+machines.
+
+## Historical execution checkpoints
+
+The following sections preserve completed chronology. Their earlier pending
+measurements and next-step instructions have since been fulfilled above; they
+are not the current execution queue.
 
 ## Previous pause and new resume
 
@@ -134,7 +245,7 @@ verified. Keep all setup/failed-attempt evidence.
 
 ## Preserved internal timing and failed native collection
 
-The independently reviewed current-source blocks are complete:
+The independently reviewed `76f00fe` blocks are preserved separately:
 
 - [8k / 0.20](../benchmarks/validation/ablation/f22ba06c8c74dd6aa294fc69707404ead02002f9c3958ab4b0015af32acaf7cd/summary.json): median paired decode ratio 1.014242,
   range 0.955149–1.059477; practical screen fails.
@@ -165,9 +276,9 @@ UTF-8 `surrogateescape`, preserving every raw byte. HTTP and worker JSON and
 runtime precision/kernel/device checks stay strict. Candidate checks pass all
 194 competitor CPU tests, including 27 new regressions. Root integration checks
 finish exit 0 with 589 non-slow tests passed and 12 existing slow cases deselected;
-Ruff passes. After a clean commit, repeat both complete internal timing blocks and both native
-matrices under the new source identity. Preserve the older groups separately;
-do not repair, relabel or pool their observations.
+Ruff passes. The repair was committed as `5e22bf5`, and both whole internal
+blocks and native matrices above were collected from that source. Preserve older
+groups separately; do not repair, relabel or pool their observations.
 
 Independent review found that the internal runner's completed-block `--resume`
 rewrites its status to `incomplete`. Do not resume either completed block; preserve
@@ -176,30 +287,15 @@ comparison builder passes independent review and 61 CPU cases, including real
 export compatibility. Final report emission remains unverified until all four
 new schedules pass the strict raw-evidence and realized-runtime gates.
 
-## Remaining execution sequence
 
-1. Commit the reviewed log repair after required checks. Repeat both internal
-   blocks, then collect the optimized 8k/32k performance matrix (32 cells, 96
-   samples) and matching native quality matrix (8 cells, 2400 outcomes), with
-   periodic independent audits and a fixed source/environment throughout.
-2. Require every local raw memory series to exist, match its hash and reproduce
-   windows, peaks and coverage before accepting the final comparison. Keep
-   FlashQuest forward, native server and HTTP client timing boundaries separate.
-   Record weight formats, allocated cache capacities, offload configuration and
-   unmeasured OS fallback explicitly.
-3. Save the comparison and evidence-linked research decision, update roadmap
-   checkboxes only for completed evidence.
-4. Correct completed-block resume status, finish the appropriate project checks,
-   then commit the reviewed result through shared hooks.
-
-Check actual free VRAM and compute ownership before each GPU batch. Run one GPU
-job at a time, under `systemd-inhibit --what=sleep:idle:handle-lid-switch` plus
-`nohup` or `tmux`, with project-local logs. Keep source and environments fixed
-through each measured block; inspect owned workers before resuming an interrupted
-job. Keep raw evidence, model snapshots and environments.
+## Deferred endpoints and authorization
 
 Actual 4 GB hardware testing is deferred for collaboration as authorized by the
-user. The available 12 GB device cannot establish target fit or a maximum capacity
-limit. Local commits are authorized; pushing, PRs and merges still require approval.
-See the [roadmap](../roadmap.md), [research decision](research-decision.md) and
+user. The available 12 GB device cannot establish target fit or a true maximum.
+Aligned native prefill/decode memory, absence of OS fallback and general language
+quality remain unverified. For future GPU work, check free VRAM and compute
+ownership, run one owned job at a time under `systemd-inhibit` plus `nohup`/`tmux`,
+keep project-local logs and never stop foreign workers. Local commits are
+authorized; pushing, PRs and merges require approval. See the
+[roadmap](../roadmap.md), [decision](research-decision.md) and
 [independent audit](independent-roadmap-audit.md).

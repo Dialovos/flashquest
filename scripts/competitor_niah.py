@@ -48,8 +48,9 @@ QUALITY_STOP_POLICY = {"eos_source": "pinned-HF-generation-config",
 
 def decode_answer(tokenizer, token_ids):
     """Match FlashQuest's pinned HF answer decoder, independently of server text."""
+    full_vocab_size = len(tokenizer)
     if (not isinstance(token_ids, list) or not token_ids or
-            any(type(x) is not int or not 0 <= x < len(tokenizer) for x in token_ids)):
+            any(type(x) is not int or not 0 <= x < full_vocab_size for x in token_ids)):
         raise ValueError("invalid generated IDs for the pinned answer tokenizer")
     return tokenizer.decode(token_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True)
 

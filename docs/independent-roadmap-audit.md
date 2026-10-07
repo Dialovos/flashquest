@@ -1048,3 +1048,64 @@ After committing the codec repair, repeat both whole internal timing blocks and
 both native matrices with fixed clean source/environment. Preserve previous
 groups unpooled. The independently reviewed completed-block resume patch remains
 deferred until final measurement and comparison acceptance.
+
+## Checkpoint 23 — Final measured groups, descriptive comparison and research decision
+
+The reviewed diagnostic-log repair is committed as `5e22bf5` after the completed
+integrated check: 589 non-slow tests pass, 12 existing slow cases deselected.
+Final whole internal blocks preserve 48 timings, 12,755 memory points and 128
+phase windows. Paired medians/ranges are 0.975674 (0.933246–1.046596) at 8k and
+1.824622 (1.760771–1.894740) at 32k; practical screens fail/pass. Both outer exits
+are observed zero. Native performance completes 32 cells and 96 timings, outer
+exit 0; strict and independent manual review reconstructs all 30,280 memory
+points and accepts source/model/runtime/count/timing/log/worker evidence. Original
+kernel-34, source-`76f00fe`, failed and interrupted groups stay unchanged/unpooled.
+
+Native quality is terminal with eight cells and 2,400 outcomes. Its persisted
+outer exit is read as zero. Final strict and independent audits accept all 2,400 ordered outcomes
+(2,322 hits), 250,671 raw memory points and exact manifest/mapping/EOS/scorer/runtime
+contracts.
+Quality uses exact frozen 300-example manifests per cell, canonical returned-ID
+decoding/EOS and the unchanged scorer, without separate excluded warmup.
+llama.cpp's 300 runtime full-prompt detokenization checks per cell are a performed
+production gate, not 300 retained HTTP response transcripts. Static mapping and
+the up-to-299 saved slot views in each separately audited cell are distinct
+audit evidence; the final request may lack a subsequent view. vLLM retains its
+exact pinned-tokenizer ID/count contracts. Early worker observations and final
+logs bind cache storage/backend/scales; FP8 scales are unit/default uncalibrated
+scales and native allocation policies remain different.
+
+The final descriptive report passes independent raw/public reconstruction and
+Markdown review; its accepted builder retains measured source `5e22bf5`. The
+[public report](../benchmarks/validation/comparison/652ab6a300eb34fedfc0a5ccb2769032aef8d1947f8a7561523e04cd8e752b6b/summary.md) binds the accepted four-group builder
+record and its reversible public representation separately. It keeps forward,
+native server and HTTP timing separate, reports only within-backend ratios and
+explicitly records that scientific comparability is unestablished. Capacity
+estimates are not physical tensor bytes; native aligned prefill/decode peaks,
+absence of OS fallback, general language quality and actual 4 GB tests remain
+unverified. Successful 32k on the 12 GB device is a tested lower bound, not a maximum.
+
+The independent raw/public report review finishes actual exit 0: 31,220 checks,
+zero failures and 413 hashed files. Its preserved report is
+`artifacts/development/comparison/final-public-independent-audit-2026-10-06.json`,
+SHA256 `32bb0f940660999df27f27f1b3993508ae2e12cf9c2b0827c87b5b4d51697798`.
+The separate Markdown audit finishes exit 0 and reconstructs all nine tables,
+84 rows and 30 scope checks; its report is
+`artifacts/development/comparison/final-markdown-independent-audit-2026-10-06.json`,
+SHA256 `6befd19ead82957e174b4d46e3858ca4ace956f5afe57f99c29b3da4c4ee36ed`.
+Exact raw/public identities, builder/checker hashes and public file bytes are
+recorded in the [execution checkpoint](execution-checkpoint.md) and public report.
+The source freeze releases only after these actual final gates pass.
+
+The independent documentation author preserves implementation-plan sections 1–5
+byte for byte and every prior audit checkpoint. Root separately audits the final
+candidates, evidence links, claims and decision before application. The decision
+retains FlashQuest as an engineering reference and redirects current research:
+the fixed confirmation remains five pass/four fail, and comparable-quality
+competitive advantage, broad novelty and a novel metadata/kernel pivot remain
+unestablished. This is not proof of inferiority or a universal runtime verdict.
+Both reviewed post-measurement fixes are applied and validated: 190 focused
+tests and 606 full non-slow tests pass; 12 existing slow cases are deselected
+and remain unverified. Changed-file Ruff and `git diff --check` pass. These checks
+validate later source without relabeling measured `5e22bf5` evidence. Measured `5e22bf5` reproduction/assets/helper bindings remain
+preserved; post-measurement corrections do not relabel any measured group.

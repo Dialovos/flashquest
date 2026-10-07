@@ -1304,3 +1304,41 @@ def test_native_log_codec_keeps_quality_worker_json_strict(isolated, monkeypatch
     assert record["status"] == "execution_error" and record["runtime"]["weight_kernels"] == ["MarlinLinearKernel"]
     assert exception in next(isolated.glob("artifacts/competitor-quality/*/error.log")).read_text()
     assert next(isolated.glob("artifacts/competitor-quality/*/runtime.json")).read_bytes() == worker_bytes
+
+
+def test_answer_decoder_reads_full_added_token_bound_once():
+    from tokenizers import Tokenizer as BackendTokenizer
+    from tokenizers import decoders, models
+    from transformers import PreTrainedTokenizerFast
+
+    backend = BackendTokenizer(models.WordLevel({"A": 0, " .": 1, " I": 2, " 'm": 3,
+                                                "UNK": 4}, unk_token="UNK"))
+    backend.decoder = decoders.Fuse()
+    tokenizer = PreTrainedTokenizerFast(tokenizer_object=backend, unk_token="UNK")
+    tokenizer.add_special_tokens({"additional_special_tokens": ["CTRL"]})
+    full_vocab_size = len(tokenizer)
+    assert tokenizer.vocab_size == 5 and full_vocab_size == 6
+    added_id = tokenizer.convert_tokens_to_ids("CTRL")
+    assert tokenizer.vocab_size <= added_id < full_vocab_size
+    ids = [0, 1, 2, 3, added_id]
+    assert tokenizer.decode(ids, skip_special_tokens=False, clean_up_tokenization_spaces=False) == "A . I 'mCTRL"
+
+    class CountedTokenizer:
+        calls = 0
+
+        def __len__(self):
+            self.calls += 1
+            return full_vocab_size
+
+        def decode(self, *args, **kwargs):
+            return tokenizer.decode(*args, **kwargs)
+
+    counted = CountedTokenizer()
+    assert N.decode_answer(counted, ids) == "A. I'm"
+    assert counted.calls == 1
+
+
+@pytest.mark.parametrize("ids", [[1.0], ["1"], [None]])
+def test_answer_decoder_cached_full_bound_keeps_exact_integer_type(tmp_path, ids):
+    with pytest.raises(ValueError, match="invalid generated IDs"):
+        N.decode_answer(Tokenizer(tmp_path), ids)

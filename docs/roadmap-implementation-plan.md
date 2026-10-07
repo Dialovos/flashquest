@@ -491,102 +491,111 @@ historical files and all user work.
 
 ## 6. Current execution status and decision framework
 
-Status at this documentation checkpoint, 2026-10-05. Evidence remains conditional
-on its recorded source/model/environment and measurement boundaries. Historical
-records are preserved; a later clean commit must not replace the dirty-source
-fingerprints recorded by the completed pilots.
+Status at this final documentation checkpoint, 2026-10-06. Sections 1–5 preserve
+the original plan; this section records completed execution and remaining claim
+limits. Final measurements retain clean source `5e22bf5`, fingerprint
+`5807705f47e4eccd8e1eb6bc380202de5f05a9b0259037e5bd22798af9124c90`.
+The frozen confirmation retains its separate `05f6400` source. Historical
+groups, dirty-source fingerprints and failed attempts remain unchanged/unpooled.
 
-| Work package | Completed evidence | Remaining endpoint |
+| Work package | Completed evidence | Remaining or qualified endpoint |
 | --- | --- | --- |
-| WP0–WP2 | AWQ loading, safe immutable quality records/resume, cache restoration and matched three-arm pilots; 77 earlier CPU checks and two tiny-Llama GPU checks. | Recheck affected paths after changes; accept fresh confirmation only under its frozen source/protocol. |
-| WP3 | Pinned AWQ snapshot; matching-family Q4_K_M GGUF; external llama.cpp b11382 and isolated vLLM 0.30.0 environments prepared. | Valid intended-cache smokes and realized kernel/cache/EOS verification for every competitor configuration. |
-| WP4 | Tuning screens and the fixed 2,700-outcome fresh confirmation are complete. Independent audit reproduces all nine endpoints: five pass, four fail, with all observed floors passing. | The failed frozen rule establishes no non-inferiority claim; preserve both environment groups without pooling or retuning. |
-| WP5 | Balanced four-seed, three-repetition sparse/all-pages blocks: 0.995× at 8k, 1.838× at 32k. Isolated score/top-k/packed/tail/merge timings at both contexts are saved. | Compare optimized competitors; component timings alone do not identify a whole-model causal bottleneck or competitive win. |
-| WP6 | Exact-ID native-server adapters, sanitized identities, request metrics and failure-preserving schedules implemented. llama.cpp Q4/FP16 short requests completed in the linked smoke. | Valid 8k/32k repeated comparisons and matching retrieval quality; the saved vLLM smoke cells are execution errors. |
-| WP7 | FlashQuest physical-device/process-tree sampling covers completed blocks. Competitor smoke telemetry includes load/warmup/request windows where validated. | Full competitor observations and hardware-specific capacity runs. Native prefill/decode memory windows remain unmeasured without aligned markers. |
-| WP8 | Representative actual BF16 post-RoPE captures, metadata-versus-summary bytes/timings, exact FP32 packed-value output/LSE oracle, BF16 SDPA comparison and closest-prior-work map. | Changed-page diagnostics and their independent review are complete for new representative tensors; write the evidence-linked decision after competitor gates. |
+| WP0–WP2 | Pinned AWQ/model records, immutable matched quality/resume, cache restoration, pilots and affected-path regressions. | Preserve recorded identities; final post-measurement integration is reported separately below. |
+| WP3 | Pinned AWQ/GGUF, llama.cpp b11382 and isolated vLLM 0.30.0; all four settings pass independently reviewed performance and quality setup smokes and full realized-runtime checks. | Precompiled/AOT-only vLLM execution is verified; host compilation is unverified. |
+| WP4 | All 2,700 fixed-confirmation outcomes, nine endpoints and independent simultaneous-bound reconstruction. | Five endpoints pass and four fail; no non-inferiority or general-language-quality claim. |
+| WP5 | Final four-seed internal blocks: 48 timings, paired medians 0.975674 at 8k and 1.824622 at 32k. Component and representative metadata/packed-kernel ablations complete. | Internal 32k benefit and avoided materialization do not establish native superiority. |
+| WP6 | Full native performance: 32 cells, 96 timings and 30,280 accepted memory points. Full matching quality: eight cells, 2,400 outcomes, terminal exit 0. | Final independent quality/runtime/scorer and comparison acceptance are recorded below; timing boundaries remain separate. |
+| WP7 | Internal aligned phases and continuous native load/performance-warmup/request device/process sampling; configured placement and source-specific memory preserved. | Aligned native prefill/decode memory, absence of OS fallback and actual 4 GB capacity remain unverified. |
+| WP8 | Closest-prior-work map, representative contribution ablations and independent review of all 18 new diagnostics. | Retain engineering reference and redirect current research; broad novelty and a novel metadata/kernel pivot remain unsupported. |
 
-Evidence: [matched pilots and internal blocks](../README.md#benchmarks-and-validation),
-[component/contribution reports](../benchmarks/validation/contrib/summary.md),
-[competitor protocol](competitor-validation.md),
-[preserved short smoke](../benchmarks/validation/competitors/038adb95458098fad6f72e110dcfc1272cfde5e0d7292023ab72e0db9e52a379/schedule.json),
-[prior-work map](contribution-prior-work.md), and
-[independent checkpoints](independent-roadmap-audit.md).
-Preparing an environment or completing one short request does not finish WP6/WP7.
+Evidence: [current internal and native results](../README.md#benchmarks-and-validation),
+[descriptive comparison](../benchmarks/validation/comparison/652ab6a300eb34fedfc0a5ccb2769032aef8d1947f8a7561523e04cd8e752b6b/summary.md),
+[contribution reports](../benchmarks/validation/contrib/summary.md),
+[competitor contracts](competitor-validation.md),
+[prior-work map](contribution-prior-work.md) and
+[independent audit](independent-roadmap-audit.md).
+Final strict and independent audits accept all 2,400 ordered outcomes
+(2,322 hits), 250,671 raw memory points and exact manifest/mapping/EOS/scorer/runtime
+contracts. The final descriptive report passes independent raw/public reconstruction and
+Markdown review; its accepted builder retains measured source `5e22bf5`.
 
 ### Frozen fresh quality confirmation
 
 The [saved protocol](../benchmarks/validation/protocols/9f2f55af018bf2dc27efc97cf0d90940acf638fc08aeb2ae23330318b63226aa.json)
 selects 100 examples per task/context: seeds 1–5 × 20, excluding tuning seed 0;
-retention 0.20 at nominal 4k/8k and 0.25 at 32k. Dense, all-pages INT4 and sparse
-INT4 use identical examples, the pinned model, greedy EOS-or-128 generation and
-the frozen substring scorer. Actual input lengths and input-plus-generation
-capacity remain checked independently of nominal labels.
+retention 0.20 at nominal 4k/8k and 0.25 at 32k. Dense, all-pages and sparse use
+identical examples, the pinned model, greedy EOS-or-128 generation and the frozen
+substring scorer. Actual input lengths and input-plus-output capacity remain
+checked independently of nominal labels.
 
-All nine simultaneous lower bounds on sparse-minus-dense accuracy must exceed
-−0.10, with observed dense and sparse rates at least 0.80 in each endpoint.
-The exact gain/loss bounds use `alpha = 0.05/(2×9)` per bound; all-pages comparisons
-are diagnostics outside that family. The accuracy floors are observed screens,
-not population confidence guarantees. One clean identical measurement-source
-snapshot, fixed sample counts and complete paired records are required.
-These choices are now recorded execution settings, rather than the earlier open
-threshold proposal. The [complete current-environment summary](../benchmarks/validation/confirmation/9a279d05ca13c7038902ebd26fa9244b3b566240d91407c3a6261efef8d724d6/summary.json)
-has passed independent reconstruction and fails at four of nine endpoints:
-multivalue at 4k/8k/32k and multikey at 32k. All observed floors and pilot screens
-pass. The source freeze closed after this audit; the original earlier-environment
-4k/8k group is separately preserved and unpooled. Failure to establish
-non-inferiority does not establish inferiority; incomplete records or a weak dense
-baseline are inconclusive. Adjusting settings after seeing confirmation makes that
-analysis exploratory and requires fresh confirmation.
+All nine simultaneous sparse-minus-dense lower bounds must exceed −0.10, with
+observed dense/sparse rates at least 0.80 in each endpoint. Exact gain/loss bounds
+use `alpha = 0.05/(2×9)` per bound; all-pages comparisons are diagnostics outside
+that family. Observed floors are screens, not population guarantees. One clean
+source snapshot, fixed sample counts and complete paired records are required.
+The [complete current-family summary](../benchmarks/validation/confirmation/9a279d05ca13c7038902ebd26fa9244b3b566240d91407c3a6261efef8d724d6/summary.json)
+passes independent evidence/bound reconstruction and fails four endpoint rules:
+multivalue at 4k/8k/32k and multikey at 32k. All observed floors/pilot screens pass.
+The original earlier-environment group remains separate; neither native hits nor
+timings change this result. Failure to establish non-inferiority does not prove
+inferiority. Retuning after viewing it would require fresh confirmation.
 
-### Contribution interpretation still open
+### Contribution and comparison limits
 
-The real captures cover one seed-0 single-needle prompt, layers 0/13/27 and steps
-0/1/63, with all query/KV heads. Metadata reuse avoids an extra BF16 min/max pair:
+Representative captures cover one seed-0 single-needle prompt, layers 0/13/27,
+steps 0/1/63 and all query/KV heads. Avoiding an extra BF16 min/max pair saves
 12.5% of packed INT4 K payload, not total KV/model/device memory. Scoring latency
-is similar, with some slower metadata snapshots; a repeatable scoring-latency
-advantage is unestablished. Four 8k and one 32k snapshot means fall below the 0.99
-Jaccard investigation trigger. The [new diagnostic](../benchmarks/validation/selection-flips/summary.md) records
-changed IDs and margins for 18 independently reviewed representative captures.
-All input fingerprints match the old captures, but no Q/K fingerprints match;
-these explanations apply to the new tensors and cannot recover the old flips.
-Do not call rounded affine endpoints exact original-key extrema or a strict bound
-on the original keys. Broader held-out/layer coverage would be needed to generalize
-the metadata result beyond these representative captures.
+is similar and some metadata snapshots are slower. The new diagnostic explains
+changed IDs/margins in 18 independently reviewed captures; inputs match older
+captures, but none of the Q/K fingerprints do. It cannot recover the old flips
+or establish quality/kernel causality. Rounded affine endpoints are not exact
+original-key extrema or strict original-key score bounds.
 
-The fused kernel agrees with the exact FP32 reconstruction of the same packed
-values within the recorded BF16-output/LSE errors. Its small temporary allocation
-versus full BF16 dequantization plus SDPA establishes avoided materialization in
-that reference workload; native quantized competitors and whole-model timings
-remain separate. Closest prior work already combines sparse selection and low-bit
-KV, and compressed representations already serve as retrieval indexes. The
-remaining affine-metadata specialization is an engineering candidate, with no
-verified first-of-its-kind or publishable research claim.
+The fused output agrees within the recorded BF16-output/LSE errors with exact
+FP32 reconstruction of the same packed values. Smaller temporary allocation
+than full BF16 dequantization/SDPA establishes avoided reference materialization,
+not a native competitive win. Closest prior work already combines sparse and
+low-bit KV and uses compressed keys as indexes; a precise implementation
+difference and byte saving do not certify research novelty.
 
-### Remaining checklist and final decision
+Native and FlashQuest phase boundaries remain separate, with within-backend
+ratios only. vLLM FP8/auto also changes attention backend and uses unit/default
+uncalibrated FP8 scales. Native quality has no separate excluded warmup; llama.cpp
+runtime detokenization gates, absent individual HTTP transcripts and independently
+audited cell-specific slot views have distinct scopes. vLLM uses exact pinned
+ID/count contracts. Backend token estimates are not physical cache bytes.
+Different allocation policies, CPU embedding/host buffers and sampled peaks
+prevent a no-OS-fallback or actual-target capacity claim. Native aligned phase
+peaks and absence of OS fallback remain unverified claim limits; continuous
+sampling and configured-placement reporting satisfy the bounded native memory
+work package. Further phase instrumentation would be optional new work. Successful 32k here
+is a tested lower bound on the 12 GB GPU, not a maximum.
 
-- [x] Accept a complete fresh confirmation record and its simultaneous-bound summary, preserving the failed rule.
-- [ ] Complete valid competitor smokes, then 8k/32k repeated performance and matching
-  quality with explicit weight/KV differences, timing boundaries, order limitations,
-  realized kernels, residency settings and physical-device/process telemetry.
-- [x] Explain metadata selection flips in new representative tensors using changed
-  pages and score margins; preserve the old-tensor mismatch and frozen settings.
-- [ ] When actual 4 GB hardware is available, record the largest tested successful
-  context under a stated no-offload/fallback policy: prefill, 128 outputs and a
-  matching quality check. The current 12 GB results cannot close this endpoint.
-- [ ] Record one decision with evidence links and failed/inconclusive gates preserved.
+### Completed checklist and deferred claims
 
-Continue runtime research when fresh quality and a repeatable benefit over
-reasonably configured quantized dense competitors survive comparable measurement
-boundaries, or an actual-target capacity advantage survives matching quality.
-The 1.838× internal ratio alone does not meet that standard. If the runtime lacks
-such an advantage, narrow to metadata/kernel research only when its own matched
-ablations establish a useful delta and the precise prior-work comparison supports
-the claim. Byte accounting and the affine identity alone are insufficient.
-If neither case survives fair completed checks, retain an engineering reference
-and redirect research. Missing/unsupported measurements call for an explicitly
-inconclusive decision, rather than a fabricated pass or scientific rejection.
+- [x] Accept complete fixed confirmation and preserve its failed criterion.
+- [x] Complete independently reviewed setup smokes and final repeated native performance.
+- [x] Independently accept all eight native quality cells, 2,400 outcomes and final raw/runtime/scorer review.
+- [x] Accept the emitted descriptive comparison.
+- [x] Explain selection disagreements in new tensors without claiming old-tensor replay.
+- [x] Record the reviewed evidence-linked decision after comparison acceptance.
+- [ ] Perform actual 4 GB prefill, 128-output generation and matching quality with a declared offload/fallback policy; deferred for collaboration.
 
-A research decision may proceed with the actual-4-GB endpoint explicitly pending;
-it must then omit that capacity claim. New system policy, purchases, publishing
-and PRs retain their applicable workspace authorization requirements.
+The locally executable bounded roadmap work is complete. The decision is to
+retain FlashQuest as an engineering reference and redirect
+current research. An internal 32k ratio alone does not meet the runtime research
+gate; the narrower metadata/kernel specialization is not established as a novel
+pivot. Future research needs its own bounded useful delta, applicable quality
+and closest-prior-work comparison. Missing target hardware does not prevent this
+decision, provided the capacity claim stays withheld.
+Both reviewed post-measurement fixes are applied and validated: 190 focused
+tests and 606 full non-slow tests pass; 12 existing slow cases are deselected
+and remain unverified. Changed-file Ruff and `git diff --check` pass. These checks
+validate later source without relabeling measured `5e22bf5` evidence.
+
+Reproduce the measured report from clean source `5e22bf5`, pinned environments
+and snapshots, preserved raw evidence and exact reviewed checker/builder hashes
+bound by the report. Build against that source before either post-measurement
+production fix; later source changes do not authorize a weaker gate or relabeled
+measurements. Public JSON alone cannot recreate private raw evidence. Local
+commits are authorized; publishing, pushes, PRs and merges require approval.

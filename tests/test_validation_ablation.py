@@ -282,3 +282,132 @@ def test_partial_resume_keeps_order_and_does_not_repeat_completed_cells(evidence
     assert failed["status"] == "execution-error" and failed["cells"][0]["status"] == "timeout"
     assert failed["cells"][0]["failure_categories"] == ["timeout", "invalid-telemetry"]
     assert failed["identity"]["config"]["retry_of"] == completed["run_identity"]
+
+
+@pytest.fixture
+def completed_resume_block(evidence, monkeypatch):
+    """Build a real runner schedule using CPU-generated cells and local raw files."""
+    path, saved, _ = evidence
+    monkeypatch.setattr(C, "source_identity", lambda: METADATA)
+    monkeypatch.setattr(A, "model_identity", lambda *args: MODEL)
+    monkeypatch.setattr(A, "resolve_device", lambda index: {"index": 0, "uuid": "test-device",
+                                                          "name": "test GPU", "total_mib": 1000, "driver": "test"})
+    monkeypatch.setattr(A, "quality_prerequisites", lambda *args: [])
+    monkeypatch.setattr(A, "provenance", dict)
+    calls = []
+
+    def observe(command, raw_dir, device, **kwargs):
+        def argument(flag):
+            return command[command.index(flag) + 1]
+        cell = {"ctx_len": int(argument("--ctx-len")), "seed": int(argument("--seed")),
+                "retention": float(argument("--retention"))}
+        calls.append(cell)
+        output = Path(argument("--out"))
+        C.write_record(output, build_cell(cell, None, 120 if cell["retention"] < 1 else 100))
+        raw_dir.mkdir(parents=True)
+        series = raw_dir / "memory-series.json"
+        C.write_record(series, {"samples": []})
+        memory = deepcopy(saved["cells"][0]["memory"])
+        memory["raw_series"] = {"sha256": C.file_hash(series)}
+        return {"status": "complete", "returncode": 0, "memory": memory}
+
+    monkeypatch.setattr(A, "observe_command", observe)
+    argv = ["--contexts", "8192", "--seeds", "0", "1", "2", "3", "--revision", MODEL["revision"],
+            "--model", MODEL["model"], "--quality", str(path), "--n-decode", "8"]
+    assert A.main(argv) == 0
+    schedules = list((path.parent / "benchmarks").glob("validation/ablation/*/schedule.json"))
+    assert len(schedules) == 1
+    schedule_path = schedules[0]
+    completed = json.loads(schedule_path.read_text())
+    assert completed["status"] == "complete" and len(completed["cells"]) == 8 and len(calls) == 8
+    return schedule_path, completed, argv, calls
+
+
+def test_completed_resume_revalidates_without_downgrading_or_rewriting(completed_resume_block, monkeypatch):
+    path, saved, argv, calls = completed_resume_block
+    before = path.read_bytes()
+    validated_cells, validated_memory, writes = [], [], []
+    original_cell, original_memory, original_write = A.checked_cell, A.checked_memory, A.write_record
+
+    def checked_cell(*args):
+        validated_cells.append(args[1]["cell_id"])
+        return original_cell(*args)
+
+    def checked_memory(*args):
+        validated_memory.append(args[0]["raw_series"]["path"])
+        return original_memory(*args)
+
+    def write_record(*args):
+        writes.append(args[0])
+        return original_write(*args)
+
+    monkeypatch.setattr(A, "checked_cell", checked_cell)
+    monkeypatch.setattr(A, "checked_memory", checked_memory)
+    monkeypatch.setattr(A, "write_record", write_record)
+    assert A.main([*argv, "--resume"]) == 0
+    resumed = json.loads(path.read_text())
+    assert resumed["status"] == "complete"
+    assert path.read_bytes() == before and resumed == saved
+    assert len(calls) == 8
+    assert validated_cells == [entry["cell"]["cell_id"] for entry in saved["cells"]]
+    assert validated_memory == [entry["memory"]["raw_series"]["path"] for entry in saved["cells"]]
+    assert writes == []
+
+
+@pytest.mark.parametrize("mutation,error", [
+    ("run-id", "identical --resume"), ("protocol", "identical --resume"),
+    ("identity", "identical --resume"),
+    ("complete-prefix", "completion status"), ("incomplete-full", "completion status"),
+    ("terminal-error", "completion status"), ("entry-error", "failed attempt"),
+    ("order", "frozen order"), ("cell-bytes", "resume cell changed"),
+    ("missing-memory", "local raw memory"), ("memory-bytes", "raw memory series changed"),
+    ("memory-coverage", "memory observation coverage"),
+])
+def test_corrupt_resume_rejected_before_writing(completed_resume_block, monkeypatch, mutation, error):
+    path, saved, argv, calls = completed_resume_block
+    if mutation == "run-id":
+        saved["run_identity"] = "0" * 64
+    elif mutation == "protocol":
+        saved["protocol"]["claims"] = "altered protocol"
+    elif mutation == "identity":
+        saved["identity"]["config"]["n_decode"] = 16
+    elif mutation == "complete-prefix":
+        saved["cells"] = saved["cells"][:2]
+    elif mutation == "incomplete-full":
+        saved["status"] = "incomplete"
+    elif mutation == "terminal-error":
+        saved["status"] = "execution-error"
+    elif mutation == "entry-error":
+        saved["cells"][0]["status"] = "timeout"
+    elif mutation == "order":
+        saved["cells"][0], saved["cells"][1] = saved["cells"][1], saved["cells"][0]
+    elif mutation == "cell-bytes":
+        child = A.REPO_ROOT / saved["cells"][0]["result"]["path"]
+        child.write_bytes(child.read_bytes() + b" ")
+    elif mutation in {"missing-memory", "memory-bytes"}:
+        series = A.REPO_ROOT / saved["cells"][0]["memory"]["raw_series"]["path"]
+        if mutation == "missing-memory":
+            series.unlink()
+        else:
+            series.write_bytes(series.read_bytes() + b" ")
+    else:
+        saved["cells"][0]["memory"]["device_sample_count"] += 1
+    # Deliberately corrupt the fixture directly; the production writer properly
+    # prevents replacing an existing file with a different run identity.
+    path.write_text(json.dumps(saved), encoding="utf-8")
+    before = path.read_bytes()
+    protocol_path = A.REPO_ROOT / "benchmarks/validation/protocols" / f"{C.content_hash(saved['protocol'])}.json"
+    original_protocols = {p: p.read_bytes() for p in protocol_path.parent.glob("*.json")}
+    writes = []
+    original_write = A.write_record
+
+    def write_record(*args):
+        writes.append(args[0])
+        return original_write(*args)
+
+    monkeypatch.setattr(A, "write_record", write_record)
+    with pytest.raises(ValueError, match=error):
+        A.main([*argv, "--resume"])
+    assert path.read_bytes() == before
+    assert {p: p.read_bytes() for p in protocol_path.parent.glob("*.json")} == original_protocols
+    assert len(calls) == 8 and writes == []

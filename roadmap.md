@@ -22,10 +22,23 @@ Establish whether FlashQuest offers a reproducible speed, memory, or context-cap
 - [x] Implement pinned competitor adapters, exact-input quality manifests, realized-runtime checks and resumable evidence validation; preserve failed smoke attempts.
 - [x] Complete and independently audit all 2,700 fresh-confirmation outcomes and the nine-endpoint simultaneous-bound summary; preserve its failed quality rule.
 - [x] Capture and independently audit changed-page IDs and score/error margins in 18 new representative snapshots; disclose their mismatch with earlier Q/K fingerprints.
-- [x] Complete and independently audit native performance/quality smokes for all four settings and current-environment internal timing repeats.
+- [x] Complete and independently audit native setup smokes and fresh `5e22bf5` internal blocks: 48 timings, paired ratios 0.975674 at 8k and 1.824622 at 32k.
+- [x] Complete all 32 native performance cells and 96 timings, with strict and independent telemetry/runtime acceptance.
+- [x] Collect and independently accept all eight matching native quality cells and 2,400 outcomes.
+- [x] Accept the emitted descriptive comparison, then record the final decision.
 
-The full confirmation fails at four of nine endpoints; its pilot screens pass. Current-environment internal timing gives 1.811× at 32k (practical screen passes) and 1.014× at 8k (fails); the original 1.838×/0.995× blocks remain preserved. Optimized competitor comparisons and actual 4 GB capacity remain pending. The [changed-page diagnostic](benchmarks/validation/selection-flips/summary.md) explains the new captures; it cannot reconstruct the earlier snapshots. See the [provisional research decision](docs/research-decision.md) and [independent audit](docs/independent-roadmap-audit.md).
-
+The full confirmation fails at four of nine endpoints; its pilot screens pass.
+Final internal paired medians are 1.824622 at 32k (practical screen passes) and
+0.975674 at 8k (fails). Original kernel-34 and source-`76f00fe` groups remain
+preserved and unpooled. Native performance and quality collection is terminal.
+Final strict and independent audits accept all 2,400 ordered outcomes
+(2,322 hits), 250,671 raw memory points and exact manifest/mapping/EOS/scorer/runtime
+contracts. The final descriptive report passes independent raw/public reconstruction and
+Markdown review; its accepted builder retains measured source `5e22bf5`. See the
+[descriptive comparison](benchmarks/validation/comparison/652ab6a300eb34fedfc0a5ccb2769032aef8d1947f8a7561523e04cd8e752b6b/summary.md),
+[research decision](docs/research-decision.md) and
+[independent audit](docs/independent-roadmap-audit.md). Comparable-quality
+competitive advantage, broad novelty and actual 4 GB capacity are unestablished.
 ## 1. Prepare full-model experiments
 
 - [x] Install and verify the AWQ loader and kernels for Llama-3.2-3B-Instruct-AWQ.
@@ -42,7 +55,8 @@ complete on GPU. All four native settings now pass independently audited
 performance and exact-prompt quality smokes, with verified intended kernels,
 cache storage/devices, mapping, EOS and telemetry. Failed/interrupted attempts
 remain preserved. The matching FlashInfer precompiled/AOT-only path works;
-host compilation remains unverified. Full optimized matrices remain pending.
+host compilation remains unverified. Full native matrices are now collected
+and their accepted evidence is linked below.
 See [competitor setup and contracts](docs/competitor-validation.md).
 
 Done when every backend produces a valid short-run record with the intended model and cache precision. Unsupported configurations remain explicit failures.
@@ -126,14 +140,20 @@ reference is separately timed and does not represent an optimized low-bit engine
 
 Done when the results show whether sparse decode improves on this runtime's all-pages path at a retention that passed the quality screen. Page selection reduces reads; the persistent cache still stores the full context. This ablation shares the sparse kernel and selection machinery, so it also needs independent dense competitors.
 
-The [8k block](benchmarks/validation/ablation/d86279b66c726c5697f408aabfd346170f8f072990bf95f7e0155416643a29a8/summary.json)
-has sparse/all-pages medians of 38.84/38.91 tok/s, paired ratio 0.995× (range
-0.980–1.015): no practical gain. The [32k block](benchmarks/validation/ablation/c921467929e57dad7293c868610d5dc39cdd0c01275c515a91d9d3d63060d66b/summary.json)
-has medians 35.22/19.16 tok/s, paired ratio 1.838× (range 1.770–1.853); every seed
-is faster and the proposed pilot screen passes. Prefill is essentially unchanged.
-The control still pays scoring/top-k, so these results establish an internal
-ablation benefit at 32k, not a competitive or statistically confirmed research win.
+The final [8k block](benchmarks/validation/ablation/bd5a7ab68ed2ec69e8e916c27968c57c68783cb3f4514293621fa0c542960f40/summary.json)
+has sparse/all-pages medians 37.13/38.11 tok/s, paired ratio 0.975674
+(range 0.933246–1.046596): the practical screen fails. The final
+[32k block](benchmarks/validation/ablation/efd8bfe82549542f6cc7994414e6af11b0943c09404647a9457cf0e42ca4e559/summary.json)
+has medians 34.99/19.18 tok/s, paired ratio 1.824622
+(range 1.760771–1.894740): all seeds improve and the practical screen passes.
+Both retain measured source `5e22bf5`, with 48 timings and accepted raw telemetry.
+The shared scoring/top-k and packed kernel make this an internal ablation;
+neither the screen nor the ratio establishes a comparable-quality competitive win.
 
+The [original 8k](benchmarks/validation/ablation/d86279b66c726c5697f408aabfd346170f8f072990bf95f7e0155416643a29a8/summary.json)
+and [original 32k](benchmarks/validation/ablation/c921467929e57dad7293c868610d5dc39cdd0c01275c515a91d9d3d63060d66b/summary.json)
+groups retain ratios 0.994770/1.8384. Source-`76f00fe` repeats retain
+1.014242/1.811117; all older groups remain separate and unpooled.
 Set `QUALITY_8K` to a completed, passing quality record produced with the current
 runtime, quality harness, corpus and validation environment. The historical pilot
 above remains evidence for its original block; the strengthened semantic gate
@@ -147,85 +167,103 @@ python scripts/run_validation_ablation.py --contexts 8192 --retention 0.20 \
 
 ## 4. Compare optimized competitors
 
-- [ ] Run llama.cpp with Q4 K/V and vLLM with FP8 KV at the same input context lengths and decode-step count.
-- [ ] Retain FP16 KV runs as additional baselines where feasible.
-- [ ] Compare on the same GPU with the same model family and explicitly record differences in weight/cache quantization.
-- [ ] Check competitor quality on matching retrieval examples before claiming an advantage at comparable quality.
-- [ ] Report timeouts, OOMs, unsupported settings, and missing measurements separately.
+- [x] Run llama.cpp Q4_0 K/V and vLLM FP8 KV at matching 8k/32k input lengths and decode-step count.
+- [x] Retain native FP16 controls: llama.cpp FP16 and vLLM auto.
+- [x] Record the same GPU/model family and all weight/cache/backend differences.
+- [x] Accept matching retrieval quality and its final independent runtime/scorer audit.
+- [x] Preserve timeouts, OOMs, unsupported settings, adapter errors and missing measurements separately.
+- [x] Emit and independently accept the descriptive comparison with separate timing boundaries.
 
-Done when a fresh 8k/32k comparison includes valid phase timings and quantized dense baselines. The historical head-to-head files remain provenance, not evidence of a current competitive win.
+The [full native performance matrix](benchmarks/validation/competitors/3a5fa9de623a7d2a49b853f6588bc72821ce36a76542b6791a08abba677a0653/schedule.json)
+finishes exit 0: 32 cells, 96 timings and 30,280 raw memory points, accepted by
+strict and independent telemetry/runtime review. The
+[matching native quality matrix](benchmarks/validation/competitors/ee7c318de630e7cdbd3e9b7859134df60a611e761c750bd2fb32fa7cf3133ed9/schedule.json)
+finishes exit 0 with eight cells and 2,400 outcomes.
+Final strict and independent audits accept all 2,400 ordered outcomes
+(2,322 hits), 250,671 raw memory points and exact manifest/mapping/EOS/scorer/runtime
+contracts. The final descriptive report passes independent raw/public reconstruction and
+Markdown review; its accepted builder retains measured source `5e22bf5`.
+
+The [report](benchmarks/validation/comparison/652ab6a300eb34fedfc0a5ccb2769032aef8d1947f8a7561523e04cd8e752b6b/summary.md) separates synchronized FlashQuest forward
+timing, llama.cpp native evaluation/generation, vLLM scheduler token timing and
+HTTP wall time. It supports within-backend configuration ratios only. vLLM's
+FP8/auto pair also changes FLASHINFER/FLASH_ATTN; FP8 scales are unit/default
+uncalibrated scales. llama.cpp Q4_K_M GGUF and the AWQ runtimes have different
+weight formats. Quality uses exact fixed manifests and canonical returned-ID
+scoring, with 300 requests per cell and no separate excluded warmup. Individual
+llama.cpp `/detokenize` response bodies are absent; the performed runtime gate,
+static mapping and separately audited saved prompt views have distinct scopes.
+An accepted descriptive report does not establish scientific comparability or
+upgrade the failed frozen non-inferiority rule.
 
 ## 5. Verify memory and capacity
 
-- [x] Prepare physical-device polling, owned process-tree RSS, validated phase windows and safe exports for FlashQuest ablation cells.
-- [x] Measure FlashQuest load/warmup/prefill/decode windows, owned process-tree RSS and system memory at 8k and 32k.
-- [ ] Measure physical GPU memory throughout loading, prefill, and decode for every backend.
-- [ ] Record GPU usage alongside process/system memory and PyTorch allocator counters; identify any offload or paging.
-- [ ] Repeat the relevant quality and performance runs on an actual 4 GB GPU.
-- [ ] Document the largest context that completes prefill and decode under the stated memory configuration.
+- [x] Measure FlashQuest load/warmup/prefill/decode windows and owned process/system memory at 8k/32k.
+- [x] Continuously sample native physical GPU and process/system memory during load, performance warmup and requests.
+- [x] Record sampled device peaks, process RSS/MemAvailable, available Torch counters and configured placement separately.
+- [ ] Repeat relevant performance and quality on actual 4 GB hardware, deferred for collaboration.
+- [x] Document 32k as the largest tested successful context on this 12 GB device, without claiming a maximum.
 
-Done when capacity claims have hardware-specific evidence. The available 12 GB RTX 4080 Laptop GPU can validate kernels and comparisons; it cannot establish a GPU-resident 32k result on a 4 GB device. Keep measured values separate from unmeasured fields.
+The final internal blocks reach sampled device peaks 3,442/7,006 MiB at 8k/32k;
+allocated/reserved peaks are 3,001.9/3,186 and 5,477.3/6,750 MiB. Selection retains
+the full cache and does not reduce those peaks. Native phase markers cover load,
+warmup/request windows rather than aligned prefill/decode. vLLM preallocates by
+GPU budget, llama.cpp rounds requested context allocation and FlashQuest keeps
+a persistent full cache; sampled peaks alone cannot establish a capacity advantage.
+Worker physical tensor bytes and estimated token capacities are different
+quantities. Aligned native phase peaks and proving absence of OS fallback are
+unverified claim limits, not additional execution requirements of this plan. llama.cpp records 29/29 model-layer offload alongside a CPU-mapped
+embedding and host buffers. Configured CUDA placement does not prove no OS fallback.
 
-Both arms reached sampled device peaks of 3,442 MiB at 8k and 7,006 MiB at 32k.
-Allocated/reserved peaks were 3,001.9/3,186 and 5,477.3/6,750 MiB respectively.
-Sampling medians were about 50 ms, with maximum gaps of 110/181.4 ms and no device
-or ownership-check dropouts. RSS and MemAvailable remain separate; configured
-CUDA placement does not prove absence of OS fallback. The current 32k prefill
-needs more than a 4 GB budget on this device. Preserve the target-capacity gate;
-evaluate bounded prefill only as separately validated future work.
+Successful 32k performance and matching-quality requests establish a tested lower
+bound on this 12 GB GPU, not a true maximum or actual 4 GB fit. The current
+FlashQuest 32k prefill exceeds a 4 GB budget here. Hardware-specific capacity
+claims remain withheld; bounded prefill would be separate future work.
 
 ## 6. Test the contribution and decide
 
-- [x] Compare metadata-based page scoring with separately computed page summaries: score/selection agreement, metadata bytes, and scoring latency.
-- [x] Compare fused packed attention with the reference dequantization path: output agreement, temporary allocations, and latency.
-- [x] Map the precise implementation claim against the closest prior work, recording overlaps and remaining differences.
-- [x] Capture concrete changed-page IDs and score/error margins in new representative snapshots; preserve the mismatch with earlier Q/K fingerprints.
-- [ ] Write a decision supported by the saved quality, performance, and memory results.
+- [x] Compare affine-metadata scoring with separate summaries: agreement, bytes and latency.
+- [x] Compare fused packed attention with exact packed-value and materialized references.
+- [x] Map the precise claim against closest prior work and preserve remaining overlaps.
+- [x] Capture and independently audit changed-page IDs/margins in 18 new snapshots; preserve the old-Q/K mismatch.
+- [x] Record the final evidence-linked research decision after report acceptance.
 
-The [current decision](docs/research-decision.md) is provisional while competitive
-measurements are unfinished. Fresh quality collection is complete and fails its
-frozen rule. The [selection diagnostic](benchmarks/validation/selection-flips/summary.md) has an independent author
-review: 28/216 changed heads at 8k and 102/216 at 32k, without quality causality
-or exact replay of the earlier tensors. Metadata reuse avoids separate-summary
-bytes but has no established scoring-speed advantage. The closest prior-work map
-does not certify first-of-kind novelty.
+The final [decision](docs/research-decision.md) retains FlashQuest as an
+engineering reference and redirects the current research effort. The completed
+confirmation fails to establish non-inferiority; current timings establish an
+internal 32k benefit, not a comparable-quality competitive advantage. Broad
+novelty is unsupported. Metadata reuse avoids separate-summary bytes but has no
+established scoring-speed advantage or research significance. The
+[new selection diagnostic](benchmarks/validation/selection-flips/summary.md)
+explains 28/216 changed heads at 8k and 102/216 at 32k; no Q/K fingerprints match
+the earlier captures, so this is not an old-snapshot replay or quality-causality
+result. The narrower kernel/metadata direction is not certified as a novel pivot.
 
-Continue research if the benefit is repeatable beyond measurement variation at comparable quality, or if an accurately measured capacity advantage survives quantized dense baselines. A performance win and a novelty claim need separate evidence.
-
-If the full runtime lacks a competitive advantage, consider a narrower kernel or metadata-reuse contribution when its ablations support one. If neither survives the checks, keep FlashQuest as an engineering/reference project and redirect research effort. Prioritize further optimization after these results identify a useful bottleneck.
+Future research needs a new, precisely bounded question with applicable quality,
+matched measurement boundaries and a useful delta against closest prior work.
+Missing capacity and general-quality evidence remain unresolved claims rather
+than fabricated passes or evidence of universal inferiority.
 
 ## Results and next action
 
-Keep new JSON records, logs, configuration/version details, and comparison summaries under `benchmarks/validation*`. Use separate output directories for different experiment configurations and preserve the historical phase files. Capture conclusions and links to their evidence in this roadmap or the README.
+The locally executable bounded roadmap work is complete. Final evidence
+is linked above and in the [execution checkpoint](docs/execution-checkpoint.md). Original kernel-34,
+source-`76f00fe`, failed and interrupted groups remain unchanged and unpooled.
+The accepted measurements retain clean source `5e22bf5` and its pinned model and
+runtime environments; post-measurement repairs must not relabel them.
+Both reviewed post-measurement fixes are applied and validated: 190 focused
+tests and 606 full non-slow tests pass; 12 existing slow cases are deselected
+and remain unverified. Changed-file Ruff and `git diff --check` pass. These checks
+validate later source without relabeling measured `5e22bf5` evidence.
 
-The user resumed work after supervised confirmation completed. Its independent
-terminal audit passed, releasing the source freeze. The complete failed summary
-retains source `05f6400` and its exact recorded environment; the original 4k/8k
-group remains separate. The reviewed canonical decoder, EOS/cap, token mapping,
-compile-worker and attention-backend checks plus the selection diagnostic pass
-170 focused CPU tests and were committed as `a0100a5`. Changed-page evidence
-and its independent review are complete. The AOT-only native setup adds 160
-focused competitor checks and is committed. Native setup smokes and current
-internal repeats pass independent evidence audits. Full native performance
-attempt 1 ends with two diagnostic-log decoding errors, so it remains ineligible.
-The independently reviewed byte-preserving log repair passes the integrated
-non-slow suite (589 passed, 12 existing slow cases deselected). Commit it, then
-repeat whole internal and native blocks under the new clean source.
-The earlier usage cutoff remains removed. See
-[exact continuation instructions](docs/execution-checkpoint.md).
-Actual 4 GB testing remains a separate pending endpoint;
-the user authorized deferring unavailable target hardware for collaboration.
-The work is on the local feature branch `refactor/benchmark-validation`. Check off
-tasks only when their evidence is saved.
+The measured comparison is reproducible from a clean checkout of `5e22bf5`, the
+pinned environments/model snapshots, preserved raw artifacts and exact reviewed
+checker/builder hashes bound by the report. Public JSON alone cannot recreate
+private raw prompts, answers or sampled telemetry. Reproduce against that source
+before applying the deferred resume or full-tokenizer-bound fixes; later source
+changes do not justify weakening the current-source acceptance gate.
 
-The user has explicitly resumed work after the pause. Reviewed source/setup/
-selection evidence is committed as `3ee8192`; the pause is recorded in `466d7a6`.
-Native attempts 7/8 remain preserved. Attempt 9 exposed a health adapter mismatch:
-vLLM returns empty HTTP 200, while readiness required JSON. Its owned batch was
-stopped before completed vLLM requests. The independently reviewed correction
-keeps JSON validation for completion/detokenize. Full non-slow checks finished
-exit 0 (562 passed, 12 existing slow cases deselected) after restoring declared
-development dependencies and pinned public test fixtures. The correction is
-committed as `76f00fe`; all four settings subsequently pass short performance and
-quality setup smokes. Fresh full matrices remain required after the log repair.
-See the [resume checkpoint](docs/execution-checkpoint.md).
+Actual 4 GB testing remains deferred for collaboration as authorized by the user.
+Aligned native phase memory, absence of OS fallback and general language quality
+remain unverified. Work remains on `refactor/benchmark-validation`; local commits
+are authorized, while pushing, PRs and merges still require approval.
